@@ -97,7 +97,7 @@ PaperNexus/
 
 ## Dependencies
 
-Avalonia 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.11, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries), SkiaSharp.HarfBuzz 3.119.2 (text shaping for the annotation's kerning; pinned at 3.119.2 in Dependabot because later versions require a newer HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships - lift the pin when Avalonia moves)
+Avalonia 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.11, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries; Dependabot ignores it, and it is updated together with Avalonia), SkiaSharp.HarfBuzz 3.119.2 (text shaping for the annotation's kerning; pinned at 3.119.2 in Dependabot because later versions require a newer HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships - lift the pin when Avalonia moves)
 
 No `Avalonia.Diagnostics` reference: it has no 12.x release, and `AttachDevTools` was never called. Adding the visual-tree inspector back would mean pinning Avalonia to 11.x.
 
