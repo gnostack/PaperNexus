@@ -9,3 +9,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # SkiaSharp.HarfBuzz is held at 3.119.2 because later versions require a newer
+      # HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships. Remove this
+      # rule when Avalonia moves to a newer HarfBuzzSharp.
+      - dependency-name: "SkiaSharp.HarfBuzz"

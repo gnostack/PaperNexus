@@ -83,7 +83,7 @@ PaperNexus/
 - **Auto-Install:** First run copies exe to the chosen install directory (default `%LOCALAPPDATA%\PaperNexus\`), migrates settings, writes a `.installed` sentinel file alongside the exe, then relaunches. On subsequent launches, `IsRunningFromInstallLocation` detects the sentinel file so custom install paths (not equal to the default AppData path) are recognised correctly and the install flow is not re-triggered.
 - **Single Instance:** Named `Mutex` + `EventWaitHandle` for IPC (signals running instance to show UI).
 - **Tray-only:** `ShutdownMode.OnExplicitShutdown`. Menu: "Open Settings", "Next Wallpaper", "Random Wallpaper", "Exit". Each item has a programmatically-drawn icon (`Core/Imaging/MenuIcons.cs`).
-- **Wallpaper Processing:** Writes to `current.png`/`.jpg`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB.
+- **Wallpaper Processing:** Writes to `current.png`/`.jpg`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp with HarfBuzz shaping for kerning) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB.
 - **`ISwitchWallpaper`:** Exposes `WallpaperChanged` event, `SwitchToNextAsync()`, and `SwitchToRandomAsync()`.
 - **Wallpaper Sources (JPath-based):** `HttpWallpaperSourceService` uses Newtonsoft `SelectTokens` with `ImageUrlJPath`/`TitleJPath`. Sources edited via `WallpaperSourceDialog` (name, URL, JPath, cron, enabled toggle, live Test button).
 - **`NonScrollableComboBox`:** Suppresses scroll wheel unless dropdown is open - prevents accidental changes while scrolling the settings page.
@@ -95,7 +95,7 @@ PaperNexus/
 
 ## Dependencies
 
-Avalonia 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.5, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries)
+Avalonia 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.11, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries), SkiaSharp.HarfBuzz 3.119.2 (text shaping for the annotation's kerning; pinned at 3.119.2 in Dependabot because later versions require a newer HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships - lift the pin when Avalonia moves)
 
 No `Avalonia.Diagnostics` reference: it has no 12.x release, and `AttachDevTools` was never called. Adding the visual-tree inspector back would mean pinning Avalonia to 11.x.
 

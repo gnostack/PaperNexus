@@ -1,5 +1,6 @@
 using System.Globalization;
 using SkiaSharp;
+using SkiaSharp.HarfBuzz;
 
 namespace PaperNexus.Core.Imaging;
 
@@ -76,13 +77,15 @@ internal static class WallpaperAnnotator
 
         var fontSize = request.FontSize > 0 ? request.FontSize : 18;
         var rightAligned = request.Position is AnnotationPosition.TopRight or AnnotationPosition.BottomRight;
-        var align = rightAligned ? SKTextAlign.Right : SKTextAlign.Left;
         var x = rightAligned ? bitmap.Width - SideMargin : SideMargin;
         var isTop = request.Position is AnnotationPosition.TopLeft or AnnotationPosition.TopRight;
         // y is the top edge of the title line
         var y = isTop ? TopMargin : bitmap.Height - fontSize - BottomMargin;
 
         using var typeface = BundledFonts.ResolveTypeface(request.FontFamily);
+        // HarfBuzz shaping applies the font's kerning and ligature tables, which Skia's
+        // plain DrawText does not - without it "AV" or "TA" in a title sit visibly apart.
+        using var shaper = new SKShaper(typeface);
         using var canvas = new SKCanvas(bitmap);
         using var fill = new SKPaint { Color = textColor, IsAntialias = true, Style = SKPaintStyle.Fill };
         using var outline = request.OutlineEnabled
@@ -97,21 +100,22 @@ internal static class WallpaperAnnotator
             : null;
 
         using var titleFont = new SKFont(typeface, fontSize);
-        DrawOutlinedText(canvas, request.Title, x, y, align, titleFont, fill, outline);
+        DrawOutlinedText(canvas, shaper, request.Title, x, y, rightAligned, titleFont, fill, outline);
 
         // Debug mode adds a smaller timestamp just below a top title or just above a bottom one
         if (request.Timestamp is not null)
         {
             using var timestampFont = new SKFont(typeface, fontSize * 0.75f);
             var timestampY = isTop ? y + fontSize + 4 : y - fontSize;
-            DrawOutlinedText(canvas, request.Timestamp, x, timestampY, align, timestampFont, fill, outline);
+            DrawOutlinedText(canvas, shaper, request.Timestamp, x, timestampY, rightAligned, timestampFont, fill, outline);
         }
 
         canvas.Flush();
     }
 
-    // Draws the outline and the glyph fill as two separate passes, with top as the top
-    // edge of the line (Skia positions text by its baseline, so the font's ascent is added).
+    // Draws the shaped text as an outline pass then a fill pass. x is the left edge, or the
+    // right edge when rightAligned, and top is the top edge of the line (Skia positions text
+    // by its baseline, so the font's ascent is added).
     //
     // A stroke is centred on the glyph edge, so drawing it over the fill would eat into the
     // letter and visibly thin small text. Stroking first and filling over it keeps the glyph
@@ -119,18 +123,37 @@ internal static class WallpaperAnnotator
     // makes the outline readable at small font sizes.
     private static void DrawOutlinedText(
         SKCanvas canvas,
+        SKShaper shaper,
         string text,
         float x,
         float top,
-        SKTextAlign align,
+        bool rightAligned,
         SKFont font,
         SKPaint fill,
         SKPaint? outline)
     {
+        // Right alignment uses the shaped width, so the kerned text still ends exactly at x
+        var left = rightAligned ? x - ShapedWidth(shaper, text, font) : x;
         var baseline = top - font.Metrics.Ascent;
         if (outline is not null)
-            canvas.DrawText(text, x, baseline, align, font, outline);
+            canvas.DrawShapedText(shaper, text, left, baseline, SKTextAlign.Left, font, outline);
 
-        canvas.DrawText(text, x, baseline, align, font, fill);
+        canvas.DrawShapedText(shaper, text, left, baseline, SKTextAlign.Left, font, fill);
+    }
+
+    // Advance width of text at fontSize in familyName after HarfBuzz shaping (kerning
+    // applied). Exposed so tests can check shaping without drawing.
+    internal static float ShapedWidth(string familyName, float fontSize, string text)
+    {
+        using var typeface = BundledFonts.ResolveTypeface(familyName);
+        using var shaper = new SKShaper(typeface);
+        using var font = new SKFont(typeface, fontSize);
+        return ShapedWidth(shaper, text, font);
+    }
+
+    private static float ShapedWidth(SKShaper shaper, string text, SKFont font)
+    {
+        var result = shaper.Shape(text, font);
+        return result.Width;
     }
 }

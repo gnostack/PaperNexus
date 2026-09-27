@@ -203,6 +203,38 @@ public class ImagingTests : IDisposable
         Assert.True(CountDarkerThan(outlined, 60) > CountDarkerThan(plain, 60));
     }
 
+    [Theory]
+    [InlineData("AV")]
+    [InlineData("TA")]
+    public void ShapedWidth_AppliesKerningToTheBundledFont(string pair)
+    {
+        // Cinzel kerns these pairs; shaping must pull them closer than the two glyphs'
+        // standalone advances, or titles are drawn with visibly loose letter spacing.
+        const float size = 72f;
+        var family = BundledFonts.DefaultFontFamily;
+
+        var pairWidth = WallpaperAnnotator.ShapedWidth(family, size, pair);
+        var firstWidth = WallpaperAnnotator.ShapedWidth(family, size, pair[..1]);
+        var secondWidth = WallpaperAnnotator.ShapedWidth(family, size, pair[1..]);
+
+        Assert.True(pairWidth < firstWidth + secondWidth,
+            $"'{pair}' is {pairWidth}px shaped vs {firstWidth + secondWidth}px unkerned");
+    }
+
+    [Fact]
+    public void Draw_RightAlignedTextEndsAtTheSideMargin()
+    {
+        var background = new SKColor(40, 60, 80);
+        using var bitmap = TestHelpers.CreateSolidBitmap(800, 200, background);
+        var request = new AnnotationRequest("TAVERN", null, BundledFonts.DefaultFontFamily, 48, "#F5F5F5", AnnotationPosition.TopRight, OutlineEnabled: false);
+
+        WallpaperAnnotator.Draw(bitmap, request);
+
+        // The last glyph's ink ends just inside x = width - 125 (side bearing and antialiasing)
+        var bounds = ChangedBounds(bitmap, background)!.Value;
+        Assert.InRange(bounds.Right, 800 - 125 - 8, 800 - 125);
+    }
+
     [Fact]
     public void ResolveTypeface_UnknownFamily_FallsBackToTheBundledFont()
     {
