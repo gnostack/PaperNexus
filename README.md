@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/0Keith/PaperNexus/releases/latest"><img src="https://img.shields.io/github/v/release/0Keith/PaperNexus?style=flat-square&color=4c9a6e" alt="Latest Release" /></a>
-  <a href="https://github.com/0Keith/PaperNexus/blob/main/LICENSE"><img src="https://img.shields.io/github/license/0Keith/PaperNexus?style=flat-square&color=4c9a6e" alt="License" /></a>
+  <a href="https://github.com/gnostack/PaperNexus/releases/latest"><img src="https://img.shields.io/github/v/release/gnostack/PaperNexus?style=flat-square&color=4c9a6e" alt="Latest Release" /></a>
+  <a href="https://github.com/gnostack/PaperNexus/blob/main/LICENSE"><img src="https://img.shields.io/github/license/gnostack/PaperNexus?style=flat-square&color=4c9a6e" alt="License" /></a>
   <img src="https://img.shields.io/badge/.NET-10.0-512bd4?style=flat-square" alt=".NET 10" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078d4?style=flat-square" alt="Windows and Linux" />
 </p>
@@ -35,13 +35,13 @@ PaperNexus is an automated wallpaper rotation app for Windows and Linux that liv
 
 **Windows**
 
-1. Grab the latest `PaperNexus.exe` from [Releases](https://github.com/0Keith/PaperNexus/releases/latest)
+1. Grab the latest `PaperNexus.exe` from [Releases](https://github.com/gnostack/PaperNexus/releases/latest)
 2. Run it
 3. That's it. You're done. Go get a coffee.
 
 **Linux**
 
-1. Grab `PaperNexus-linux-x64` from [Releases](https://github.com/0Keith/PaperNexus/releases/latest)
+1. Grab `PaperNexus-linux-x64` from [Releases](https://github.com/gnostack/PaperNexus/releases/latest)
 2. `chmod +x PaperNexus-linux-x64 && ./PaperNexus-linux-x64`
 3. Same deal. Coffee time.
 
@@ -60,7 +60,7 @@ PaperNexus will park itself in your system tray and start doing its thing. Right
 
 ```bash
 # Clone the repo
-git clone https://github.com/0Keith/PaperNexus.git
+git clone https://github.com/gnostack/PaperNexus.git
 cd PaperNexus
 
 # Restore & build
