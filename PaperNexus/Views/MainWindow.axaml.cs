@@ -71,11 +71,27 @@ public partial class MainWindow : Window
     ];
 
     private readonly KonamiSequence _konami = new();
+    private readonly ISettingsStore _settingsStore;
+    private readonly Func<EasterEggListDialog> _createSecretsDialog;
 
-    public MainWindow()
+    // Created per request from the container, which hands in the settings store, a fresh
+    // view model, the egg recorder and a factory for the Secrets dialog. There is
+    // deliberately no parameterless constructor: a window built without these would have no
+    // store, and the store is the only way into settings.json.
+    public MainWindow(
+        ISettingsStore settingsStore,
+        WallpaperConfigViewModel viewModel,
+        EasterEggProgress easterEggProgress,
+        Func<EasterEggListDialog> createSecretsDialog)
     {
+        _settingsStore = settingsStore.ThrowIfNull();
+        _createSecretsDialog = createSecretsDialog.ThrowIfNull();
         InitializeComponent();
-        var viewModel = new WallpaperConfigViewModel();
+        // Avalonia builds the overlay from markup, so it cannot take constructor arguments;
+        // the window hands it the recorder once here, and Play stays the only place a
+        // discovery is recorded.
+        EggOverlay.UseProgress(easterEggProgress.ThrowIfNull());
+        viewModel.ThrowIfNull();
         // The ViewModel decides whether an egg fires; the window owns how it is drawn.
         viewModel.EasterEggTriggered += show => Dispatcher.UIThread.Post(() => EggOverlay.Play(show));
         DataContext = viewModel;
@@ -130,7 +146,7 @@ public partial class MainWindow : Window
     // than cached, so an egg found moments ago is already ticked.
     private async void OnSecretsClicked(object? sender, RoutedEventArgs e)
     {
-        var dialog = new EasterEggListDialog();
+        var dialog = _createSecretsDialog();
         await dialog.LoadAsync();
         await dialog.ShowDialog(this);
     }
@@ -174,7 +190,7 @@ public partial class MainWindow : Window
     protected override async void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        var settings = await WallpaperNexusSettings.LoadAsync();
+        var settings = await _settingsStore.LoadAsync();
         if (settings.WindowX.HasValue && settings.WindowY.HasValue)
             Position = new PixelPoint((int)settings.WindowX.Value, (int)settings.WindowY.Value);
         if (settings.WindowWidth.HasValue && settings.WindowHeight.HasValue)
@@ -510,16 +526,16 @@ public partial class MainWindow : Window
         return await dialog.ShowDialog<bool>(this);
     }
 
-    private static async Task SaveWindowPositionAsync(int x, int y, double w, double h)
+    private async Task SaveWindowPositionAsync(int x, int y, double w, double h)
     {
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             settings.WindowX = x;
             settings.WindowY = y;
             settings.WindowWidth = w;
             settings.WindowHeight = h;
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
         }
         catch { }
     }

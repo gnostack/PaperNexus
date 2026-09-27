@@ -8,17 +8,20 @@ namespace PaperNexus.Tests;
 public class DownloadWallpapersTests : IDisposable
 {
     private readonly string _downloadDir;
+    private readonly SettingsStore _store;
 
     public DownloadWallpapersTests()
     {
         _downloadDir = Path.Combine(Path.GetTempPath(), $"PaperNexus_DL_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_downloadDir);
+        _store = TestHelpers.CreateSettingsStore();
     }
 
     public void Dispose()
     {
         try { if (Directory.Exists(_downloadDir)) Directory.Delete(_downloadDir, true); }
         catch { }
+        TestHelpers.DeleteSettingsStore(_store);
     }
 
     [Theory]
@@ -29,7 +32,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task Download_TitleWithSlashes_NeverEscapesFolder(string title)
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -60,7 +63,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task Download_ExistingFile_SkipsDownload()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -95,7 +98,7 @@ public class DownloadWallpapersTests : IDisposable
         string imageUrl, string expectedStem, string expectedExt)
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -128,7 +131,7 @@ public class DownloadWallpapersTests : IDisposable
         // After the fix, per-image failures are caught and logged; the second image must
         // still be processed (i.e. its pre-existing file is unchanged, not thrown over).
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -165,7 +168,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: one expired file referenced in BannedWallpapers
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var expiredPath = Path.Combine(_downloadDir, "old.png");
         TestHelpers.CreateSmallPng(expiredPath);
@@ -192,7 +195,7 @@ public class DownloadWallpapersTests : IDisposable
         // Arrange: one expired file that is favorited (should survive deletion),
         // plus one stale favorite entry pointing to a file that no longer exists.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var favoritePath = Path.Combine(_downloadDir, "favorite.png");
         TestHelpers.CreateSmallPng(favoritePath);
@@ -223,7 +226,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: a recent file that is within the retention window
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var recentPath = Path.Combine(_downloadDir, "recent.png");
         TestHelpers.CreateSmallPng(recentPath);
@@ -246,7 +249,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: a 200×200 image with no cap (ResolutionWidth == 0 means "Native")
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var filePath = Path.Combine(_downloadDir, "native.png");
         TestHelpers.CreateTestPng(filePath, 200, 200);
@@ -269,7 +272,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: a 100×100 image with a cap of 1920×1080 — image is already within the cap
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var filePath = Path.Combine(_downloadDir, "small.png");
         TestHelpers.CreateTestPng(filePath, 100, 100);
@@ -293,7 +296,7 @@ public class DownloadWallpapersTests : IDisposable
         // Arrange: a 400×300 image capped at 200×200.
         // The image should be scaled down so neither dimension exceeds the cap.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var filePath = Path.Combine(_downloadDir, "large.png");
         TestHelpers.CreateTestPng(filePath, 400, 300);
@@ -390,9 +393,9 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await settings.SaveAsync();
+        await _store.SaveAsync(settings);
 
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        var loaded = await _store.LoadAsync();
 
         Assert.Empty(loaded.Sources);
     }
@@ -403,10 +406,8 @@ public class DownloadWallpapersTests : IDisposable
     [Fact]
     public async Task LoadAsync_NoFileExists_ReturnsDefaultSources()
     {
-        // Ensure no settings file exists for this test
-        TestHelpers.Cleanup();
-
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        // The test's store sits in a new, empty temporary directory, so no file exists yet.
+        var loaded = await _store.LoadAsync();
 
         Assert.Equal(WallpaperNexusSettings.DefaultSources.Count, loaded.Sources.Count);
     }
@@ -418,7 +419,7 @@ public class DownloadWallpapersTests : IDisposable
         // a favorite. Retention cleanup must skip it because deleting the active
         // wallpaper would leave the desktop in an undefined state.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var currentPath = Path.Combine(_downloadDir, "current.png");
         TestHelpers.CreateSmallPng(currentPath);
@@ -443,7 +444,7 @@ public class DownloadWallpapersTests : IDisposable
         // Arrange: two expired files — one is the current wallpaper, the other is not
         // current and not favorited. Only the non-current file should be deleted.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var currentPath = Path.Combine(_downloadDir, "current.png");
         TestHelpers.CreateSmallPng(currentPath);
@@ -474,7 +475,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task CleanupOldImages_FolderDeleted_DoesNotThrow()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         // Use a path that does not exist
         var missingDir = Path.Combine(Path.GetTempPath(), $"PaperNexus_Gone_{Guid.NewGuid():N}");
@@ -503,7 +504,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task CleanupOldImages_NullLists_DoesNotThrow()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var expiredPath = Path.Combine(_downloadDir, "expired.png");
         TestHelpers.CreateSmallPng(expiredPath);
@@ -532,7 +533,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task CleanupOldImages_InvalidCurrentWallpaperPath_DoesNotThrow()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
 
         var expiredPath = Path.Combine(_downloadDir, "expired.png");
         TestHelpers.CreateSmallPng(expiredPath);
@@ -571,9 +572,9 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await settings.SaveAsync();
+        await _store.SaveAsync(settings);
 
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        var loaded = await _store.LoadAsync();
 
         var loadedSource = loaded.Sources.FirstOrDefault(s => s.Name == "Test Source");
         Assert.NotNull(loadedSource);
@@ -602,9 +603,9 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await settings.SaveAsync();
+        await _store.SaveAsync(settings);
 
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        var loaded = await _store.LoadAsync();
         var src = loaded.Sources.First(s => s.Name == "Recent Source");
 
         // The timestamp must have been preserved — if it were null, IsOverdue would
@@ -630,9 +631,9 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await settings.SaveAsync();
+        await _store.SaveAsync(settings);
 
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        var loaded = await _store.LoadAsync();
 
         Assert.False(string.IsNullOrWhiteSpace(loaded.Annotation.FontFamily),
             "FontFamily must never be empty after load; the renderer passes it directly to the font lookup.");
@@ -652,9 +653,9 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await settings.SaveAsync();
+        await _store.SaveAsync(settings);
 
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        var loaded = await _store.LoadAsync();
 
         Assert.True(loaded.Annotation.FontSize > 0,
             "FontSize must be positive after load; a zero size produces a degenerate font.");
@@ -676,9 +677,9 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await settings.SaveAsync();
+        await _store.SaveAsync(settings);
 
-        var loaded = await WallpaperNexusSettings.LoadAsync();
+        var loaded = await _store.LoadAsync();
 
         Assert.False(string.IsNullOrWhiteSpace(loaded.Annotation.Color),
             "Color must never be empty after load; renderer passes it directly to Color.ParseHex.");

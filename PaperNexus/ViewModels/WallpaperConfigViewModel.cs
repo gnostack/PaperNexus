@@ -291,6 +291,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
     [ObservableProperty]
     private string? _selectedFavorite;
 
+    // Every settings read and write in the window goes through this store.
+    private readonly ISettingsStore _settingsStore;
+
     private bool _isLoading;
     private bool _hasPendingSave;
     private CancellationTokenSource _statusCts = new();
@@ -304,8 +307,10 @@ public partial class WallpaperConfigViewModel : ObservableObject
     // Initialises all observable properties to sensible defaults and resolves
     // background services from the App DI container. The WallpaperChanged event is
     // subscribed here so the preview updates automatically when the slideshow switches.
-    public WallpaperConfigViewModel()
+    // Created per window from the container, which supplies the settings store.
+    public WallpaperConfigViewModel(ISettingsStore settingsStore)
     {
+        _settingsStore = settingsStore.ThrowIfNull();
         _folder = string.Empty;
         _slideshowCronExpression = string.Empty;
         _slideshowInterval = 30;
@@ -485,7 +490,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _isLoading = true;
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             Folder = settings.Download.Folder;
             // Set the backing field directly to avoid triggering TriggerSave via the setter,
             // then raise property-changed for all derived mode flags manually.
@@ -697,12 +702,12 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             if (settings.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase))
             {
                 settings.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
                 IsCurrentWallpaperFavorited = false;
-                await settings.SaveAsync();
+                await _settingsStore.SaveAsync(settings);
                 var toRemove = FavoriteWallpapers.FirstOrDefault(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
                 if (toRemove is not null) FavoriteWallpapers.Remove(toRemove);
                 await ShowTransientStatusAsync("✓ Removed from favorites.");
@@ -711,7 +716,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
             {
                 settings.FavoriteWallpapers.Add(path);
                 IsCurrentWallpaperFavorited = true;
-                await settings.SaveAsync();
+                await _settingsStore.SaveAsync(settings);
                 if (!FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase))
                     FavoriteWallpapers.Add(path);
                 // Round numbers of favorites play an overlay instead of the usual confirmation.
@@ -736,9 +741,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
             return;
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             settings.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
             var toRemove = FavoriteWallpapers.FirstOrDefault(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
             if (toRemove is not null) FavoriteWallpapers.Remove(toRemove);
             if (CurrentWallpaperPath.Equals(path, StringComparison.OrdinalIgnoreCase))
@@ -827,7 +832,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 IsCurrentWallpaperFavorited = false;
                 return;
             }
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             IsCurrentWallpaperFavorited = settings.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
         }
         catch
@@ -934,7 +939,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             settings.Download.Folder = Folder;
             settings.Slideshow.ScheduleMode = SlideshowScheduleMode;
             settings.Slideshow.Interval = SlideshowInterval ?? _selectedIntervalType?.Minimum ?? 1;
@@ -990,7 +995,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
                         : persistedTs;
             }
             settings.Sources = vmSources;
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
             await ShowTransientStatusAsync("✓ Settings saved.");
         }
         catch (Exception ex)
@@ -1092,7 +1097,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             var folder = settings.Download.Folder;
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
             {
@@ -1164,7 +1169,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             if (item.IsFavorite)
             {
                 settings.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -1187,7 +1192,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 if (milestone is not null)
                     EasterEggTriggered?.Invoke(milestone);
             }
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
         }
         catch (Exception ex)
         {
@@ -1199,7 +1204,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             if (item.IsBanned)
             {
                 settings.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -1210,7 +1215,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 settings.BannedWallpapers.Add(item.FilePath);
                 item.IsBanned = true;
             }
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
         }
         catch (Exception ex)
         {
@@ -1229,10 +1234,10 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 File.Delete(item.FilePath);
 
             // Remove the path from both special lists so stale references don't persist in settings
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settings = await _settingsStore.LoadAsync();
             settings.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
             settings.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
 
             var favToRemove = FavoriteWallpapers.FirstOrDefault(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
             if (favToRemove is not null) FavoriteWallpapers.Remove(favToRemove);

@@ -5,8 +5,11 @@ namespace PaperNexus.Views;
 
 public partial class SplashScreen : Window
 {
-    public SplashScreen()
+    // Created from the container so the splash egg is recorded through the injected
+    // recorder rather than a static path to settings.json.
+    public SplashScreen(EasterEggProgress easterEggProgress)
     {
+        easterEggProgress.ThrowIfNull();
         InitializeComponent();
         VersionText.Text = App.AppVersion;
         // Usually the ordinary "Starting up..." line; occasionally something else, so it
@@ -15,6 +18,6 @@ public partial class SplashScreen : Window
         StatusText.Text = splashLine;
         // This egg has no overlay to record it, so it is recorded where it is shown.
         if (splashLine != EasterEggs.DefaultSplashMessage)
-            _ = EasterEggProgress.RecordAsync(EasterEggCatalog.Splash);
+            _ = easterEggProgress.RecordAsync(EasterEggCatalog.Splash);
     }
 }

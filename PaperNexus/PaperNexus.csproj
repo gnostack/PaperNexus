@@ -10,6 +10,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- AVLN3001: a window with no parameterless constructor is not reachable by Avalonia's
+         runtime markup loader. MainWindow, SplashScreen and EasterEggListDialog deliberately
+         have none, so no window can be built without the settings store; they are created
+         from the service container, and the app never uses the runtime loader. The cost is
+         that the IDE markup previewer cannot open these windows. -->
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

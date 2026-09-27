@@ -21,11 +21,22 @@ public partial class EasterEggOverlay : UserControl
     private int _frame;
     private EasterEggShow? _show;
 
+    // Supplied by the hosting window, because Avalonia creates this control from markup and
+    // it cannot receive constructor arguments. Null only in a host that never provided one,
+    // in which case the animation still plays and nothing is recorded.
+    private EasterEggProgress? _progress;
+
     public EasterEggOverlay()
     {
         InitializeComponent();
         // Clicking anywhere skips the rest of the animation.
         PointerPressed += (_, _) => Dismiss();
+    }
+
+    // Called once by the hosting window with the container's recorder.
+    public void UseProgress(EasterEggProgress progress)
+    {
+        _progress = progress.ThrowIfNull();
     }
 
     // Starts an egg. A show already playing is replaced rather than queued, so mashing a
@@ -44,7 +55,8 @@ public partial class EasterEggOverlay : UserControl
 
         // Recording here rather than at each trigger means a new egg cannot be added and
         // silently left out of the checklist.
-        _ = EasterEggProgress.RecordAsync(show.Id);
+        if (_progress is not null)
+            _ = _progress.RecordAsync(show.Id);
 
         _timer = new DispatcherTimer
         {
