@@ -115,7 +115,7 @@ Under the hood, PaperNexus uses scheduled background services to keep everything
 | **Framework** | .NET 10.0 |
 | **UI** | [Avalonia UI](https://avaloniaui.net/) 11.3 |
 | **Architecture** | MVVM with [CommunityToolkit.Mvvm](https://learn.microsoft.com/en-us/dotnet/communitytoolkit/mvvm/) |
-| **Image Processing** | [SixLabors.ImageSharp](https://sixlabors.com/products/imagesharp/) |
+| **Image Processing** | [SkiaSharp](https://github.com/mono/SkiaSharp) |
 | **Scheduling** | [Cronos](https://github.com/HangfireIO/Cronos) + [CronExpressionDescriptor](https://github.com/bradymholt/cron-expression-descriptor) |
 | **DI & Hosting** | Microsoft.Extensions.Hosting |
 | **Platform layer** | See [docs/platform-support.md](docs/platform-support.md) for how Windows and Linux differ |

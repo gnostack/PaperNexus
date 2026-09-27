@@ -55,6 +55,7 @@ PaperNexus/
     │   │   ├── LinuxDesktop.cs         # Desktop detection + helper process runner
     │   │   ├── DesktopEntry.cs         # XDG launcher + icon so the app can be pinned
     │   │   └── ShellOpener.cs          # explorer.exe / xdg-open, app relaunch
+    │   ├── Imaging/                    # All SkiaSharp code: decode/encode, resize, annotation, fonts, tray icons
     │   ├── Bootstrapper.cs             # DI helpers, IAddSingleton<T>, AddServicesFrom()
     │   ├── Extensions.cs               # Utility extension methods
     │   ├── FileLogger.cs               # File-based ILogger implementation (async queue)
@@ -77,11 +78,12 @@ PaperNexus/
 - **Scheduled Jobs (legacy):** `ScheduledJobService` base class - `DownloadWallpapers` extends directly. Registered via `IAddHostedSingleton<T>`.
 - **DI:** `AddServicesFrom(assembly)` auto-discovers `IAddSingleton<T>`, `IAddHostedSingleton<T>`, and `IScheduleScopedJob` implementations.
 - **Platform Layer (`Core/Platform/`):** Every Windows/Linux difference is isolated here - no other file may call a Windows-only API, hardcode `.exe`, or compare paths case-insensitively. See `docs/platform-support.md`.
+- **Imaging Layer (`Core/Imaging/`):** All image decoding, encoding and drawing lives here - resize-to-fit, gallery thumbnails, icon scaling, the tray menu icons, wallpaper annotation, the PNG/JPEG encode, and font lookup. No other file in the app may reference SkiaSharp; callers pass paths, streams and settings in and get bytes back. Tests may use SkiaSharp only to build fixture images or read dimensions.
 - **Auto-Update:** Queries GitHub Releases API, compares `vN` tag as integer against `Assembly.Version.Major`, downloads the per-platform asset (`PaperNexus.exe` / `PaperNexus-linux-x64`), verifies it (Authenticode on Windows, published SHA-256 on Linux), swaps via self-deleting script (`.bat` / `.sh`) with rollback.
 - **Auto-Install:** First run copies exe to the chosen install directory (default `%LOCALAPPDATA%\PaperNexus\`), migrates settings, writes a `.installed` sentinel file alongside the exe, then relaunches. On subsequent launches, `IsRunningFromInstallLocation` detects the sentinel file so custom install paths (not equal to the default AppData path) are recognised correctly and the install flow is not re-triggered.
 - **Single Instance:** Named `Mutex` + `EventWaitHandle` for IPC (signals running instance to show UI).
-- **Tray-only:** `ShutdownMode.OnExplicitShutdown`. Menu: "Open Settings", "Next Wallpaper", "Random Wallpaper", "Exit". Each item has a programmatically-drawn SixLabors icon.
-- **Wallpaper Processing:** Writes to `current.png`/`.jpg`. Title overlay via SixLabors at switch time. PNG preferred; JPEG fallback if >16 MB.
+- **Tray-only:** `ShutdownMode.OnExplicitShutdown`. Menu: "Open Settings", "Next Wallpaper", "Random Wallpaper", "Exit". Each item has a programmatically-drawn icon (`Core/Imaging/MenuIcons.cs`).
+- **Wallpaper Processing:** Writes to `current.png`/`.jpg`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB.
 - **`ISwitchWallpaper`:** Exposes `WallpaperChanged` event, `SwitchToNextAsync()`, and `SwitchToRandomAsync()`.
 - **Wallpaper Sources (JPath-based):** `HttpWallpaperSourceService` uses Newtonsoft `SelectTokens` with `ImageUrlJPath`/`TitleJPath`. Sources edited via `WallpaperSourceDialog` (name, URL, JPath, cron, enabled toggle, live Test button).
 - **`NonScrollableComboBox`:** Suppresses scroll wheel unless dropdown is open - prevents accidental changes while scrolling the settings page.
@@ -93,7 +95,7 @@ PaperNexus/
 
 ## Dependencies
 
-Avalonia 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.5, Newtonsoft.Json 13.0.4, SixLabors.ImageSharp 3.1.12 + Drawing 2.1.7
+Avalonia 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.5, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries)
 
 No `Avalonia.Diagnostics` reference: it has no 12.x release, and `AttachDevTools` was never called. Adding the visual-tree inspector back would mean pinning Avalonia to 11.x.
 
