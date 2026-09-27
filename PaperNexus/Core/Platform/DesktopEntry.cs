@@ -1,6 +1,3 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-
 namespace PaperNexus.Core.Platform;
 
 // Installs the freedesktop application launcher and icon on Linux.
@@ -75,9 +72,8 @@ public static class DesktopEntry
         // entry eagerly, so it is downscaled to the 256x256 the directory advertises rather
         // than copied verbatim.
         using var source = iconSource();
-        using var image = Image.Load(source);
-        image.Mutate(ctx => ctx.Resize(IconSize, IconSize));
-        image.SaveAsPng(IconPath);
+        var png = ImageResizing.ResizeToSquarePng(source, IconSize);
+        File.WriteAllBytes(IconPath, png);
     }
 
     private static void WriteLauncher(string exePath)

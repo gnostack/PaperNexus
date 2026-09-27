@@ -1,8 +1,6 @@
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
 
 namespace PaperNexus.ViewModels;
 
@@ -102,12 +100,10 @@ public partial class GalleryItem : ObservableObject
             await _thumbnailSemaphore.WaitAsync();
             try
             {
-                using var img = await Image.LoadAsync(path);
-                // Width=600, Height=0 → height is computed to preserve aspect ratio
-                img.Mutate(x => x.Resize(600, 0));
-                using var ms = new MemoryStream();
-                await img.SaveAsPngAsync(ms);
-                ms.Position = 0;
+                // Decoding is synchronous and CPU-bound; keep it off the UI thread that
+                // populates the gallery.
+                var png = await Task.Run(() => ImageResizing.CreateThumbnailPng(path));
+                using var ms = new MemoryStream(png);
                 return new Bitmap(ms);
             }
             finally

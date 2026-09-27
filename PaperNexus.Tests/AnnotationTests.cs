@@ -1,3 +1,4 @@
+using PaperNexus.Core.Imaging;
 using PaperNexus.ViewModels;
 using Xunit;
 
@@ -13,7 +14,7 @@ public class AnnotationTests
         // The original fontSize/36 produced 0.5px at the default 18pt, which antialiased
         // away to nothing - the reason small text appeared to have no outline.
         for (var fontSize = 1; fontSize <= 200; fontSize++)
-            Assert.True(SwitchWallpaper.AnnotationOutlineWidth(fontSize) >= 1f,
+            Assert.True(WallpaperAnnotator.OutlineWidth(fontSize) >= 1f,
                 $"outline at {fontSize}pt would be sub-pixel");
     }
 
@@ -21,22 +22,22 @@ public class AnnotationTests
     public void OutlineWidth_IsVisibleAtTheDefaultFontSize()
     {
         // 18pt is the shipped default and the size the bug was reported at.
-        Assert.Equal(1.5f, SwitchWallpaper.AnnotationOutlineWidth(18));
+        Assert.Equal(1.5f, WallpaperAnnotator.OutlineWidth(18));
     }
 
     [Fact]
     public void OutlineWidth_GrowsWithTheFont()
     {
         // A fixed width would look heavy on small text and vanish on large text.
-        Assert.True(SwitchWallpaper.AnnotationOutlineWidth(200) > SwitchWallpaper.AnnotationOutlineWidth(72));
-        Assert.True(SwitchWallpaper.AnnotationOutlineWidth(72) > SwitchWallpaper.AnnotationOutlineWidth(18));
+        Assert.True(WallpaperAnnotator.OutlineWidth(200) > WallpaperAnnotator.OutlineWidth(72));
+        Assert.True(WallpaperAnnotator.OutlineWidth(72) > WallpaperAnnotator.OutlineWidth(18));
     }
 
     [Fact]
     public void OutlineWidth_StaysLightEnoughToLeaveLetterformsOpen()
     {
         // 1/6 of the font size closed up adjacent glyphs when rendered; stay well under it.
-        Assert.True(SwitchWallpaper.AnnotationOutlineWidth(72) < 72 / 6f);
+        Assert.True(WallpaperAnnotator.OutlineWidth(72) < 72 / 6f);
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public class AnnotationTests
         // The picker used to probe a hardcoded list of Windows font names and keep whichever
         // resolved. On Linux none of them exist, so it collapsed to the single bundled family
         // and the user could not pick a font at all. It must reflect the actual machine.
-        var installed = SixLabors.Fonts.SystemFonts.Families.Select(f => f.Name).ToList();
+        var installed = BundledFonts.InstalledFamilyNames();
         if (installed.Count == 0)
             return; // a machine with no system fonts legitimately offers only the bundled one
 

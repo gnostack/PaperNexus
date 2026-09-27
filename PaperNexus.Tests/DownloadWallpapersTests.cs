@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using PaperNexus.Core;
+using PaperNexus.Core.Imaging;
 using Xunit;
 
 namespace PaperNexus.Tests;
@@ -306,12 +307,12 @@ public class DownloadWallpapersTests : IDisposable
         await sut.ApplyResolutionCapAsync(filePath, settings);
 
         // Assert: resulting image fits within the cap and aspect ratio is preserved (400:300 → 200:150)
-        using var img = SixLabors.ImageSharp.Image.Load(filePath);
-        Assert.True(img.Width <= 200, $"Width {img.Width} should be ≤ 200");
-        Assert.True(img.Height <= 200, $"Height {img.Height} should be ≤ 200");
+        var (width, height) = TestHelpers.ReadDimensions(filePath);
+        Assert.True(width <= 200, $"Width {width} should be ≤ 200");
+        Assert.True(height <= 200, $"Height {height} should be ≤ 200");
         // Exact expected size: 200×150 (width-constrained; aspect ratio 4:3 preserved)
-        Assert.Equal(200, img.Width);
-        Assert.Equal(150, img.Height);
+        Assert.Equal(200, width);
+        Assert.Equal(150, height);
     }
 
     // --- IsOverdue tests ---
@@ -617,7 +618,7 @@ public class DownloadWallpapersTests : IDisposable
 
     // Regression guard: if the settings file contains an empty FontFamily (e.g. from manual
     // editing or an older schema version), LoadAsync must restore the default font so that
-    // SixLabors.Fonts.TryGet never receives an empty string and throws inside the renderer.
+    // the font lookup never receives an empty family name.
     [Fact]
     public async Task LoadAsync_EmptyAnnotationFontFamily_RestoresDefault()
     {
@@ -634,11 +635,11 @@ public class DownloadWallpapersTests : IDisposable
         var loaded = await WallpaperNexusSettings.LoadAsync();
 
         Assert.False(string.IsNullOrWhiteSpace(loaded.Annotation.FontFamily),
-            "FontFamily must never be empty after load; renderer passes it directly to SixLabors.");
+            "FontFamily must never be empty after load; the renderer passes it directly to the font lookup.");
         Assert.Equal(BundledFonts.DefaultFontFamily, loaded.Annotation.FontFamily);
     }
 
-    // Regression guard: a FontSize of 0 creates a degenerate SixLabors Font object that throws
+    // Regression guard: a FontSize of 0 creates a degenerate font that throws
     // during text measurement. ApplyDefaults must replace it with the default (18).
     [Fact]
     public async Task LoadAsync_ZeroAnnotationFontSize_RestoresDefault()

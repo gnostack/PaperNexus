@@ -8,7 +8,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PaperNexus.Core;
-using BundledFonts = PaperNexus.Core.BundledFonts;
+using BundledFonts = PaperNexus.Core.Imaging.BundledFonts;
 
 namespace PaperNexus.ViewModels;
 
@@ -120,8 +120,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         var fonts = new List<string>(BundledFonts.Names);
 
-        var systemFamilies = SixLabors.Fonts.SystemFonts.Families
-            .Select(f => f.Name)
+        var systemFamilies = BundledFonts.InstalledFamilyNames()
             .Where(name => !fonts.Contains(name, StringComparer.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase);
 
