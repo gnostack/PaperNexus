@@ -13,8 +13,6 @@ internal interface ICheckForUpdates
 
 internal sealed class AutoUpdateService : ICheckForUpdates, IAddSingleton<ICheckForUpdates>
 {
-    private const string GitHubRepo = "0Keith/PaperNexus";
-
     // Each platform ships its own release asset. The Windows build is Authenticode-signed,
     // which is a PE-only format, so the Linux build's integrity is verified against a
     // SHA-256 digest published alongside it instead.
@@ -62,11 +60,13 @@ internal sealed class AutoUpdateService : ICheckForUpdates, IAddSingleton<ICheck
         _logger.LogInformation("Checking for updates. Current build: v{Build}", currentBuild);
         progress?.Report($"Checking for updates (v{currentBuild})...");
 
+        // The repository comes from the build's git origin, so a transferred repository is
+        // queried at its new location rather than through GitHub's rename redirect.
+        var latestReleaseUrl = $"https://api.github.com/repos/{GitHubRepository.Current.Slug}/releases/latest";
         string json;
         try
         {
-            json = await _apiClient.GetStringAsync(
-                $"https://api.github.com/repos/{GitHubRepo}/releases/latest");
+            json = await _apiClient.GetStringAsync(latestReleaseUrl);
         }
         catch (Exception ex)
         {
