@@ -920,7 +920,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         var version = App.AppVersion;
         var body = $"**App Version:** {version}\n\n**Describe the bug:**\n\n\n**Steps to reproduce:**\n\n\n**Expected behavior:**\n\n";
-        var url = "https://github.com/0Keith/PaperNexus/issues/new"
+        var url = GitHubRepository.Current.WebUrl + "/issues/new"
                 + "?assignees=claude&labels=bug&title=Bug+Report"
                 + "&body=" + Uri.EscapeDataString(body);
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
@@ -929,7 +929,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
     [RelayCommand]
     private void OpenHomepage()
     {
-        Process.Start(new ProcessStartInfo("https://github.com/0Keith/PaperNexus") { UseShellExecute = true });
+        var homepage = GitHubRepository.Current.WebUrl;
+        Process.Start(new ProcessStartInfo(homepage) { UseShellExecute = true });
     }
 
     // Maps all ViewModel properties back onto a WallpaperNexusSettings instance and persists it.

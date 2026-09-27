@@ -16,6 +16,10 @@
          from the service container, and the app never uses the runtime loader. The cost is
          that the IDE markup previewer cannot open these windows. -->
     <NoWarn>$(NoWarn);AVLN3001</NoWarn>
+    <!-- Embed the URL of the repository this build came from as AssemblyMetadata("RepositoryUrl").
+         The SDK's built-in source control support reads it from the checkout's git origin remote;
+         see RequireRepositoryUrl below. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,5 +44,18 @@
     <AvaloniaResource Include="Assets\**" Exclude="Assets\*.ttf;Assets\*-OFL.txt" />
     <EmbeddedResource Include="Assets\Cinzel.ttf" LogicalName="PaperNexus.Cinzel.ttf" />
   </ItemGroup>
+
+  <!-- The auto-updater, the Report Bug link and the project link all address the GitHub repository
+       named in the RepositoryUrl assembly metadata (read by GitHubRepository). It comes from git
+       rather than a value written in the repo, so a transfer or rename of the repository is picked up
+       by the next build instead of leaving a stale owner/name compiled into every installed client
+       (issue #179: the transfer to the gnostack organization). A build with no origin remote has nothing to
+       embed, so it stops here rather than shipping a binary that cannot find its own releases. -->
+  <Target Name="RequireRepositoryUrl"
+          AfterTargets="InitializeSourceControlInformation"
+          BeforeTargets="GetAssemblyAttributes">
+    <Error Condition="'$(RepositoryUrl)' == '' and '$(PrivateRepositoryUrl)' == ''"
+           Text="PaperNexus embeds its GitHub repository URL from the git 'origin' remote, and none was found. Build from a git clone whose 'origin' remote points at the GitHub repository (git remote add origin https://github.com/OWNER/PaperNexus)." />
+  </Target>
 
 </Project>
