@@ -9,3 +9,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # ImageSharp 4.x fails the build without a Six Labors license key. Stay on
+      # ImageSharp 3.x / ImageSharp.Drawing 2.x until the replacement imaging
+      # library lands (#181). Minor and patch updates still flow.
+      - dependency-name: "SixLabors.ImageSharp*"
+        update-types: ["version-update:semver-major"]
