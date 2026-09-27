@@ -25,8 +25,13 @@ public sealed record EasterEggListItem(string Name, string Hint, string Mark, IB
 
 public partial class EasterEggListDialog : Window
 {
-    public EasterEggListDialog()
+    private readonly ISettingsStore _settingsStore;
+
+    // Created per click from the container, so the checklist reads discovery state through
+    // the same store as the rest of the app.
+    public EasterEggListDialog(ISettingsStore settingsStore)
     {
+        _settingsStore = settingsStore.ThrowIfNull();
         InitializeComponent();
     }
 
@@ -34,7 +39,7 @@ public partial class EasterEggListDialog : Window
     // settings are not read on the UI thread during layout.
     public async Task LoadAsync()
     {
-        var settings = await WallpaperNexusSettings.LoadAsync();
+        var settings = await _settingsStore.LoadAsync();
         var entries = EasterEggProgress.Build(settings.DiscoveredEasterEggs);
 
         EggList.ItemsSource = entries

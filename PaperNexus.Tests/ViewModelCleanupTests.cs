@@ -1,3 +1,4 @@
+using PaperNexus.Core;
 using PaperNexus.ViewModels;
 using Xunit;
 
@@ -8,11 +9,13 @@ namespace PaperNexus.Tests;
 public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
 {
     private readonly string _wallpaperDir;
+    private readonly SettingsStore _store;
 
     public ViewModelCleanupTests()
     {
         _wallpaperDir = Path.Combine(Path.GetTempPath(), $"PaperNexus_VM_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_wallpaperDir);
+        _store = TestHelpers.CreateSettingsStore();
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -21,7 +24,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
     {
         TestHelpers.Cleanup();
         // Allow any fire-and-forget saves triggered during the test to complete before
-        // the collection teardown runs so they do not hold a file lock on settings.json.
+        // the collection teardown runs so they do not hold a file lock on the test's settings file.
         await Task.Delay(1000);
     }
 
@@ -29,6 +32,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
     {
         try { if (Directory.Exists(_wallpaperDir)) Directory.Delete(_wallpaperDir, true); }
         catch { }
+        TestHelpers.DeleteSettingsStore(_store);
     }
 
     // Regression guard: calling Cleanup() while a debounced save is still pending must not throw
@@ -37,7 +41,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task Cleanup_WithPendingSave_DoesNotThrow()
     {
-        var vm = new WallpaperConfigViewModel();
+        var vm = new WallpaperConfigViewModel(_store);
 
         // Trigger a property change to arm the debounce timer (sets _hasPendingSave = true
         // while _isLoading is false, as would happen during normal use).
@@ -62,7 +66,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task ShowTransientStatus_AfterCleanup_DoesNotThrow()
     {
-        var vm = new WallpaperConfigViewModel();
+        var vm = new WallpaperConfigViewModel(_store);
 
         // Arm a pending save and flush it via Cleanup; this leaves a fresh _statusCts in place
         vm.Folder = _wallpaperDir;

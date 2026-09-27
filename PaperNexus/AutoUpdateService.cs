@@ -366,10 +366,12 @@ internal sealed class AutoUpdateService : ICheckForUpdates, IAddSingleton<ICheck
 internal sealed class AutoUpdateJob : IScheduleScopedJob
 {
     private readonly ICheckForUpdates _checkForUpdates;
+    private readonly ISettingsStore _settingsStore;
 
-    public AutoUpdateJob(ICheckForUpdates checkForUpdates)
+    public AutoUpdateJob(ICheckForUpdates checkForUpdates, ISettingsStore settingsStore)
     {
         _checkForUpdates = checkForUpdates.ThrowIfNull();
+        _settingsStore = settingsStore.ThrowIfNull();
     }
 
     // Returns an empty config (no schedule) in debug mode or when auto-updates are disabled.
@@ -378,7 +380,7 @@ internal sealed class AutoUpdateJob : IScheduleScopedJob
     {
         if (Program.IsDebugMode)
             return new JobConfig();
-        var settings = await WallpaperNexusSettings.LoadAsync();
+        var settings = await _settingsStore.LoadAsync();
         if (!settings.AutoUpdatesEnabled)
             return new JobConfig();
         return new JobConfig(

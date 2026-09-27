@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using PaperNexus.Core;
 using PaperNexus.ViewModels;
 using Xunit;
 
@@ -14,11 +15,13 @@ namespace PaperNexus.Tests;
 public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _wallpaperDir;
+    private readonly SettingsStore _store;
 
     public RefreshPreviewImageTests()
     {
         _wallpaperDir = Path.Combine(Path.GetTempPath(), $"PaperNexus_Test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_wallpaperDir);
+        _store = TestHelpers.CreateSettingsStore();
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -33,6 +36,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
     {
         try { if (Directory.Exists(_wallpaperDir)) Directory.Delete(_wallpaperDir, true); }
         catch { }
+        TestHelpers.DeleteSettingsStore(_store);
     }
 
     [Fact]
@@ -40,7 +44,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
     {
         // Arrange
         TestHelpers.Cleanup();
-        var vm = new WallpaperConfigViewModel();
+        var vm = new WallpaperConfigViewModel(_store);
 
         // Act
         vm.RefreshPreviewImage();
@@ -56,7 +60,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         // Arrange
         TestHelpers.Cleanup();
         TestHelpers.CreateSmallPng(TestHelpers.PngPath);
-        var vm = new WallpaperConfigViewModel();
+        var vm = new WallpaperConfigViewModel(_store);
 
         // Act & Assert: method should not throw
         vm.RefreshPreviewImage();
@@ -69,7 +73,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         // Arrange
         TestHelpers.Cleanup();
         TestHelpers.CreateSmallJpeg(TestHelpers.JpgPath);
-        var vm = new WallpaperConfigViewModel();
+        var vm = new WallpaperConfigViewModel(_store);
 
         // Act & Assert: method should not throw
         vm.RefreshPreviewImage();
@@ -83,10 +87,10 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         var wallpaperPath = Path.Combine(_wallpaperDir, "test-wallpaper.png");
         TestHelpers.CreateSmallPng(wallpaperPath);
         File.WriteAllBytes(TestHelpers.JpgPath, [0xFF, 0xD8, 0xFF]);
-        await TestHelpers.WriteSettingsAsync(_wallpaperDir);
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance);
-        var vm = new WallpaperConfigViewModel();
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store);
+        var vm = new WallpaperConfigViewModel(_store);
 
         // Act: switch wallpaper, then refresh preview (simulates window reopen)
         var result = await switcher.SwitchToNextAsync();

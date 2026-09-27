@@ -81,7 +81,24 @@ internal static class TestHelpers
         bitmap.Encode(file, format, quality);
     }
 
-    internal static async Task WriteSettingsAsync(string wallpaperFolder, string currentWallpaperPath = "")
+    // A settings store rooted in its own new temporary directory. Tests never use the
+    // production store, so no test can read, write or delete the real settings.json.
+    internal static SettingsStore CreateSettingsStore()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Settings_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        return new SettingsStore(directory);
+    }
+
+    // Removes the temporary directory a test store was rooted in.
+    internal static void DeleteSettingsStore(SettingsStore store)
+    {
+        var directory = Path.GetDirectoryName(store.FilePath);
+        try { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+        catch { }
+    }
+
+    internal static async Task WriteSettingsAsync(ISettingsStore store, string wallpaperFolder, string currentWallpaperPath = "")
     {
         var settings = new WallpaperNexusSettings
         {
@@ -97,14 +114,15 @@ internal static class TestHelpers
             AutoUpdatesEnabled = false,
             Sources = [],
         };
-        await settings.SaveAsync();
+        await store.SaveAsync(settings);
     }
 
+    // Removes the processed current.* wallpaper files, which the switcher writes beside the
+    // test assembly. Settings are not touched here: each test owns a temporary store.
     internal static void Cleanup()
     {
         TryDelete(PngPath);
         TryDelete(JpgPath);
-        TryDelete(WallpaperNexusSettings.SettingsFilePath);
     }
 
     private static void TryDelete(string path)

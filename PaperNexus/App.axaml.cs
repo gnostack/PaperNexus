@@ -55,6 +55,15 @@ public partial class App : Application
                     var minLogLevel = Program.IsDebugMode ? LogLevel.Debug : LogLevel.Information;
                     services.AddLogging(b => b.AddProvider(new FileLoggerProvider(minLogLevel)));
                     services.AddSingleton<HttpWallpaperSourceService>();
+                    // Screens are per request: each opening gets a fresh window, view model and
+                    // dialog with the settings store injected. The auto-registration below only
+                    // makes singletons, so these are listed explicitly. The dialog factory lets
+                    // the settings window open a new Secrets checklist on every click.
+                    services.AddTransient<WallpaperConfigViewModel>();
+                    services.AddTransient<MainWindow>();
+                    services.AddTransient<SplashScreen>();
+                    services.AddTransient<EasterEggListDialog>();
+                    services.AddTransient<Func<EasterEggListDialog>>(sp => () => sp.GetRequiredService<EasterEggListDialog>());
                     // Auto-discover and register all IAddSingleton / IAddHostedSingleton / IScheduleScopedJob implementations
                     services.AddServicesFrom(typeof(App).Assembly);
                 })
@@ -72,8 +81,12 @@ public partial class App : Application
             }
             catch (Exception ex) { Logger?.LogError(ex, "Failed to install the desktop launcher."); }
 
+            // App is the composition root: Avalonia constructs it, so it takes the store from
+            // the host it just built rather than through a constructor.
+            var settingsStore = _backgroundHost.Services.GetRequiredService<ISettingsStore>();
+
             // Apply startup registration based on the persisted setting
-            _ = WallpaperNexusSettings.LoadAsync().ContinueWith(t =>
+            _ = settingsStore.LoadAsync().ContinueWith(t =>
             {
                 try { StartupRegistration.Update(t.Result.RunOnStartup); }
                 catch (Exception ex) { Logger?.LogError(ex, "Failed to apply startup registration on launch."); }
@@ -84,7 +97,7 @@ public partial class App : Application
             // Show splash screen while background services start (skip on startup and debug mode)
             if (!launchedOnStartup && !Program.IsDebugMode)
             {
-                _splashScreen = new SplashScreen();
+                _splashScreen = _backgroundHost.Services.GetRequiredService<SplashScreen>();
                 _splashScreen.Show();
             }
 
@@ -223,7 +236,9 @@ public partial class App : Application
         {
             if (_mainWindow == null)
             {
-                _mainWindow = new MainWindow();
+                if (_backgroundHost is null)
+                    return;
+                _mainWindow = _backgroundHost.Services.GetRequiredService<MainWindow>();
                 _mainWindow.Closed += OnMainWindowClosed;
             }
             else if (_mainWindow.DataContext is WallpaperConfigViewModel vm)
@@ -263,7 +278,10 @@ public partial class App : Application
         // Check if minimize-to-tray is disabled; if so, exit on close
         try
         {
-            var settings = await WallpaperNexusSettings.LoadAsync();
+            var settingsStore = _backgroundHost?.Services.GetService<ISettingsStore>();
+            if (settingsStore is null)
+                return;
+            var settings = await settingsStore.LoadAsync();
             if (!settings.MinimizeToTray)
                 ExitApplication(desktop);
         }

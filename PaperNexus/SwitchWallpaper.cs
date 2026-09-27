@@ -15,13 +15,15 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
 {
     private readonly ILogger<SwitchWallpaper> _logger;
     private readonly IWallpaperApplier _wallpaperApplier;
+    private readonly ISettingsStore _settingsStore;
 
     public event Action<string>? WallpaperChanged;
 
-    public SwitchWallpaper(ILogger<SwitchWallpaper> logger, IWallpaperApplier wallpaperApplier)
+    public SwitchWallpaper(ILogger<SwitchWallpaper> logger, IWallpaperApplier wallpaperApplier, ISettingsStore settingsStore)
     {
         _logger = logger.ThrowIfNull();
         _wallpaperApplier = wallpaperApplier.ThrowIfNull();
+        _settingsStore = settingsStore.ThrowIfNull();
     }
 
     // Advances to the next wallpaper according to the configured slideshow order.
@@ -30,7 +32,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     // same image is not shown twice in a row. For sequential orders the list wraps around.
     public async Task<string?> SwitchToNextAsync()
     {
-        var settings = await WallpaperNexusSettings.LoadAsync().ConfigureAwait(false);
+        var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
         if (!settings.IsConfigured)
             return null;
 
@@ -75,7 +77,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     // the current wallpaper when more than one candidate is available.
     public async Task<string?> SwitchToRandomAsync()
     {
-        var settings = await WallpaperNexusSettings.LoadAsync().ConfigureAwait(false);
+        var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
         if (!settings.IsConfigured)
             return null;
 
@@ -131,7 +133,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     {
         if (!File.Exists(path))
             return null;
-        var settings = await WallpaperNexusSettings.LoadAsync().ConfigureAwait(false);
+        var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
         return await ApplyWallpaperAsync(path, settings).ConfigureAwait(false);
     }
 
@@ -192,7 +194,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
 
         // Persist the original source path (not the processed current.* path) so ordering is stable across restarts
         settings.CurrentWallpaperPath = next;
-        await settings.SaveAsync().ConfigureAwait(false);
+        await _settingsStore.SaveAsync(settings).ConfigureAwait(false);
         WallpaperChanged?.Invoke(next);
         return next;
     }
@@ -229,11 +231,13 @@ internal sealed class SwitchWallpaperJob : IScheduleScopedJob
 {
     private readonly ISwitchWallpaper _switcher;
     private readonly ILogger<SwitchWallpaperJob> _logger;
+    private readonly ISettingsStore _settingsStore;
 
-    public SwitchWallpaperJob(ISwitchWallpaper switcher, ILogger<SwitchWallpaperJob> logger)
+    public SwitchWallpaperJob(ISwitchWallpaper switcher, ILogger<SwitchWallpaperJob> logger, ISettingsStore settingsStore)
     {
         _switcher = switcher.ThrowIfNull();
         _logger = logger.ThrowIfNull();
+        _settingsStore = settingsStore.ThrowIfNull();
     }
 
     // Returns an empty config (no schedule) when the slideshow is disabled or when the
@@ -241,7 +245,7 @@ internal sealed class SwitchWallpaperJob : IScheduleScopedJob
     // than crashing the scheduler into a 1-minute error loop; the user can fix it in settings.
     public async Task<JobConfig> GetJobConfigAsync()
     {
-        var settings = await WallpaperNexusSettings.LoadAsync();
+        var settings = await _settingsStore.LoadAsync();
         if (!settings.Slideshow.Enabled)
             return new JobConfig();
         var stored = settings.Slideshow.CronExpression;

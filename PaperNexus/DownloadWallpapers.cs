@@ -15,6 +15,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         .ToHashSet();
 
     private readonly HttpWallpaperSourceService _sourceService;
+    private readonly ISettingsStore _settingsStore;
 
     // Shared, long-lived HttpClient for all image downloads. HttpClient is thread-safe for
     // concurrent requests; creating a new one per source/image call drains the ephemeral port
@@ -22,9 +23,10 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // The service is a singleton, so this client lives for the process lifetime.
     private readonly HttpClient _imageClient = new() { Timeout = TimeSpan.FromSeconds(30) };
 
-    public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService) : base(logger)
+    public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService, ISettingsStore settingsStore) : base(logger)
     {
         _sourceService = sourceService.ThrowIfNull();
+        _settingsStore = settingsStore.ThrowIfNull();
         ExecuteOnStartup = true;
     }
 
@@ -34,7 +36,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // are skipped rather than crashing the scheduler into a 1-minute error loop.
     protected override async Task<DateTimeOffset> GetNextExecutionAsync(JobExecutionContext context)
     {
-        var settings = await WallpaperNexusSettings.LoadAsync();
+        var settings = await _settingsStore.LoadAsync();
         var earliest = DateTimeOffset.Now.AddHours(1);
         foreach (var source in settings.Sources.Where(s => s.IsEnabled))
         {
@@ -72,7 +74,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // Cleanup and save are skipped entirely if no sources were actually downloaded.
     private async Task DownloadFromSourcesAsync(Func<WallpaperSource, bool> filter)
     {
-        var settings = await WallpaperNexusSettings.LoadAsync();
+        var settings = await _settingsStore.LoadAsync();
         if (!settings.IsConfigured)
         {
             Logger.LogInformation("Wallpapers folder not configured — skipping.");
@@ -99,7 +101,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         if (downloaded)
         {
             await CleanupOldImages(settings);
-            await settings.SaveAsync();
+            await _settingsStore.SaveAsync(settings);
         }
     }
 

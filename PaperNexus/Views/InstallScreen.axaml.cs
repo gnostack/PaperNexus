@@ -72,15 +72,23 @@ public partial class InstallScreen : Window
             }
 
             // Persist the startup preference to AppData so the installed app finds it on first launch.
-            // Settings always live at WallpaperNexusSettings.SettingsFilePath regardless of exe location.
+            // Settings always live in the default install directory regardless of exe location.
             // Only write fresh settings when none were migrated from alongside the source exe.
-            if (!File.Exists(WallpaperNexusSettings.SettingsFilePath))
+            // This runs during first-time install, before the service container (and so the
+            // settings store) exists. That is a separate lifecycle from the running app, so it
+            // keeps its own direct check and write, taking the path from PlatformPaths. No
+            // existing file is ever overwritten here, so the store's atomic rename is not needed.
+            var settingsDir = PlatformPaths.DefaultInstallDirectory;
+            var settingsPath = Path.Combine(settingsDir, "settings.json");
+            if (!File.Exists(settingsPath))
             {
                 var settings = new WallpaperNexusSettings
                 {
                     RunOnStartup = RunOnStartupCheckBox.IsChecked == true,
                 };
-                await settings.SaveAsync();
+                var json = JsonConvert.SerializeObject(settings, WallpaperNexusSettings.JsonFormat);
+                Directory.CreateDirectory(settingsDir);
+                await File.WriteAllTextAsync(settingsPath, json);
             }
 
             // Always rewrite the startup registration during install so a stale entry from
