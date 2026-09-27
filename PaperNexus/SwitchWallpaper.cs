@@ -1,13 +1,5 @@
 using Cronos;
 using PaperNexus.Core;
-using SixLabors.Fonts;
-using BundledFonts = PaperNexus.Core.BundledFonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.Processing;
 
 namespace PaperNexus;
 
@@ -157,7 +149,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     }
 
     // Applies the chosen wallpaper: optionally composites the title annotation, encodes
-    // to the processed current file, sets the Windows desktop wallpaper, and persists the
+    // to the processed current file, sets the desktop wallpaper, and persists the
     // current path to settings so the next run knows where it left off.
     //
     // Write to a fixed current file in the execution directory so the original files are never modified.
@@ -170,162 +162,66 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         var separatorIndex = title.LastIndexOf(" - ", StringComparison.Ordinal);
         if (separatorIndex >= 0)
             title = title[..separatorIndex];
-        using var img = await Image.LoadAsync(next).ConfigureAwait(false);
 
-        // Only clone the image when annotation is needed - cloning a 4K image allocates
-        // 50–100 MB of pixel data unnecessarily when annotation is off.
-        // When annotating, clone so the original pixels are never modified.
-        // annotatedOwned tracks whether we own the clone (and must dispose it) or are
-        // borrowing img directly (img's using block handles disposal).
-        Image annotated;
-        var annotatedOwned = false;
-        if (settings.AnnotateWallpaper)
+        var annotation = settings.AnnotateWallpaper ? BuildAnnotation(title, settings) : null;
+
+        // Decoding, drawing and encoding a 4K image is CPU-bound and synchronous; run it on
+        // the thread pool so a switch started from the settings window does not freeze the UI.
+        using var encoded = await Task.Run(() => WallpaperRenderer.Render(next, annotation)).ConfigureAwait(false);
+
+        var pngPath = Path.Combine(AppContext.BaseDirectory, "current.png");
+        var jpgPath = Path.Combine(AppContext.BaseDirectory, "current.jpg");
+        var isPng = encoded.Format == WallpaperFileFormat.Png;
+        var currentPath = isPng ? pngPath : jpgPath;
+        // Remove the alternate format file so the desktop doesn't pick up a stale version
+        var stalePath = isPng ? jpgPath : pngPath;
+
+        // Copy the buffer straight to disk - avoids allocating a second byte[] copy of the encoded image
+        using (var file = new FileStream(currentPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
         {
-            var annotation = settings.Annotation;
-            // Prefer a bundled font; fall back to the default bundled family if the name is not recognised
-            var fontFamily = BundledFonts.TryGet(annotation.FontFamily, out var family)
-                ? family : BundledFonts.Collection.Get(BundledFonts.DefaultFontFamily);
-            var fontSize = annotation.FontSize > 0 ? annotation.FontSize : 18;
-            var font = new Font(fontFamily, fontSize);
-            var color = Color.WhiteSmoke;
-            try { color = Color.ParseHex(annotation.Color); }
-            catch (Exception ex) { _logger.LogWarning(ex, "Invalid annotation color '{Color}', using default.", annotation.Color); }
-            // Choose outline colour based on perceived brightness: dark outline for light text, light for dark
-            var pixel = color.ToPixel<Rgba32>();
-            var outlineColor = pixel.R + pixel.G + pixel.B > 382 ? Color.Black : Color.White;
-            var outlinePen = annotation.OutlineEnabled
-                ? Pens.Solid(outlineColor, AnnotationOutlineWidth(fontSize))
-                : null;
-            var brush = new SolidBrush(color);
-            // Offset from corner edges by a fixed margin; right-side positions use a symmetric offset from the right
-            var annotPos = annotation.Position;
-            var position = annotPos switch
-            {
-                AnnotationPosition.TopRight => new PointF(img.Width - 125, 5),
-                AnnotationPosition.BottomLeft => new PointF(125, img.Height - fontSize - 10),
-                AnnotationPosition.BottomRight => new PointF(img.Width - 125, img.Height - fontSize - 10),
-                _ => new PointF(125, 5),
-            };
-            annotated = img.Clone(o =>
-            {
-                var options = new RichTextOptions(font) { Origin = position };
-                if (annotPos is AnnotationPosition.TopRight or AnnotationPosition.BottomRight)
-                    options.HorizontalAlignment = HorizontalAlignment.Right;
-                DrawOutlinedText(o, options, title, brush, outlinePen);
-
-                // In debug mode, add a smaller timestamp label immediately below/above the title
-                if (settings.DebugMode)
-                {
-                    var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                    var tsFont = new Font(fontFamily, fontSize * 0.75f);
-                    var tsY = annotPos is AnnotationPosition.TopLeft or AnnotationPosition.TopRight
-                        ? position.Y + fontSize + 4
-                        : position.Y - fontSize;
-                    var tsOptions = new RichTextOptions(tsFont) { Origin = new PointF(position.X, tsY) };
-                    if (annotPos is AnnotationPosition.TopRight or AnnotationPosition.BottomRight)
-                        tsOptions.HorizontalAlignment = HorizontalAlignment.Right;
-                    DrawOutlinedText(o, tsOptions, timestamp, brush, outlinePen);
-                }
-            });
-            annotatedOwned = true;
-
-            // Defensively dispose drawing resources (no-op today; activates if SixLabors adds IDisposable).
-            // Cast through object to bypass sealed-class compile-time check (CS0039).
-            (font as object as IDisposable)?.Dispose();
-            (brush as object as IDisposable)?.Dispose();
-            (outlinePen as object as IDisposable)?.Dispose();
+            await encoded.Data.CopyToAsync(file).ConfigureAwait(false);
         }
-        else
-        {
-            // Annotation off: encode directly from the loaded image, no copy needed
-            annotated = img;
-        }
+        File.Delete(stalePath);
 
-        try
-        {
-            using var ms = new MemoryStream();
-            // First attempt: lossless PNG with 8-bit RGB (drops alpha, which is never needed for wallpapers)
-            await annotated.SaveAsPngAsync(ms, new PngEncoder { ColorType = PngColorType.Rgb, BitDepth = PngBitDepth.Bit8 }).ConfigureAwait(false);
-            string currentPath;
-            if (ms.Length <= SizeCeiling)
-            {
-                currentPath = Path.Combine(AppContext.BaseDirectory, "current.png");
-                // Seek to the start and copy the stream directly - avoids allocating a second byte[] copy of the encoded image
-                ms.Position = 0;
-                using var pngFile = new FileStream(currentPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
-                await ms.CopyToAsync(pngFile).ConfigureAwait(false);
-                // Remove the alternate format file so Windows doesn't pick up a stale version
-                File.Delete(Path.Combine(AppContext.BaseDirectory, "current.jpg"));
-            }
-            else
-            {
-                // PNG is too large (high-res 4K+); re-encode as JPEG, reducing quality until it fits under 16 MB
-                currentPath = Path.Combine(AppContext.BaseDirectory, "current.jpg");
-                for (var quality = 97; quality >= 1; quality -= 3)
-                {
-                    ms.SetLength(0);
-                    await annotated.SaveAsJpegAsync(ms, new JpegEncoder { Quality = quality }).ConfigureAwait(false);
-                    if (ms.Length <= SizeCeiling)
-                        break;
-                }
-                // Seek to the start and copy the stream directly - avoids allocating a second byte[] copy of the encoded image
-                ms.Position = 0;
-                using var jpgFile = new FileStream(currentPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
-                await ms.CopyToAsync(jpgFile).ConfigureAwait(false);
-                File.Delete(Path.Combine(AppContext.BaseDirectory, "current.png"));
-            }
+        _wallpaperApplier.ApplyFillStyle(settings.Slideshow.FillStyle);
+        // Log a warning if the platform call reports failure so silent wallpaper-not-set bugs surface in logs
+        var wallpaperSet = _wallpaperApplier.SetWallpaper(currentPath);
+        if (!wallpaperSet)
+            _logger.LogWarning("SystemParametersInfo(SPI_SETDESKWALLPAPER) returned 0 for path: {Path}", currentPath);
+        _logger.LogInformation("Switching wallpaper to: {Path}", next);
 
-            _wallpaperApplier.ApplyFillStyle(settings.Slideshow.FillStyle);
-            // Log a warning if the Win32 API call reports failure so silent wallpaper-not-set bugs surface in logs
-            var wallpaperSet = _wallpaperApplier.SetWallpaper(currentPath);
-            if (!wallpaperSet)
-                _logger.LogWarning("SystemParametersInfo(SPI_SETDESKWALLPAPER) returned 0 for path: {Path}", currentPath);
-            _logger.LogInformation("Switching wallpaper to: {Path}", next);
-
-            // Persist the original source path (not the processed current.* path) so ordering is stable across restarts
-            settings.CurrentWallpaperPath = next;
-            await settings.SaveAsync().ConfigureAwait(false);
-            WallpaperChanged?.Invoke(next);
-            return next;
-        }
-        finally
-        {
-            // Dispose the clone only when we own it; when annotation is off, annotated == img
-            // and img is disposed by its own using block above.
-            if (annotatedOwned)
-                annotated.Dispose();
-        }
+        // Persist the original source path (not the processed current.* path) so ordering is stable across restarts
+        settings.CurrentWallpaperPath = next;
+        await settings.SaveAsync().ConfigureAwait(false);
+        WallpaperChanged?.Invoke(next);
+        return next;
     }
 
-    private const long SizeCeiling = 1 << 24; // 16 MB
-
-    // Stroke width for the annotation outline, in pixels.
-    //
-    // This was previously fontSize/36, which is 0.5px at the default 18pt - a sub-pixel
-    // stroke that antialiases away to nothing, so small text had no visible outline at all.
-    // 1/12 was chosen by rendering the candidates side by side: clearly visible at 18pt
-    // while leaving the letterforms open, where 1/6 was heavy enough to close up adjacent
-    // glyphs. The floor guarantees at least one solid pixel however small the font.
-    internal static float AnnotationOutlineWidth(int fontSize) => Math.Max(1f, fontSize / 12f);
-
-    // Draws the outline and the glyph fill as two separate passes.
-    //
-    // ImageSharp's DrawText(options, text, brush, pen) overload fills first and then strokes
-    // on top. A stroke is centred on the glyph edge, so that inward half eats into the letter
-    // and visibly thins small text. Stroking first and filling over it keeps the glyph at its
-    // full weight and leaves all the contrast outside the letterform, which is what makes the
-    // outline readable at small font sizes.
-    private static void DrawOutlinedText(
-        IImageProcessingContext context,
-        RichTextOptions options,
-        string text,
-        Brush brush,
-        Pen? outlinePen)
+    // Translates the annotation settings into what the imaging layer draws. An invalid
+    // colour is logged here and replaced by the default so the title is still drawn.
+    private AnnotationRequest BuildAnnotation(string title, WallpaperNexusSettings settings)
     {
-        if (outlinePen is not null)
-            context.DrawText(options, text, brush: null, pen: outlinePen);
+        var annotation = settings.Annotation;
+        var color = annotation.Color;
+        if (!WallpaperAnnotator.IsValidColor(color))
+        {
+            _logger.LogWarning("Invalid annotation color '{Color}', using default.", color);
+            color = WallpaperAnnotator.DefaultColor;
+        }
 
-        context.DrawText(options, text, brush, pen: null);
+        var fontSize = annotation.FontSize > 0 ? annotation.FontSize : 18;
+        // In debug mode, a smaller timestamp label is drawn immediately below/above the title
+        var timestamp = settings.DebugMode ? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") : null;
+
+        var request = new AnnotationRequest(
+            title,
+            timestamp,
+            annotation.FontFamily,
+            fontSize,
+            color,
+            annotation.Position,
+            annotation.OutlineEnabled);
+        return request;
     }
 }
 

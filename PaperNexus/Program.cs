@@ -8,6 +8,7 @@ global using System.Diagnostics;
 global using System.Reflection;
 global using Avalonia;
 global using PaperNexus.Core.Platform;
+global using PaperNexus.Core.Imaging;
 
 internal sealed class Program
 {
