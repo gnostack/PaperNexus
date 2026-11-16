@@ -13,23 +13,6 @@ using System.Globalization;
 
 namespace PaperNexus.Views;
 
-// Strips the " - <urlfile>" suffix that was appended during download, returning
-// the human-readable wallpaper title for display in XAML bindings.
-public class PathToDisplayNameConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not string path || string.IsNullOrEmpty(path))
-            return string.Empty;
-        var nameWithoutExt = Path.GetFileNameWithoutExtension(path);
-        var lastSep = nameWithoutExt.LastIndexOf(" - ", StringComparison.Ordinal);
-        return lastSep > 0 ? nameWithoutExt[..lastSep] : nameWithoutExt;
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
 public class FavoriteColorConverter : IValueConverter
 {
     private static readonly IBrush ActiveBrush = new SolidColorBrush(Color.Parse("#E06C75"));
@@ -253,24 +236,6 @@ public partial class MainWindow : Window
     {
         if (sender is Button { DataContext: WallpaperSource source } && DataContext is WallpaperConfigViewModel vm)
             vm.Sources.Remove(source);
-    }
-
-    private void RemoveFavoriteRow_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: string path } && DataContext is WallpaperConfigViewModel vm)
-        {
-            vm.SelectedFavorite = path;
-            vm.RemoveFavoriteCommand.Execute(null);
-        }
-    }
-
-    private void SetFavoriteAsCurrentRow_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: string path } && DataContext is WallpaperConfigViewModel vm)
-        {
-            vm.SelectedFavorite = path;
-            vm.SetFavoriteAsCurrentCommand.Execute(null);
-        }
     }
 
     // Intercepts the checkbox when the user attempts to turn minimize-to-tray OFF.
