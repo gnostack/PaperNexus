@@ -61,6 +61,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     private readonly IStartupRegistration? _startupRegistration;
     private readonly IAppInfo _appInfo;
     private readonly IShellOpener _shellOpener;
+    private readonly IAppFolders _appFolders;
 
     public static readonly IReadOnlyList<FillStyleOption> FillStyleOptions = new[]
     {
@@ -315,6 +316,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         ISettingsStore settingsStore,
         IAppInfo appInfo,
         IShellOpener shellOpener,
+        IAppFolders appFolders,
         ISwitchWallpaper? switchWallpaper = null,
         IDownloadWallpapers? downloadWallpapers = null,
         ICheckForUpdates? checkForUpdates = null,
@@ -323,6 +325,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _settingsStore = settingsStore.ThrowIfNull();
         _appInfo = appInfo.ThrowIfNull();
         _shellOpener = shellOpener.ThrowIfNull();
+        _appFolders = appFolders.ThrowIfNull();
         _switchWallpaper = switchWallpaper;
         _downloadWallpapers = downloadWallpapers;
         _checkForUpdates = checkForUpdates;
@@ -808,11 +811,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
         {
             var oldImage = PreviewImage;
 
-            // Load from the processed current.png/current.jpg in the app directory
-            var pngPath = Path.Combine(AppContext.BaseDirectory, "current.png");
-            var jpgPath = Path.Combine(AppContext.BaseDirectory, "current.jpg");
+            // Load from the processed current.png/current.jpg in the host's data folder.
             // PNG is preferred; fall back to JPEG if the PNG version does not exist
-            var previewPath = File.Exists(pngPath) ? pngPath : File.Exists(jpgPath) ? jpgPath : null;
+            var previewPath = SwitchWallpaper.FindCurrentImage(_appFolders.DataFolder);
 
             if (previewPath is not null)
             {
@@ -1016,12 +1017,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         }
     }
 
-    private static string GetDisplayName(string path)
-    {
-        var nameWithoutExt = Path.GetFileNameWithoutExtension(path);
-        var lastSep = nameWithoutExt.LastIndexOf(" - ", StringComparison.Ordinal);
-        return lastSep > 0 ? nameWithoutExt[..lastSep] : nameWithoutExt;
-    }
+    private static string GetDisplayName(string path) => WallpaperDisplayName.FromPath(path);
 
     // Releases all managed resources held by the ViewModel: event subscriptions, cancellation
     // tokens, and unmanaged Avalonia Bitmap objects. Called when the settings window closes.
@@ -1165,7 +1161,17 @@ public partial class WallpaperConfigViewModel : ObservableObject
             return;
         }
         StatusMessage = "Switching wallpaper...";
-        var result = await Task.Run(() => _switchWallpaper.SwitchToSpecificAsync(item.FilePath));
+        string? result;
+        try
+        {
+            result = await Task.Run(() => _switchWallpaper.SwitchToSpecificAsync(item.FilePath));
+        }
+        catch (Exception ex)
+        {
+            // A refused or unreadable wallpaper leaves the current one in place
+            await ShowTransientStatusAsync($"✗ Error switching wallpaper: {ex.Message}");
+            return;
+        }
         if (result is null)
         {
             await ShowTransientStatusAsync("✗ Wallpaper file not found.");

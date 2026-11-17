@@ -241,7 +241,8 @@ internal sealed class Program
     private static void RunApp(string[] args)
     {
         var minLogLevel = Program.IsDebugMode ? LogLevel.Debug : LogLevel.Information;
-        using var loggerProvider = new FileLoggerProvider(minLogLevel);
+        var logDirectory = FileLoggerProvider.LogDirectoryIn(new DesktopAppFolders().DataFolder);
+        using var loggerProvider = new FileLoggerProvider(logDirectory, minLogLevel);
         var logger = loggerProvider.CreateLogger(nameof(Program));
 
         // Catch exceptions that escape all managed thread roots (non-UI threads, finalizers, etc.)

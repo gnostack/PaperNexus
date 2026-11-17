@@ -24,6 +24,149 @@ public class DownloadWallpapersTests : IDisposable
         TestHelpers.DeleteSettingsStore(_store);
     }
 
+    // An HTTP handler that answers every request with the bytes a test gives, optionally
+    // failing part way through the body the way a dropped connection does.
+    private sealed class FakeImageHandler : HttpMessageHandler
+    {
+        private readonly byte[] _body;
+        private readonly bool _failMidway;
+
+        public FakeImageHandler(byte[] body, bool failMidway = false)
+        {
+            _body = body;
+            _failMidway = failMidway;
+        }
+
+        public int Requests { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            Stream content = _failMidway ? new FailingStream(_body) : new MemoryStream(_body);
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StreamContent(content) };
+            return Task.FromResult(response);
+        }
+    }
+
+    // Gives the first half of the bytes, then throws as a dropped connection would.
+    private sealed class FailingStream : MemoryStream
+    {
+        private readonly int _failAt;
+
+        public FailingStream(byte[] bytes) : base(bytes)
+        {
+            _failAt = bytes.Length / 2;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (Position >= _failAt)
+                throw new IOException("The connection was dropped.");
+            return base.Read(buffer, offset, Math.Min(count, _failAt - (int)Position));
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (Position >= _failAt)
+                throw new IOException("The connection was dropped.");
+            return base.ReadAsync(buffer[..Math.Min(buffer.Length, _failAt - (int)Position)], cancellationToken);
+        }
+    }
+
+    private static byte[] PngBytes(int width, int height)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"PaperNexus_Png_{Guid.NewGuid():N}.png");
+        TestHelpers.CreateTestPng(path, width, height);
+        var bytes = File.ReadAllBytes(path);
+        File.Delete(path);
+        return bytes;
+    }
+
+    // A complete download is renamed into place under its final name, and no partial file
+    // is left behind.
+    [Fact]
+    public async Task Download_Completes_RenamesThePartialFileIntoPlace()
+    {
+        var body = PngBytes(64, 32);
+        using var client = new HttpClient(new FakeImageHandler(body));
+        var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
+        var settings = new WallpaperNexusSettings { Download = new DownloadSettings { Folder = _downloadDir } };
+        var image = new WallpaperImage { Title = "Whole", ImageUrl = "https://example.com/whole.png" };
+
+        await sut.Download(image, settings, client);
+
+        var file = Assert.Single(Directory.GetFiles(_downloadDir));
+        Assert.Equal(Path.Combine(_downloadDir, "Whole - whole.png"), file);
+        Assert.Equal(body, await File.ReadAllBytesAsync(file));
+    }
+
+    // A download that breaks off leaves neither a truncated picture under the real name nor a
+    // partial file, so the next run downloads it again instead of skipping it.
+    [Fact]
+    public async Task Download_BreaksOff_LeavesNoPictureAndNoPartialFile()
+    {
+        var handler = new FakeImageHandler(PngBytes(64, 32), failMidway: true);
+        using var client = new HttpClient(handler);
+        var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
+        var settings = new WallpaperNexusSettings { Download = new DownloadSettings { Folder = _downloadDir } };
+        var image = new WallpaperImage { Title = "Broken", ImageUrl = "https://example.com/broken.png" };
+
+        // HttpClient reports the dropped body as an HttpRequestException around the IOException
+        await Assert.ThrowsAsync<HttpRequestException>(() => sut.Download(image, settings, client));
+
+        Assert.Empty(Directory.GetFiles(_downloadDir));
+    }
+
+    // A resolution cap applies to the partial file using the final name's format, so a JPEG
+    // stays a JPEG.
+    [Fact]
+    public async Task Download_WithAResolutionCap_KeepsTheFinalNamesFormat()
+    {
+        var jpegPath = Path.Combine(Path.GetTempPath(), $"PaperNexus_Jpg_{Guid.NewGuid():N}.jpg");
+        using (var bitmap = TestHelpers.CreateSolidBitmap(400, 200, new SkiaSharp.SKColor(10, 20, 30)))
+        using (var file = File.Create(jpegPath))
+            bitmap.Encode(file, SkiaSharp.SKEncodedImageFormat.Jpeg, 90);
+        var body = await File.ReadAllBytesAsync(jpegPath);
+        File.Delete(jpegPath);
+        using var client = new HttpClient(new FakeImageHandler(body));
+        var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
+        var settings = new WallpaperNexusSettings
+        {
+            Download = new DownloadSettings { Folder = _downloadDir, ResolutionWidth = 200, ResolutionHeight = 100 },
+        };
+        var image = new WallpaperImage { Title = "Capped", ImageUrl = "https://example.com/capped.jpg" };
+
+        await sut.Download(image, settings, client);
+
+        var saved = Assert.Single(Directory.GetFiles(_downloadDir));
+        Assert.Equal((200, 100), TestHelpers.ReadDimensions(saved));
+        var bytes = await File.ReadAllBytesAsync(saved);
+        Assert.Equal(0xFF, bytes[0]);
+        Assert.Equal(0xD8, bytes[1]);
+    }
+
+    // A partial file left by a process that was stopped mid-download is removed by the next
+    // run, and pictures beside it are kept.
+    [Fact]
+    public async Task DownloadAll_RemovesPartialFilesLeftByAStoppedProcess()
+    {
+        var partial = Path.Combine(_downloadDir, "Left - over.png" + DownloadWallpapers.PartialDownloadExtension);
+        await File.WriteAllBytesAsync(partial, [0x89, 0x50]);
+        var picture = Path.Combine(_downloadDir, "Kept - picture.png");
+        TestHelpers.CreateSmallPng(picture);
+        await _store.SaveAsync(new WallpaperNexusSettings { Download = new DownloadSettings { Folder = _downloadDir }, Sources = [] });
+        var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
+
+        await sut.DownloadAllAsync();
+
+        Assert.False(File.Exists(partial));
+        Assert.True(File.Exists(picture));
+    }
+
     [Theory]
     [InlineData("../evil/payload")]
     [InlineData("..\\evil\\payload")]
@@ -32,7 +175,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task Download_TitleWithSlashes_NeverEscapesFolder(string title)
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -48,7 +191,7 @@ public class DownloadWallpapersTests : IDisposable
         }
         catch
         {
-            // Expected — HTTP call fails, but path was constructed safely
+            // Expected - HTTP call fails, but path was constructed safely
         }
 
         // Verify no files were written outside the download directory
@@ -63,7 +206,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task Download_ExistingFile_SkipsDownload()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -98,7 +241,7 @@ public class DownloadWallpapersTests : IDisposable
         string imageUrl, string expectedStem, string expectedExt)
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -126,12 +269,12 @@ public class DownloadWallpapersTests : IDisposable
     [Fact]
     public async Task Download_OneImageFails_DoesNotPreventSubsequentImages()
     {
-        // Arrange: two images in a sequence — the first will fail (HTTP error on a bad URL),
+        // Arrange: two images in a sequence - the first will fail (HTTP error on a bad URL),
         // the second already exists on disk so no HTTP call is needed.
         // After the fix, per-image failures are caught and logged; the second image must
         // still be processed (i.e. its pre-existing file is unchanged, not thrown over).
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
         var settings = new WallpaperNexusSettings
         {
             Download = new DownloadSettings { Folder = _downloadDir },
@@ -158,7 +301,7 @@ public class DownloadWallpapersTests : IDisposable
 
         // Assert: the first image did raise an exception (network failure expected)
         Assert.NotNull(firstException);
-        // The second image's file is still intact — iteration was not aborted by the first failure
+        // The second image's file is still intact - iteration was not aborted by the first failure
         var remaining = await File.ReadAllBytesAsync(secondPath);
         Assert.Equal(originalBytes, remaining);
     }
@@ -168,7 +311,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: one expired file referenced in BannedWallpapers
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var expiredPath = Path.Combine(_downloadDir, "old.png");
         TestHelpers.CreateSmallPng(expiredPath);
@@ -195,7 +338,7 @@ public class DownloadWallpapersTests : IDisposable
         // Arrange: one expired file that is favorited (should survive deletion),
         // plus one stale favorite entry pointing to a file that no longer exists.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var favoritePath = Path.Combine(_downloadDir, "favorite.png");
         TestHelpers.CreateSmallPng(favoritePath);
@@ -226,7 +369,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: a recent file that is within the retention window
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var recentPath = Path.Combine(_downloadDir, "recent.png");
         TestHelpers.CreateSmallPng(recentPath);
@@ -249,7 +392,7 @@ public class DownloadWallpapersTests : IDisposable
     {
         // Arrange: a 200×200 image with no cap (ResolutionWidth == 0 means "Native")
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var filePath = Path.Combine(_downloadDir, "native.png");
         TestHelpers.CreateTestPng(filePath, 200, 200);
@@ -270,9 +413,9 @@ public class DownloadWallpapersTests : IDisposable
     [Fact]
     public async Task ApplyResolutionCap_ImageAlreadyWithinCap_LeavesFileSizeUnchanged()
     {
-        // Arrange: a 100×100 image with a cap of 1920×1080 — image is already within the cap
+        // Arrange: a 100×100 image with a cap of 1920×1080 - image is already within the cap
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var filePath = Path.Combine(_downloadDir, "small.png");
         TestHelpers.CreateTestPng(filePath, 100, 100);
@@ -286,7 +429,7 @@ public class DownloadWallpapersTests : IDisposable
         // Act
         await sut.ApplyResolutionCapAsync(filePath, settings);
 
-        // Assert: small image must not be upscaled — file stays at original size
+        // Assert: small image must not be upscaled - file stays at original size
         Assert.Equal(originalLength, new FileInfo(filePath).Length);
     }
 
@@ -296,7 +439,7 @@ public class DownloadWallpapersTests : IDisposable
         // Arrange: a 400×300 image capped at 200×200.
         // The image should be scaled down so neither dimension exceeds the cap.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var filePath = Path.Combine(_downloadDir, "large.png");
         TestHelpers.CreateTestPng(filePath, 400, 300);
@@ -381,7 +524,7 @@ public class DownloadWallpapersTests : IDisposable
     // --- Settings load/defaults tests ---
 
     // Regression guard: if the user intentionally removes all wallpaper sources and saves,
-    // the next LoadAsync must return an empty sources list — not silently restore the
+    // the next LoadAsync must return an empty sources list - not silently restore the
     // built-in Bing/Spotlight defaults as it did before the fix.
     [Fact]
     public async Task LoadAsync_EmptySourcesSavedByUser_DoesNotRestoreDefaults()
@@ -419,7 +562,7 @@ public class DownloadWallpapersTests : IDisposable
         // a favorite. Retention cleanup must skip it because deleting the active
         // wallpaper would leave the desktop in an undefined state.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var currentPath = Path.Combine(_downloadDir, "current.png");
         TestHelpers.CreateSmallPng(currentPath);
@@ -441,10 +584,10 @@ public class DownloadWallpapersTests : IDisposable
     [Fact]
     public async Task CleanupOldImages_ExpiredNonCurrentNonFavorite_IsStillDeleted()
     {
-        // Arrange: two expired files — one is the current wallpaper, the other is not
+        // Arrange: two expired files - one is the current wallpaper, the other is not
         // current and not favorited. Only the non-current file should be deleted.
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var currentPath = Path.Combine(_downloadDir, "current.png");
         TestHelpers.CreateSmallPng(currentPath);
@@ -475,7 +618,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task CleanupOldImages_FolderDeleted_DoesNotThrow()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         // Use a path that does not exist
         var missingDir = Path.Combine(Path.GetTempPath(), $"PaperNexus_Gone_{Guid.NewGuid():N}");
@@ -504,7 +647,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task CleanupOldImages_NullLists_DoesNotThrow()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var expiredPath = Path.Combine(_downloadDir, "expired.png");
         TestHelpers.CreateSmallPng(expiredPath);
@@ -533,7 +676,7 @@ public class DownloadWallpapersTests : IDisposable
     public async Task CleanupOldImages_InvalidCurrentWallpaperPath_DoesNotThrow()
     {
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store);
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
         var expiredPath = Path.Combine(_downloadDir, "expired.png");
         TestHelpers.CreateSmallPng(expiredPath);
@@ -608,7 +751,7 @@ public class DownloadWallpapersTests : IDisposable
         var loaded = await _store.LoadAsync();
         var src = loaded.Sources.First(s => s.Name == "Recent Source");
 
-        // The timestamp must have been preserved — if it were null, IsOverdue would
+        // The timestamp must have been preserved - if it were null, IsOverdue would
         // return true and the next scheduled execution would trigger a redundant download.
         Assert.NotNull(src.LastDownloadUtc);
         Assert.False(DownloadWallpapers.IsOverdue(src),

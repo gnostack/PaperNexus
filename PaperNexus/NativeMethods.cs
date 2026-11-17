@@ -30,6 +30,13 @@ internal sealed class WallpaperApplier : IWallpaperApplier, IAddSingleton<IWallp
         return new NoOpWallpaperBackend();
     }
 
+    // The desktop never forbids changing the wallpaper.
+    public bool CanSetWallpaper => true;
+
+    // The operating system fits the picture to each monitor using the fill style, so the
+    // switcher hands it the picture at its own size.
+    public WallpaperCanvas? GetCanvas() => null;
+
     public bool SetWallpaper(string wallpaperPath) => _backend.SetWallpaper(wallpaperPath);
 
     public void ApplyFillStyle(WallpaperFillStyle style) => _backend.ApplyFillStyle(style);

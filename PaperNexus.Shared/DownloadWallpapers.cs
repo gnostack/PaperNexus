@@ -14,8 +14,19 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         .Append('/').Append('\\')
         .ToHashSet();
 
+    // A picture is written under its final name plus this extension while it downloads, and
+    // renamed into place only once it is complete. A file with this extension is never a
+    // picture: the switcher and the gallery list only .png, .jpg and .jpeg, and each run
+    // deletes any left behind by a process that was stopped mid-download.
+    internal const string PartialDownloadExtension = ".download";
+
     private readonly HttpWallpaperSourceService _sourceService;
     private readonly ISettingsStore _settingsStore;
+
+    // One download run at a time: the scheduled run, "Download Now", the tray's fallback and
+    // the phone's first-open download all write into the same folder, so a second run waits
+    // for the first instead of writing the same files at the same time.
+    private readonly SemaphoreSlim _runLock = new(1);
 
     // Shared, long-lived HttpClient for all image downloads. HttpClient is thread-safe for
     // concurrent requests; creating a new one per source/image call drains the ephemeral port
@@ -23,7 +34,8 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // The service is a singleton, so this client lives for the process lifetime.
     private readonly HttpClient _imageClient = new() { Timeout = TimeSpan.FromSeconds(30) };
 
-    public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService, ISettingsStore settingsStore) : base(logger)
+    public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService, ISettingsStore settingsStore, JobTimerStore timerStore)
+        : base(logger, timerStore)
     {
         _sourceService = sourceService.ThrowIfNull();
         _settingsStore = settingsStore.ThrowIfNull();
@@ -49,7 +61,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             }
             catch (CronFormatException)
             {
-                Logger.LogWarning("Source '{Source}' has invalid cron expression '{Expression}' — skipping for next-execution calculation.", source.Name, source.CronExpression);
+                Logger.LogWarning("Source '{Source}' has invalid cron expression '{Expression}' - skipping for next-execution calculation.", source.Name, source.CronExpression);
             }
         }
         return earliest;
@@ -63,7 +75,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     {
         if (!IsOverdue(source))
         {
-            Logger.LogInformation("Source '{Source}' is up to date — skipping.", source.Name);
+            Logger.LogInformation("Source '{Source}' is up to date - skipping.", source.Name);
             return false;
         }
         return true;
@@ -74,14 +86,24 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // Cleanup and save are skipped entirely if no sources were actually downloaded.
     private async Task DownloadFromSourcesAsync(Func<WallpaperSource, bool> filter)
     {
+        using (await _runLock.EnterAsync())
+        {
+            await DownloadFromSourcesLockedAsync(filter);
+        }
+    }
+
+    private async Task DownloadFromSourcesLockedAsync(Func<WallpaperSource, bool> filter)
+    {
         var settings = await _settingsStore.LoadAsync();
         if (!settings.IsConfigured)
         {
-            Logger.LogInformation("Wallpapers folder not configured — skipping.");
+            Logger.LogInformation("Wallpapers folder not configured - skipping.");
             return;
         }
 
         Directory.CreateDirectory(settings.Download.Folder);
+        // No other run is writing now, so any partial file is left over from a stopped process
+        RemovePartialDownloads(settings.Download.Folder);
 
         var downloaded = false;
         foreach (var source in settings.Sources.Where(s => s.IsEnabled && filter(s)))
@@ -95,7 +117,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             {
                 // Log and continue so a failed source (e.g. unreachable feed URL) does not
                 // block remaining sources from running or prevent timestamps from being saved.
-                Logger.LogError(ex, "Failed to download from source '{Source}' — skipping.", source.Name);
+                Logger.LogError(ex, "Failed to download from source '{Source}' - skipping.", source.Name);
             }
         }
         if (downloaded)
@@ -106,7 +128,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     }
 
     // Downloads all images for a single source, reusing the process-wide _imageClient so
-    // all images — across all sources — share one socket pool rather than creating one per call.
+    // all images - across all sources - share one socket pool rather than creating one per call.
     private async Task DownloadSource(WallpaperSource source, WallpaperNexusSettings settings)
     {
         var images = await _sourceService.GetImagesAsync(source);
@@ -120,7 +142,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             {
                 // Log and continue so one failed image does not abort the rest of the source's images.
                 // The source's LastDownloadUtc is still updated below so it is not retried immediately.
-                Logger.LogWarning(ex, "Failed to download image '{Title}' from source '{Source}' — skipping.", image.Title, source.Name);
+                Logger.LogWarning(ex, "Failed to download image '{Title}' from source '{Source}' - skipping.", image.Title, source.Name);
             }
         }
         source.LastDownloadUtc = DateTimeOffset.UtcNow;
@@ -193,7 +215,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         Logger.LogInformation("Downloading image: {Title}", data.Title);
         var watch = Stopwatch.StartNew();
         // Prefer the caller-supplied client; fall back to the shared instance client.
-        // Neither is disposed here — both are long-lived and owned by their respective creators.
+        // Neither is disposed here - both are long-lived and owned by their respective creators.
         var httpClient = client ?? _imageClient;
 
         // Use ResponseHeadersRead to start timing from the first byte, not after full download
@@ -204,13 +226,45 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             throw new HttpRequestException($"HTTP {(int)response.StatusCode} {response.StatusCode} downloading '{data.ImageUrl}': {message}");
         }
 
-        // Stream directly to disk so large images (4K+) don't require a full in-memory buffer
-        using var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
-        await response.Content.CopyToAsync(fileStream);
-        Logger.LogInformation("Download complete: {Elapsed}", watch.Elapsed);
-        // Re-encode to the user's configured resolution cap after the download completes,
-        // so a partial resize failure cannot corrupt the downloaded file.
-        await ApplyResolutionCapAsync(path, settings);
+        // Stream directly to disk so large images (4K+) don't require a full in-memory buffer.
+        // The bytes go to a partial file that is renamed into place only when the download and
+        // the resolution cap are both complete, the way the settings store saves: a process
+        // stopped part way leaves a partial file, never a truncated picture under the real name.
+        var partialPath = path + PartialDownloadExtension;
+        try
+        {
+            using (var fileStream = new FileStream(partialPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
+            {
+                await response.Content.CopyToAsync(fileStream);
+            }
+            Logger.LogInformation("Download complete: {Elapsed}", watch.Elapsed);
+            // Re-encode to the user's configured resolution cap after the download completes.
+            // The partial file has no picture extension, so the final name decides the format.
+            await ApplyResolutionCapAsync(partialPath, settings, formatPath: path);
+            File.Move(partialPath, path, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(partialPath); } catch { }
+            throw;
+        }
+    }
+
+    // Deletes partial downloads left in folder by a process that was stopped mid-download.
+    internal void RemovePartialDownloads(string folder)
+    {
+        foreach (var partial in Directory.EnumerateFiles(folder, "*" + PartialDownloadExtension))
+        {
+            try
+            {
+                File.Delete(partial);
+                Logger.LogInformation("Removed unfinished download '{File}'.", Path.GetFileName(partial));
+            }
+            catch (IOException ex)
+            {
+                Logger.LogWarning(ex, "Could not remove unfinished download '{File}'.", Path.GetFileName(partial));
+            }
+        }
     }
 
     // Resizes the image at filePath to fit within the user-configured resolution cap,
@@ -218,23 +272,25 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // setting is "Native" (width or height == 0) or the image already fits within the
     // cap, the file is left unchanged. The file is re-encoded in-place using the same
     // format (JPEG at quality 95, or 8-bit RGB PNG) so the filename and extension are preserved.
-    internal Task ApplyResolutionCapAsync(string filePath, WallpaperNexusSettings settings)
+    // formatPath names the file whose extension decides the format, when filePath is a
+    // partial download that has none of its own.
+    internal Task ApplyResolutionCapAsync(string filePath, WallpaperNexusSettings settings, string? formatPath = null)
     {
         var maxWidth = settings.Download.ResolutionWidth;
         var maxHeight = settings.Download.ResolutionHeight;
 
-        // Resolution == 0 means "Native" — no cap applied
+        // Resolution == 0 means "Native" - no cap applied
         if (maxWidth <= 0 || maxHeight <= 0)
             return Task.CompletedTask;
 
         // Runs on the download job's background thread, so the synchronous decode and
         // encode do not block anything interactive.
-        var resized = ImageResizing.ResizeFileToFit(filePath, maxWidth, maxHeight);
+        var resized = ImageResizing.ResizeFileToFit(filePath, maxWidth, maxHeight, formatPath);
         if (resized)
         {
             Logger.LogInformation(
                 "Resized '{File}' to fit within {Width}×{Height}.",
-                Path.GetFileName(filePath), maxWidth, maxHeight);
+                Path.GetFileName(formatPath ?? filePath), maxWidth, maxHeight);
         }
         return Task.CompletedTask;
     }
@@ -262,9 +318,9 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             StringComparer.OrdinalIgnoreCase);
         // Resolve the currently active wallpaper to a full path so the comparison
         // against FileInfo.FullName is reliable regardless of relative vs absolute storage.
-        // Path.GetFullPath can throw for several reasons — invalid characters (ArgumentException),
+        // Path.GetFullPath can throw for several reasons - invalid characters (ArgumentException),
         // unsupported path format such as ":" in the wrong position (NotSupportedException),
-        // or exceeding MAX_PATH (PathTooLongException) — so fall back to empty (treat as unmatched).
+        // or exceeding MAX_PATH (PathTooLongException) - so fall back to empty (treat as unmatched).
         var currentWallpaper = string.Empty;
         if (!string.IsNullOrEmpty(settings.CurrentWallpaperPath))
         {
@@ -274,7 +330,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                Logger.LogWarning(ex, "CurrentWallpaperPath is invalid — ignoring for retention cleanup.");
+                Logger.LogWarning(ex, "CurrentWallpaperPath is invalid - ignoring for retention cleanup.");
             }
         }
         // Materialise the directory listing once so we can reuse it for the stale-path

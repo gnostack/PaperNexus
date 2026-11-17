@@ -3,28 +3,33 @@ using Xunit;
 
 namespace PaperNexus.Tests;
 
-[Collection("JobTimerStore")]
+// Each test roots its own store in a new temporary folder, the way the host roots the real
+// one in its data folder. A second store over the same folder stands in for the next start
+// of the app, which has an empty cache and reads timers.json from disk.
 public class JobTimerStoreTests : IDisposable
 {
-    private static readonly string TimersPath = Path.Combine(AppContext.BaseDirectory, "timers.json");
+    private readonly string _directory;
 
     public JobTimerStoreTests()
     {
-        JobTimerStore.ResetForTesting();
-        TryDelete(TimersPath);
+        _directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Timers_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_directory);
     }
+
+    private string TimersPath => Path.Combine(_directory, JobTimerStore.FileName);
 
     public void Dispose()
     {
-        JobTimerStore.ResetForTesting();
-        TryDelete(TimersPath);
+        try { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
+        catch { /* best-effort cleanup */ }
     }
 
     [Fact]
     public async Task LoadContextAsync_CorruptJson_ReturnsDefault()
     {
         await File.WriteAllTextAsync(TimersPath, "not valid json {{{");
-        var result = await JobTimerStore.LoadContextAsync("SomeJob");
+        var store = new JobTimerStore(_directory);
+        var result = await store.LoadContextAsync("SomeJob");
         Assert.Equal(default(JobExecutionContext), result);
     }
 
@@ -32,14 +37,16 @@ public class JobTimerStoreTests : IDisposable
     public async Task LoadContextAsync_WrongJsonShape_ReturnsDefault()
     {
         await File.WriteAllTextAsync(TimersPath, "[1, 2, 3]");
-        var result = await JobTimerStore.LoadContextAsync("SomeJob");
+        var store = new JobTimerStore(_directory);
+        var result = await store.LoadContextAsync("SomeJob");
         Assert.Equal(default(JobExecutionContext), result);
     }
 
     [Fact]
     public async Task LoadContextAsync_FileMissing_ReturnsDefault()
     {
-        var result = await JobTimerStore.LoadContextAsync("SomeJob");
+        var store = new JobTimerStore(_directory);
+        var result = await store.LoadContextAsync("SomeJob");
         Assert.Equal(default(JobExecutionContext), result);
     }
 
@@ -53,10 +60,10 @@ public class JobTimerStoreTests : IDisposable
             Duration = TimeSpan.FromSeconds(5),
             LastExecutionSucceeded = true,
         };
-        await JobTimerStore.SaveContextAsync("TestJob", expected);
-        JobTimerStore.ResetForTesting();
+        await new JobTimerStore(_directory).SaveContextAsync("TestJob", expected);
 
-        var result = await JobTimerStore.LoadContextAsync("TestJob");
+        var restarted = new JobTimerStore(_directory);
+        var result = await restarted.LoadContextAsync("TestJob");
         Assert.Equal(expected, result);
     }
 
@@ -64,23 +71,31 @@ public class JobTimerStoreTests : IDisposable
     public async Task SaveContextAsync_AfterCorruptLoad_StillWorks()
     {
         await File.WriteAllTextAsync(TimersPath, "corrupt");
-        await JobTimerStore.LoadContextAsync("RecoverJob");
+        var store = new JobTimerStore(_directory);
+        await store.LoadContextAsync("RecoverJob");
 
         var context = new JobExecutionContext
         {
             LastExecutionSucceeded = true,
             Duration = TimeSpan.FromSeconds(1),
         };
-        await JobTimerStore.SaveContextAsync("RecoverJob", context);
-        JobTimerStore.ResetForTesting();
+        await store.SaveContextAsync("RecoverJob", context);
 
-        var result = await JobTimerStore.LoadContextAsync("RecoverJob");
+        var restarted = new JobTimerStore(_directory);
+        var result = await restarted.LoadContextAsync("RecoverJob");
         Assert.Equal(context, result);
     }
 
-    private static void TryDelete(string path)
+    // The store writes timers.json in the host's data folder and nowhere else.
+    [Fact]
+    public async Task SaveContextAsync_WritesTimersJsonInTheDataFolder()
     {
-        try { if (File.Exists(path)) File.Delete(path); }
-        catch { /* best-effort cleanup */ }
+        var folders = new TestAppFolders(_directory);
+        var store = new JobTimerStore(folders);
+
+        await store.SaveContextAsync("AnyJob", new JobExecutionContext { LastExecutionSucceeded = true });
+
+        Assert.Equal(TimersPath, store.FilePath);
+        Assert.True(File.Exists(TimersPath));
     }
 }
