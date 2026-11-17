@@ -2,7 +2,7 @@ using Cronos;
 
 namespace PaperNexus;
 
-internal interface IDownloadWallpapers
+public interface IDownloadWallpapers
 {
     public Task DownloadAllAsync();
 }

@@ -58,6 +58,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
     private readonly ISwitchWallpaper? _switchWallpaper;
     private readonly ICheckForUpdates? _checkForUpdates;
     private readonly IDownloadWallpapers? _downloadWallpapers;
+    private readonly IStartupRegistration? _startupRegistration;
+    private readonly IAppInfo _appInfo;
+    private readonly IShellOpener _shellOpener;
 
     public static readonly IReadOnlyList<FillStyleOption> FillStyleOptions = new[]
     {
@@ -302,13 +305,28 @@ public partial class WallpaperConfigViewModel : ObservableObject
     private CancellationTokenSource _saveCts = new();
 
 
-    // Initialises all observable properties to sensible defaults and resolves
-    // background services from the App DI container. The WallpaperChanged event is
+    // Initialises all observable properties to sensible defaults. Created per window from
+    // the container, which supplies the settings store, the host's app facts and shell
+    // opener, and whichever background services the host registers. A service the host
+    // does not have stays null and its command reports it as unavailable; a host with no
+    // run-at-sign-in setting registers no IStartupRegistration. The WallpaperChanged event is
     // subscribed here so the preview updates automatically when the slideshow switches.
-    // Created per window from the container, which supplies the settings store.
-    public WallpaperConfigViewModel(ISettingsStore settingsStore)
+    public WallpaperConfigViewModel(
+        ISettingsStore settingsStore,
+        IAppInfo appInfo,
+        IShellOpener shellOpener,
+        ISwitchWallpaper? switchWallpaper = null,
+        IDownloadWallpapers? downloadWallpapers = null,
+        ICheckForUpdates? checkForUpdates = null,
+        IStartupRegistration? startupRegistration = null)
     {
         _settingsStore = settingsStore.ThrowIfNull();
+        _appInfo = appInfo.ThrowIfNull();
+        _shellOpener = shellOpener.ThrowIfNull();
+        _switchWallpaper = switchWallpaper;
+        _downloadWallpapers = downloadWallpapers;
+        _checkForUpdates = checkForUpdates;
+        _startupRegistration = startupRegistration;
         _folder = string.Empty;
         _slideshowCronExpression = string.Empty;
         _slideshowInterval = 30;
@@ -319,11 +337,6 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _currentWallpaperPath = string.Empty;
         _currentWallpaperName = string.Empty;
         _selectedResolution = ResolutionOptions[0];
-        // Services are resolved lazily from the App's background host rather than injected,
-        // because the ViewModel is constructed on the UI thread before the host is fully started.
-        _switchWallpaper = (Application.Current as App)?.Services?.GetService<ISwitchWallpaper>();
-        _checkForUpdates = (Application.Current as App)?.Services?.GetService<ICheckForUpdates>();
-        _downloadWallpapers = (Application.Current as App)?.Services?.GetService<IDownloadWallpapers>();
         _selectedFillStyle = FillStyleOptions[0];
         _selectedAnnotationPosition = AnnotationPositionOptions[0];
         _selectedSlideshowOrder = SlideshowOrderOptions.First(o => o.Order == SlideshowOrder.NewestFirst);
@@ -437,7 +450,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            StartupRegistration.Update(value);
+            _startupRegistration?.Update(value);
         }
         catch (Exception ex)
         {
@@ -524,7 +537,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
             RunOnStartup = settings.RunOnStartup;
             AutoUpdatesEnabled = settings.AutoUpdatesEnabled;
             SlideshowEnabled = settings.Slideshow.Enabled;
-            DebugMode = settings.DebugMode || Program.IsDebugMode;
+            DebugMode = settings.DebugMode || _appInfo.StartedInDebugMode;
             MinimizeToTray = settings.MinimizeToTray;
             FavoritePriorityEnabled = settings.Slideshow.FavoritePriorityEnabled;
             FavoritePriorityWeight = settings.Slideshow.FavoritePriorityWeight > 0 ? settings.Slideshow.FavoritePriorityWeight : 3;
@@ -789,7 +802,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
     // Reloads the preview thumbnail from the processed current.png/current.jpg
     // and disposes the previous bitmap to avoid leaking unmanaged memory.
-    internal void RefreshPreviewImage()
+    public void RefreshPreviewImage()
     {
         try
         {
@@ -852,7 +865,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         try
         {
             await Task.Run(() => _checkForUpdates.CheckAsync(forceUpdate: false, progress: progress));
-            await ShowTransientStatusAsync($"✓ Already up to date ({App.AppVersion}).");
+            await ShowTransientStatusAsync($"✓ Already up to date ({_appInfo.Version}).");
         }
         catch (Exception ex)
         {
@@ -873,7 +886,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         try
         {
             await Task.Run(() => _checkForUpdates.CheckAsync(forceUpdate: true, progress: progress));
-            await ShowTransientStatusAsync($"✓ Already on latest version ({App.AppVersion}).");
+            await ShowTransientStatusAsync($"✓ Already on latest version ({_appInfo.Version}).");
         }
         catch (Exception ex)
         {
@@ -889,7 +902,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
             return;
         try
         {
-            ShellOpener.OpenFolder(folder);
+            _shellOpener.OpenFolder(folder);
         }
         catch (Exception ex)
         {
@@ -905,7 +918,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
             return;
         try
         {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            _shellOpener.Open(path);
         }
         catch (Exception ex)
         {
@@ -916,19 +929,19 @@ public partial class WallpaperConfigViewModel : ObservableObject
     [RelayCommand]
     private void ReportBug()
     {
-        var version = App.AppVersion;
+        var version = _appInfo.Version;
         var body = $"**App Version:** {version}\n\n**Describe the bug:**\n\n\n**Steps to reproduce:**\n\n\n**Expected behavior:**\n\n";
         var url = GitHubRepository.Current.WebUrl + "/issues/new"
                 + "?assignees=claude&labels=bug&title=Bug+Report"
                 + "&body=" + Uri.EscapeDataString(body);
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        _shellOpener.Open(url);
     }
 
     [RelayCommand]
     private void OpenHomepage()
     {
         var homepage = GitHubRepository.Current.WebUrl;
-        Process.Start(new ProcessStartInfo(homepage) { UseShellExecute = true });
+        _shellOpener.Open(homepage);
     }
 
     // Maps all ViewModel properties back onto a WallpaperNexusSettings instance and persists it.
@@ -1012,7 +1025,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
     // Releases all managed resources held by the ViewModel: event subscriptions, cancellation
     // tokens, and unmanaged Avalonia Bitmap objects. Called when the settings window closes.
-    internal void Cleanup()
+    public void Cleanup()
     {
         if (_switchWallpaper is not null)
             _switchWallpaper.WallpaperChanged -= OnWallpaperChanged;
@@ -1058,7 +1071,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
     // Displays a status message for durationMs milliseconds, then clears it.
     // Cancels any previously running transient message so overlapping calls don't race.
-    internal async Task ShowTransientStatusAsync(string message, int durationMs = 3000)
+    public async Task ShowTransientStatusAsync(string message, int durationMs = 3000)
     {
         // Cancel the previous delay so the old message doesn't clear the new one prematurely.
         // Swapping under a lock, and cancelling rather than disposing, fixes a race that

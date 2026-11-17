@@ -64,7 +64,10 @@ public partial class App : Application
                     services.AddTransient<SplashScreen>();
                     services.AddTransient<EasterEggListDialog>();
                     services.AddTransient<Func<EasterEggListDialog>>(sp => () => sp.GetRequiredService<EasterEggListDialog>());
-                    // Auto-discover and register all IAddSingleton / IAddHostedSingleton / IScheduleScopedJob implementations
+                    // Auto-discover and register all IAddSingleton / IAddHostedSingleton / IScheduleScopedJob
+                    // implementations: the shared services first, then this host's implementations of
+                    // the interfaces they need (settings folder, wallpaper applier, shell, updates).
+                    services.AddServicesFrom(typeof(WallpaperConfigViewModel).Assembly);
                     services.AddServicesFrom(typeof(App).Assembly);
                 })
                 .Build();

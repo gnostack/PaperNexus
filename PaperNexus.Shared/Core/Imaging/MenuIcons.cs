@@ -4,7 +4,7 @@ namespace PaperNexus.Core.Imaging;
 
 // The 16x16 tray menu icons, drawn as simple shapes and returned as PNG bytes so the
 // caller can hand them to Avalonia without referencing Skia itself.
-internal static class MenuIcons
+public static class MenuIcons
 {
     private const int Size = 16;
 

@@ -21,15 +21,16 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
 
     private readonly string _directory;
 
-    // The production store: settings live in the default install directory regardless of
-    // where the executable itself was installed.
-    public SettingsStore()
-        : this(PlatformPaths.DefaultInstallDirectory)
+    // The production store: settings live in the folder the host names, which on the
+    // desktop is the default install directory regardless of where the executable itself
+    // was installed.
+    public SettingsStore(ISettingsDirectory settingsDirectory)
+        : this(settingsDirectory.ThrowIfNull().FullPath)
     {
     }
 
-    // Internal so the container only ever sees the parameterless constructor; tests use
-    // this to root a store in their own temporary directory.
+    // Internal so the container only ever sees the public constructor; tests use this to
+    // root a store in their own temporary directory.
     internal SettingsStore(string directory)
     {
         _directory = directory.ThrowIfNull();
@@ -115,7 +116,7 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
             settings.Slideshow.FavoritePriorityWeight = 3;
 
         // Ensure the sources list is never null after deserialisation.
-        // An empty list is valid — it means the user intentionally removed all sources —
+        // An empty list is valid - it means the user intentionally removed all sources -
         // so we do NOT restore the built-in defaults here. A brand-new WallpaperNexusSettings
         // instance (created when no file exists or the file is corrupt) already carries
         // DefaultSources via the property initialiser, so first-run defaults still apply.

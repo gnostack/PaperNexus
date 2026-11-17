@@ -1,4 +1,5 @@
 using PaperNexus.Core;
+using PaperNexus.ViewModels;
 using SkiaSharp;
 
 namespace PaperNexus.Tests;
@@ -90,6 +91,15 @@ internal static class TestHelpers
         return new SettingsStore(directory);
     }
 
+    // A settings view model wired to the given store and to do-nothing host services, so no
+    // test opens a browser or file manager. The background services stay unregistered, as
+    // they were when the view model looked them up from a running app that tests never had.
+    internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store)
+    {
+        var viewModel = new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener());
+        return viewModel;
+    }
+
     // Removes the temporary directory a test store was rooted in.
     internal static void DeleteSettingsStore(SettingsStore store)
     {
@@ -130,4 +140,29 @@ internal static class TestHelpers
         try { if (File.Exists(path)) File.Delete(path); }
         catch { }
     }
+}
+
+// Host stand-ins for the shared code's host interfaces.
+internal sealed class TestSettingsDirectory : ISettingsDirectory
+{
+    public TestSettingsDirectory(string fullPath)
+    {
+        FullPath = fullPath;
+    }
+
+    public string FullPath { get; }
+}
+
+internal sealed class TestAppInfo : IAppInfo
+{
+    public string Version => "v0";
+
+    public bool StartedInDebugMode => false;
+}
+
+internal sealed class NoOpShellOpener : IShellOpener
+{
+    public void Open(string target) { }
+
+    public void OpenFolder(string folderPath) { }
 }

@@ -38,7 +38,7 @@ public class FavoriteCardsTests : IDisposable
         var settings = await _store.LoadAsync();
         settings.FavoriteWallpapers = ["/tmp/Mountain Lake - abc.png", "/tmp/Desert - def.jpg"];
         await _store.SaveAsync(settings);
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         await vm.LoadAsync();
 
@@ -54,7 +54,7 @@ public class FavoriteCardsTests : IDisposable
         var settings = await _store.LoadAsync();
         settings.FavoriteWallpapers = ["/tmp/a.png", "/tmp/b.png"];
         await _store.SaveAsync(settings);
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
         await vm.LoadAsync();
         var card = vm.FavoriteWallpapers[0];
 
@@ -71,7 +71,7 @@ public class FavoriteCardsTests : IDisposable
     [Fact]
     public async Task ToggleFavoriteOnCurrentWallpaper_AddsThenRemovesCard()
     {
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
         await vm.LoadAsync();
         vm.CurrentWallpaperPath = "/tmp/current.png";
 

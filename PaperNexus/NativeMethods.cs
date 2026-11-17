@@ -6,13 +6,6 @@ using PaperNexus.Core.Platform;
 
 namespace PaperNexus;
 
-// Abstraction over desktop shell calls so tests can run without changing the real wallpaper
-public interface IWallpaperApplier
-{
-    public bool SetWallpaper(string wallpaperPath);
-    public void ApplyFillStyle(WallpaperFillStyle style);
-}
-
 // Single registered implementation. It owns no platform logic itself - it picks the
 // backend for the running OS once and forwards every call to it. Keeping one registered
 // type preserves the IAddSingleton auto-discovery contract in Bootstrapper.

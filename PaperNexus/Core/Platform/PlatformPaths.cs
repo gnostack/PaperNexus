@@ -34,19 +34,6 @@ public static class PlatformPaths
         }
     }
 
-    // Environment.GetFolderPath(MyPictures) returns an empty string on Linux when the
-    // XDG user-dirs config is missing, which would otherwise yield a relative path.
-    public static string DefaultPicturesDirectory
-    {
-        get
-        {
-            var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-            if (string.IsNullOrEmpty(pictures))
-                pictures = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures");
-            return pictures;
-        }
-    }
-
     // Marks a freshly copied file as executable. No-op on Windows, which has no execute bit.
     public static void EnsureExecutable(string path)
     {
@@ -64,4 +51,11 @@ public static class PlatformPaths
         catch (IOException) { /* best-effort - the copy may already carry the execute bit */ }
         catch (UnauthorizedAccessException) { /* best-effort */ }
     }
+}
+
+// The desktop's settings folder for the shared settings store: the default install
+// directory, whatever folder the executable itself was installed to.
+internal sealed class DesktopSettingsDirectory : ISettingsDirectory, IAddSingleton<ISettingsDirectory>
+{
+    public string FullPath => PlatformPaths.DefaultInstallDirectory;
 }

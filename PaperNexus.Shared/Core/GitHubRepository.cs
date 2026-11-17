@@ -5,8 +5,8 @@ namespace PaperNexus.Core;
 // The GitHub repository this build was produced from: the one place the app learns its own
 // owner/name. The value is not written in the source; the build embeds the checkout's git
 // origin URL as AssemblyMetadata("RepositoryUrl") (see the RequireRepositoryUrl target in
-// PaperNexus.csproj), so a repository transfer or rename reaches clients with the next release.
-internal sealed record GitHubRepository(string Owner, string Name)
+// PaperNexus.Shared.csproj), so a repository transfer or rename reaches clients with the next release.
+public sealed record GitHubRepository(string Owner, string Name)
 {
     internal const string MetadataKey = "RepositoryUrl";
 
@@ -14,14 +14,14 @@ internal sealed record GitHubRepository(string Owner, string Name)
     // InvalidOperationException from Parse, not a TypeInitializationException.
     private static readonly Lazy<GitHubRepository> _current = new(() => FromAssembly(typeof(GitHubRepository).Assembly));
 
-    // The repository embedded in the running PaperNexus assembly.
+    // The repository embedded in the PaperNexus.Shared assembly, which every host ships.
     public static GitHubRepository Current => _current.Value;
 
     // "owner/name", the form the GitHub REST API takes after /repos/.
     public string Slug => $"{Owner}/{Name}";
 
     // The repository's home page on github.com.
-    public string WebUrl => $"https://github.com/{Slug}";
+    internal string WebUrl => $"https://github.com/{Slug}";
 
     // Reads the RepositoryUrl metadata from the given assembly and parses it.
     internal static GitHubRepository FromAssembly(Assembly assembly)

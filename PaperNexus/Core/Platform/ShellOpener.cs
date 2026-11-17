@@ -43,3 +43,20 @@ public static class ShellOpener
         Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true });
     }
 }
+
+// The desktop's shell opener for the shared view model.
+internal sealed class DesktopShellOpener : IShellOpener, IAddSingleton<IShellOpener>
+{
+    // Shell-executes the target directly and lets a failure reach the caller, exactly as the
+    // settings window did before this moved behind IShellOpener. Unlike ShellOpener.Open it
+    // has no xdg-open fallback and does not swallow errors.
+    public void Open(string target)
+    {
+        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+    }
+
+    public void OpenFolder(string folderPath)
+    {
+        ShellOpener.OpenFolder(folderPath);
+    }
+}
