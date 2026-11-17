@@ -61,9 +61,12 @@ be found`. The desktop project alone (`dotnet build PaperNexus`) builds without 
 A Microsoft OpenJDK whose version has four parts (for example `21.0.13.0.2`) makes the build print
 warning `XA0033` ("Failed to get the Java SDK version"); the build still succeeds.
 
-The pull request workflow gets the workload with `dotnet workload restore`; the GitHub runner image
-already provides `ANDROID_HOME`, `JAVA_HOME` (JDK 17) and the SDK packages. The deploy workflow
-builds only the desktop project and does not need the workload.
+The Android host has its own pull request workflow, `.github/workflows/pull-request-android.yml`:
+it gets the workload with `dotnet workload restore` and builds only `PaperNexus.Android`; the
+GitHub runner image already provides `ANDROID_HOME`, `JAVA_HOME` (JDK 17) and the SDK packages.
+Its build job is skipped when a pull request changes nothing the app is built from. The desktop
+pull request workflow builds `PaperNexus.Desktop.slnf` (everything except this project) and the
+deploy workflow builds only the desktop project; neither needs the workload.
 
 ## Build, install and launch
 

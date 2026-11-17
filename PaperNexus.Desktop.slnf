@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "PaperNexus.sln",
+    "projects": [
+      "PaperNexus\\PaperNexus.csproj",
+      "PaperNexus.Shared\\PaperNexus.Shared.csproj",
+      "PaperNexus.Tests\\PaperNexus.Tests.csproj",
+      "PaperNexus.Shared.Tests\\PaperNexus.Shared.Tests.csproj"
+    ]
+  }
+}
