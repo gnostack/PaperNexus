@@ -20,20 +20,23 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
     public const string FileName = "settings.json";
 
     private readonly string _directory;
+    private readonly string _defaultDownloadFolder;
 
     // The production store: settings live in the folder the host names, which on the
     // desktop is the default install directory regardless of where the executable itself
-    // was installed.
-    public SettingsStore(ISettingsDirectory settingsDirectory)
-        : this(settingsDirectory.ThrowIfNull().FullPath)
+    // was installed. The host also names the download folder used when the settings hold
+    // none, so the settings model itself never has to know which device it is on.
+    public SettingsStore(IAppFolders appFolders)
+        : this(appFolders.ThrowIfNull().SettingsFolder, appFolders.DefaultDownloadFolder)
     {
     }
 
     // Internal so the container only ever sees the public constructor; tests use this to
     // root a store in their own temporary directory.
-    internal SettingsStore(string directory)
+    internal SettingsStore(string directory, string defaultDownloadFolder)
     {
         _directory = directory.ThrowIfNull();
+        _defaultDownloadFolder = defaultDownloadFolder.ThrowIfNull();
         FilePath = Path.Combine(directory, FileName);
     }
 
@@ -59,12 +62,14 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
         {
             Debug.WriteLine($"Failed to load settings: {ex.Message}");
         }
-        return new WallpaperNexusSettings();
+        var fresh = new WallpaperNexusSettings();
+        ApplyDefaults(fresh);
+        return fresh;
     }
 
     // Guards against settings files written by older versions that omitted certain fields,
     // or that contain zero/empty values that would break the scheduler or file paths.
-    private static void ApplyDefaults(WallpaperNexusSettings settings)
+    private void ApplyDefaults(WallpaperNexusSettings settings)
     {
         // Ensure slideshow sub-object exists and that its computed fields are valid
         var defaultSlideshow = new SlideshowSettings();
@@ -87,11 +92,12 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
         if (settings.Slideshow.Interval <= 0)
             settings.Slideshow.Interval = defaultSlideshow.Interval;
 
-        // Ensure download sub-object exists; RetentionDays of 0 would delete everything immediately
+        // Ensure download sub-object exists; RetentionDays of 0 would delete everything immediately.
+        // An empty folder means none was ever chosen, so the host's default is used.
         var defaultDownload = new DownloadSettings();
         settings.Download ??= defaultDownload;
         if (string.IsNullOrWhiteSpace(settings.Download.Folder))
-            settings.Download.Folder = defaultDownload.Folder;
+            settings.Download.Folder = _defaultDownloadFolder;
         if (settings.Download.RetentionDays <= 0)
             settings.Download.RetentionDays = defaultDownload.RetentionDays;
 

@@ -47,9 +47,12 @@ public abstract class ScheduledJobService : IHostedService, IDisposable
     protected abstract Task Execute();
     protected abstract Task<DateTimeOffset> GetNextExecutionAsync(JobExecutionContext context);
 
-    protected ScheduledJobService(ILogger logger)
+    private readonly JobTimerStore _timerStore;
+
+    protected ScheduledJobService(ILogger logger, JobTimerStore timerStore)
     {
         Logger = logger.ThrowIfNull();
+        _timerStore = timerStore.ThrowIfNull();
         JobName = GetType().FullName;
     }
 
@@ -188,8 +191,8 @@ public abstract class ScheduledJobService : IHostedService, IDisposable
         }
     }
 
-    private ValueTask<JobExecutionContext> LoadContext() => JobTimerStore.LoadContextAsync(JobName);
-    private Task SaveContext(JobExecutionContext context) => JobTimerStore.SaveContextAsync(JobName, context);
+    private ValueTask<JobExecutionContext> LoadContext() => _timerStore.LoadContextAsync(JobName);
+    private Task SaveContext(JobExecutionContext context) => _timerStore.SaveContextAsync(JobName, context);
 }
 
 // Generic IHostedService wrapper for IScheduleScopedJob implementations.
@@ -198,6 +201,7 @@ public sealed class ScheduledJobHostedService<TJob> : IHostedService, IDisposabl
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger _logger;
+    private readonly JobTimerStore _timerStore;
     private readonly string _jobName;
     private Task _scheduleTask;
     // volatile ensures the scheduler loop on its background thread always reads the latest
@@ -206,10 +210,11 @@ public sealed class ScheduledJobHostedService<TJob> : IHostedService, IDisposabl
     private volatile bool _stopped;
     private readonly CancellationTokenSource _cts = new();
 
-    public ScheduledJobHostedService(IServiceScopeFactory scopeFactory, ILogger<ScheduledJobHostedService<TJob>> logger)
+    public ScheduledJobHostedService(IServiceScopeFactory scopeFactory, ILogger<ScheduledJobHostedService<TJob>> logger, JobTimerStore timerStore)
     {
         _scopeFactory = scopeFactory.ThrowIfNull();
         _logger = logger.ThrowIfNull();
+        _timerStore = timerStore.ThrowIfNull();
         _jobName = typeof(TJob).FullName;
     }
 
@@ -364,31 +369,48 @@ public sealed class ScheduledJobHostedService<TJob> : IHostedService, IDisposabl
         }
     }
 
-    private ValueTask<JobExecutionContext> LoadContext() => JobTimerStore.LoadContextAsync(_jobName);
-    private Task SaveContext(JobExecutionContext context) => JobTimerStore.SaveContextAsync(_jobName, context);
+    private ValueTask<JobExecutionContext> LoadContext() => _timerStore.LoadContextAsync(_jobName);
+    private Task SaveContext(JobExecutionContext context) => _timerStore.SaveContextAsync(_jobName, context);
 }
 
-// Centralised, process-wide timer persistence store shared by all job scheduler types.
+// The single owner of timers.json: the last run of every scheduled job, shared by both
+// scheduler types.
 //
 // Previously, ScheduledJobService and ScheduledJobHostedService<T> each declared their own
 // static _timerLock/_timerFile/_timers fields and duplicate LoadContext/SaveContext methods.
 // Because static fields on a generic type are per-type-argument, every
 // ScheduledJobHostedService<TJob> had its own isolated _timers dictionary. On each save
 // it serialised only its one entry to timers.json, silently overwriting every other job's
-// persisted context. This made ExecuteOnStartupAfterFailure unreliable for all jobs other
-// than the last one to write. JobTimerStore fixes this by being the single shared owner of
-// the in-memory cache and the file — all scheduler implementations call into it.
-internal static class JobTimerStore
+// persisted context. JobTimerStore fixes this by being the single shared owner of the
+// in-memory cache and the file. It is a container singleton rooted in the host's data
+// folder, so every scheduler in the process shares one instance and tests root their own
+// in a temporary folder.
+public sealed class JobTimerStore : IAddSingleton<JobTimerStore>
 {
-    // Single lock and file reference shared across every job scheduler in the process.
-    private static readonly SemaphoreSlim _lock = new(1);
-    private static readonly FileInfo _file = new(Path.Combine(AppContext.BaseDirectory, "timers.json"));
-    private static readonly ConcurrentDictionary<string, JobExecutionContext> _cache = new();
+    public const string FileName = "timers.json";
+
+    private readonly SemaphoreSlim _lock = new(1);
+    private readonly FileInfo _file;
+    private readonly ConcurrentDictionary<string, JobExecutionContext> _cache = new();
+
+    public JobTimerStore(IAppFolders appFolders)
+        : this(appFolders.ThrowIfNull().DataFolder)
+    {
+    }
+
+    // Internal so the container only ever sees the public constructor; tests use this to
+    // root a store in their own temporary directory.
+    internal JobTimerStore(string directory)
+    {
+        _file = new FileInfo(Path.Combine(directory.ThrowIfNull(), FileName));
+    }
+
+    internal string FilePath => _file.FullName;
 
     // Returns the last execution context for jobName from the in-memory cache.
     // On first access (cache miss) reads and deserialises timers.json, warming the cache
     // for all jobs at once to minimise future file I/O.
-    internal static async ValueTask<JobExecutionContext> LoadContextAsync(string jobName)
+    internal async ValueTask<JobExecutionContext> LoadContextAsync(string jobName)
     {
         if (_cache.TryGetValue(jobName, out var context))
             return context;
@@ -416,7 +438,7 @@ internal static class JobTimerStore
                     // Cache the default so subsequent calls for the same job don't re-read the corrupt file
                     _cache[jobName] = default;
                     // Log the corrupt file so operators can diagnose why job contexts are missing.
-                    // Falls through to return default — same as when the file does not exist —
+                    // Falls through to return default - same as when the file does not exist -
                     // so the scheduler continues with a fresh context rather than retrying the
                     // same corrupt file in an infinite backoff loop.
                     Trace.TraceWarning("Failed to deserialize {0} for job '{1}': {2}", _file.FullName, jobName, ex.Message);
@@ -429,13 +451,14 @@ internal static class JobTimerStore
     // Writes jobName's execution result to the in-memory cache and persists the full
     // dictionary to timers.json atomically (write-to-temp + rename) so no other job's
     // entry is lost even if this write races with another job's save.
-    internal static async Task SaveContextAsync(string jobName, JobExecutionContext context)
+    internal async Task SaveContextAsync(string jobName, JobExecutionContext context)
     {
         _cache[jobName] = context;
         using (await _lock.EnterAsync())
         {
             var json = JsonConvert.SerializeObject(_cache, Formatting.Indented);
             var dir = _file.DirectoryName!;
+            Directory.CreateDirectory(dir);
             var tempPath = Path.Combine(dir, $".timers-{Guid.NewGuid():N}.tmp");
             try
             {
@@ -449,8 +472,4 @@ internal static class JobTimerStore
             }
         }
     }
-
-    // Clears the in-memory cache so unit tests start from a clean state.
-    // Only intended for test isolation — production code never calls this.
-    internal static void ResetForTesting() => _cache.Clear();
 }

@@ -27,7 +27,8 @@ public static class Bootstrapper
     // Scans the given assembly for types that opt-in to auto-registration via marker interfaces:
     //   IAddSingleton<T>         → registers the impl as T singleton
     //   IAddHostedSingleton<T>   → registers the impl as T singleton + IHostedService
-    //   IScheduleScopedJob       → wraps the impl in a ScheduledJobHostedService<T> hosted service
+    // Scheduled jobs (IScheduleScopedJob) are not run from here: AddInProcessSchedules does
+    // that, so a host whose device schedules work itself (the phone) can leave them out.
     public static IServiceCollection AddServicesFrom(this IServiceCollection services, Assembly assembly)
     {
         var openSingleton = typeof(IAddSingleton<>);
@@ -53,6 +54,16 @@ public static class Bootstrapper
             }
         }
 
+        return services;
+    }
+
+    // Runs every IScheduleScopedJob in the given assembly on this process's own timer, each
+    // wrapped in a ScheduledJobHostedService<T> that lives as long as the host. The desktop
+    // calls this for its slideshow and update check. The phone does not: Android can stop a
+    // phone app's process at any time, so its slideshow is left to Android's own scheduling
+    // (issue #203, step 5) rather than a timer inside the process.
+    public static IServiceCollection AddInProcessSchedules(this IServiceCollection services, Assembly assembly)
+    {
         // Discover all IScheduleScopedJob implementations and wrap each in a typed hosted service.
         // Reflection is used to call the generic helper because the job type is only known at runtime.
         var jobTypes = assembly.GetTypes()

@@ -14,6 +14,7 @@ public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
     private readonly SemaphoreSlim _messageCount = new(0);
     private readonly Task _writeTask;
     private readonly LogLevel _minLevel;
+    private readonly string _logDirectory;
     // volatile ensures the writer thread always reads the latest value without the JIT caching
     // it in a register across loop iterations that do not cross a full memory-barrier boundary.
     private volatile bool _running = true;
@@ -21,13 +22,20 @@ public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
     // Still running if _running is true, or if there are queued messages that have not yet been flushed.
     private bool Running => _running || _messages.Count > 0 || _messageCount.CurrentCount > 0;
 
-    public FileLoggerProvider() : this(LogLevel.Information) { }
+    // Logs go to logDirectory, which the host names: the logs folder inside its data folder
+    // (IAppFolders.DataFolder). The provider is created before the service container exists,
+    // so it takes the folder itself rather than the interface.
+    public FileLoggerProvider(string logDirectory) : this(logDirectory, LogLevel.Information) { }
 
-    public FileLoggerProvider(LogLevel minLevel)
+    public FileLoggerProvider(string logDirectory, LogLevel minLevel)
     {
+        _logDirectory = logDirectory.ThrowIfNull();
         _minLevel = minLevel;
         _writeTask = StartWriter();
     }
+
+    // The logs folder inside a data folder: where every host writes its log.
+    public static string LogDirectoryIn(string dataFolder) => Path.Combine(dataFolder, "logs");
 
     public void Dispose() => DisposeAsync().AsTask().Wait();
 
@@ -51,8 +59,7 @@ public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
     private async Task StartWriter()
     {
         var assName = Assembly.GetEntryAssembly()?.GetName().Name ?? "app";
-        var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
-        var logFileName = Path.Combine(logDir, $"{assName}.log");
+        var logFileName = Path.Combine(_logDirectory, $"{assName}.log");
         var logFile = new FileInfo(logFileName);
         if (!logFile.Directory.Exists)
             logFile.Directory.Create();

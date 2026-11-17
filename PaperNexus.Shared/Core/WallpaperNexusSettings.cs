@@ -101,24 +101,12 @@ public class AnnotationSettings
 
 public class DownloadSettings
 {
-    public string Folder { get; set; } = Path.Combine(DefaultPicturesDirectory, "PaperNexus");
+    // Empty until a folder is chosen; the settings store fills it with the host's default
+    // download folder (IAppFolders.DefaultDownloadFolder) when it loads the settings.
+    public string Folder { get; set; } = string.Empty;
     public int ResolutionWidth { get; set; } = 0;
     public int ResolutionHeight { get; set; } = 0;
     public int RetentionDays { get; set; } = 365;
-
-    // The user's pictures folder, the parent of the default download folder.
-    // Environment.GetFolderPath(MyPictures) returns an empty string on Linux when the
-    // XDG user-dirs config is missing, which would otherwise yield a relative path.
-    internal static string DefaultPicturesDirectory
-    {
-        get
-        {
-            var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-            if (string.IsNullOrEmpty(pictures))
-                pictures = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures");
-            return pictures;
-        }
-    }
 }
 
 // Plain data: the contents of settings.json. Reading and writing the file belongs to

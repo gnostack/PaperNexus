@@ -1,8 +1,10 @@
 <!-- The phone's main screen: five tabs along the bottom (issue #203, decision 9). TabbedPage places
-     its tabs at the bottom on Android and draws each page's Icon above its Header. Each page shows
-     only its own name until its content arrives in later steps. -->
+     its tabs at the bottom on Android and draws each page's Icon above its Header. Current shows the
+     current wallpaper (step 3); the other pages show only their own name until their content
+     arrives in step 4. -->
 <TabbedPage xmlns="https://github.com/avaloniaui"
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+            xmlns:views="using:PaperNexus.Views"
             x:Class="PaperNexus.Views.MainView"
             Background="#2B2B2B">
 
@@ -26,7 +28,7 @@
             <!-- Material Design icon "wallpaper" (Google, Apache License 2.0), https://github.com/google/material-design-icons -->
             <PathIcon Data="M4 4h7V2H4c-1.1 0-2 .9-2 2v7h2V4zm6 9l-4 5h12l-3-4-2.03 2.71L10 13zm7-4.5c0-.83-.67-1.5-1.5-1.5S14 7.67 14 8.5s.67 1.5 1.5 1.5S17 9.33 17 8.5zM20 2h-7v2h7v7h2V4c0-1.1-.9-2-2-2zm0 18h-7v2h7c1.1 0 2-.9 2-2v-7h-2v7zM4 13H2v7c0 1.1.9 2 2 2h7v-2H4v-7z"/>
         </ContentPage.Icon>
-        <TextBlock Text="Current" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <views:CurrentWallpaperView x:Name="CurrentWallpaper"/>
     </ContentPage>
 
     <ContentPage Header="Gallery">

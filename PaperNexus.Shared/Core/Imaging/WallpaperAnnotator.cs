@@ -64,9 +64,19 @@ internal static class WallpaperAnnotator
         return true;
     }
 
-    // Draws the annotation onto bitmap in place. An unparseable colour falls back to
-    // DefaultColor; the caller is expected to have logged it via IsValidColor.
+    // Draws the annotation onto bitmap in place, placed against the bitmap's own edges. An
+    // unparseable colour falls back to DefaultColor; the caller is expected to have logged it
+    // via IsValidColor.
     public static void Draw(SKBitmap bitmap, AnnotationRequest request)
+    {
+        var wholeBitmap = new SKRectI(0, 0, bitmap.Width, bitmap.Height);
+        Draw(bitmap, request, wholeBitmap);
+    }
+
+    // Draws the annotation onto bitmap, placed against the edges of area instead of the
+    // bitmap's: the margins below are measured from area. The phone passes the part of its
+    // wallpaper the screen shows with no system bar over it.
+    public static void Draw(SKBitmap bitmap, AnnotationRequest request, SKRectI area)
     {
         if (!TryParseHexColor(request.Color, out var textColor))
             TryParseHexColor(DefaultColor, out textColor);
@@ -77,10 +87,10 @@ internal static class WallpaperAnnotator
 
         var fontSize = request.FontSize > 0 ? request.FontSize : 18;
         var rightAligned = request.Position is AnnotationPosition.TopRight or AnnotationPosition.BottomRight;
-        var x = rightAligned ? bitmap.Width - SideMargin : SideMargin;
+        var x = rightAligned ? area.Right - SideMargin : area.Left + SideMargin;
         var isTop = request.Position is AnnotationPosition.TopLeft or AnnotationPosition.TopRight;
         // y is the top edge of the title line
-        var y = isTop ? TopMargin : bitmap.Height - fontSize - BottomMargin;
+        var y = isTop ? area.Top + TopMargin : area.Bottom - fontSize - BottomMargin;
 
         using var typeface = BundledFonts.ResolveTypeface(request.FontFamily);
         // HarfBuzz shaping applies the font's kerning and ligature tables, which Skia's

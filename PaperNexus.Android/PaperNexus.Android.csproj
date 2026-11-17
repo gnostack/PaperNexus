@@ -18,6 +18,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- AVLN3001: a view with no parameterless constructor is not reachable by Avalonia's runtime
+         markup loader. MainView deliberately has none: it is created from the service container
+         with its view model, as the desktop's windows are, and the app never uses the runtime
+         loader. The cost is that the IDE markup previewer cannot open it. -->
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
   </PropertyGroup>
 
   <!-- Only the Android platform package; every other package arrives through PaperNexus.Shared.

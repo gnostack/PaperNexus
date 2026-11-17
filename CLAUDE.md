@@ -6,7 +6,7 @@
 
 - `PaperNexus.Shared` - class library (`net10.0`) with everything both devices use: settings model and store, wallpaper sources and downloads, wallpaper switching, the imaging layer, the view models, easter eggs, logging, DI helpers. No `Avalonia.Desktop` and no Windows/Linux-only API, so the Android host references it unchanged.
 - `PaperNexus` - the desktop host (Windows/Linux exe): `Program`, the tray `App`, every window and dialog, install, auto-update, single instance, startup registration and the platform layer. The project, assembly and exe keep the name `PaperNexus`, because the release asset names, `WM_CLASS` and `StartupWMClass` depend on it.
-- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, and its screens. So far it opens on five bottom tabs that show only their names (step 2 of issue #203). Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
+- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); the other four tabs show only their names until step 4. Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
 - `PaperNexus.Shared.Tests` covers `PaperNexus.Shared`; `PaperNexus.Tests` covers the desktop host. Each references only the project it covers.
 
 ## Quick Reference
@@ -43,19 +43,19 @@ PaperNexus/
 ├── docs/
 │   ├── ui-style-guide.md               # Avalonia AXAML patterns reference
 │   ├── platform-support.md             # Windows/Linux platform layer reference
-│   └── android.md                      # Android host: prerequisites, build, emulator
+│   └── android.md                      # Android host: build, emulator, Current tab, files, wallpaper canvas
 ├── PaperNexus.Shared/                   # Shared class library (everything both devices use)
 │   ├── PaperNexus.Shared.csproj         # Declares every package; embeds RepositoryUrl
 │   ├── GlobalUsings.cs                  # Project-wide usings (copy of the host's minus Platform)
 │   ├── DownloadWallpapers.cs            # Scheduled wallpaper downloader (IDownloadWallpapers)
 │   ├── HttpWallpaperSourceService.cs    # HTTP feed client + WallpaperImage DTO
 │   ├── SwitchWallpaper.cs               # Wallpaper switching logic + job wrapper
-│   ├── IWallpaperApplier.cs             # Sets the device wallpaper (host implements)
+│   ├── IWallpaperApplier.cs             # Sets the device wallpaper (host implements); WallpaperCanvas
 │   ├── ICheckForUpdates.cs              # Self-update check (only a self-updating host implements)
 │   ├── Assets/                          # Cinzel.ttf (embedded) + its OFL licence
 │   ├── Core/                            # DI, logging, scheduling, settings, easter eggs
 │   │   ├── Imaging/                    # All SkiaSharp code: decode/encode, resize, annotation, fonts, tray icons
-│   │   ├── ISettingsDirectory.cs       # Host interface: folder holding settings.json
+│   │   ├── IAppFolders.cs              # Host interface: settings, data and default download folders
 │   │   ├── IAppInfo.cs                 # Host interface: version label, started in debug mode
 │   │   ├── IShellOpener.cs             # Host interface: open a file/URL/folder
 │   │   ├── IStartupRegistration.cs     # Host interface: run at sign-in (optional)
@@ -63,11 +63,13 @@ PaperNexus/
 │   │   ├── Extensions.cs               # Utility extension methods
 │   │   ├── FileLogger.cs               # File-based ILogger implementation (async queue)
 │   │   ├── GitHubRepository.cs         # Owner/name parsed from the build-embedded RepositoryUrl
-│   │   ├── ScheduledService.cs         # ScheduledJobService base, IScheduleScopedJob
+│   │   ├── ScheduledService.cs         # ScheduledJobService base, IScheduleScopedJob, JobTimerStore
 │   │   ├── SettingsStore.cs            # ISettingsStore: the only reader/writer of settings.json
 │   │   └── WallpaperNexusSettings.cs   # Settings model and enums (plain data, no file access)
 │   ├── ViewModels/
-│   │   ├── WallpaperConfigViewModel.cs # MVVM ViewModel (CommunityToolkit.Mvvm)
+│   │   ├── WallpaperConfigViewModel.cs # The desktop settings window's view model (CommunityToolkit.Mvvm)
+│   │   ├── CurrentWallpaperViewModel.cs # The phone's Current tab
+│   │   ├── WallpaperDisplayName.cs     # A wallpaper's shown name from its file name
 │   │   └── GalleryItem.cs              # Gallery item view model
 │   └── Views/
 │       └── EasterEggOverlay.axaml(.cs) # Easter egg animation control (used by MainWindow)
@@ -82,7 +84,7 @@ PaperNexus/
 │   ├── Assets/                          # logo.ico, logo.png
 │   ├── Core/
 │   │   └── Platform/                   # All Windows/Linux differences live here
-│   │       ├── PlatformPaths.cs        # Executable name, install dir, path comparison; DesktopSettingsDirectory
+│   │       ├── PlatformPaths.cs        # Executable name, install dir, Pictures, path comparison; DesktopAppFolders
 │   │       ├── SingleInstance.cs       # Mutex+event (Windows) / Unix socket (Linux)
 │   │       ├── StartupRegistration.cs  # Run key (Windows) / XDG autostart (Linux); DesktopStartupRegistration
 │   │       ├── IWallpaperBackend.cs    # Per-OS wallpaper backend contract
@@ -100,11 +102,16 @@ PaperNexus/
 ├── PaperNexus.Tests/                    # Tests for the desktop host (xUnit)
 └── PaperNexus.Android/                  # Android host (net10.0-android)
     ├── PaperNexus.Android.csproj        # References PaperNexus.Shared + Avalonia.Android; links the desktop logo
-    ├── MainApplication.cs               # [Application]: label, launcher icon, theme; AvaloniaAndroidApplication<App>
+    ├── MainApplication.cs               # [Application]: label, icon, theme; builds the service container
     ├── MainActivity.cs                  # Launcher activity (AvaloniaMainActivity)
     ├── App.axaml(.cs)                   # The phone's Avalonia App: MainView inside PageNavigationHost
+    ├── Platform/
+    │   ├── AndroidAppFolders.cs        # IAppFolders: files (settings) and no_backup (everything else)
+    │   ├── AndroidWallpaperApplier.cs  # IWallpaperApplier: WallpaperManager, both screens; the canvas
+    │   └── AndroidPermissions.cs       # INTERNET and SET_WALLPAPER
     ├── Views/
-    │   └── MainView.axaml(.cs)         # TabbedPage: Current, Gallery, Favorites, Sources, Settings
+    │   ├── MainView.axaml(.cs)         # TabbedPage: Current, Gallery, Favorites, Sources, Settings
+    │   └── CurrentWallpaperView.axaml(.cs) # The Current tab
     └── Resources/
         ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window)
         └── mipmap-anydpi-v26/icon.xml  # Adaptive launcher icon around the linked logo
@@ -113,11 +120,11 @@ PaperNexus/
 ## Key Architecture
 
 - **MVVM** with `CommunityToolkit.Mvvm` (`[ObservableProperty]`, `[RelayCommand]`)
-- **Scheduled Jobs (preferred):** `IScheduleScopedJob` - separate business logic from scheduling. Job wrapper delegates to injected interface. Auto-discovered by `AddServicesFrom()`.
+- **Scheduled Jobs (preferred):** `IScheduleScopedJob` - separate business logic from scheduling. Job wrapper delegates to injected interface. Run on the process's own timer by `AddInProcessSchedules()`, which the desktop calls and the phone does not (the phone's slideshow is Android's to schedule, issue #203 step 5).
 - **Scheduled Jobs (legacy):** `ScheduledJobService` base class - `DownloadWallpapers` extends directly. Registered via `IAddHostedSingleton<T>`.
-- **DI:** `AddServicesFrom(assembly)` auto-discovers `IAddSingleton<T>`, `IAddHostedSingleton<T>`, and `IScheduleScopedJob` implementations. `App` calls it twice: on the `PaperNexus.Shared` assembly, then on the desktop assembly. Screens are per-request registrations listed explicitly in `App`'s service setup (`MainWindow`, `SplashScreen`, `EasterEggListDialog`, `WallpaperConfigViewModel`, plus a `Func<EasterEggListDialog>` factory); `App` resolves them from its host instead of calling `new`. These windows have no parameterless constructor, so `AVLN3001` is suppressed in the csproj and the IDE markup previewer cannot open them.
-- **Host interfaces (`PaperNexus.Shared/Core/`):** shared code never calls a desktop-only type; it receives what only the host knows by constructor injection. `ISettingsDirectory` (folder holding `settings.json`), `IAppInfo` (version label, started in debug mode), `IShellOpener` (open a file, URL or folder), `IStartupRegistration` (run at sign-in), plus `IWallpaperApplier` and `ICheckForUpdates`. The desktop implementations (`DesktopSettingsDirectory`, `DesktopAppInfo`, `DesktopShellOpener`, `DesktopStartupRegistration`, `WallpaperApplier`, `AutoUpdateService`) register through `IAddSingleton<T>`. `IStartupRegistration`, `ICheckForUpdates`, `ISwitchWallpaper` and `IDownloadWallpapers` are optional view model parameters: a host without the capability registers nothing and the view model skips or reports it. A host uses only the shared project's `public` types; `InternalsVisibleTo` is granted to the test projects only.
-- **Settings store (`Core/SettingsStore.cs`):** `ISettingsStore` (`LoadAsync`/`SaveAsync(settings)`) is a container singleton rooted at the folder `ISettingsDirectory` names (the default install directory on the desktop). **Nothing reaches `settings.json` except through `ISettingsStore`**, received by constructor injection; tests root a store in a temp directory via `TestHelpers.CreateSettingsStore()`. The one exception is `InstallScreen`, which runs before the container exists and writes a fresh file directly to the `PlatformPaths` location.
+- **DI:** `AddServicesFrom(assembly)` auto-discovers `IAddSingleton<T>` and `IAddHostedSingleton<T>` implementations; `AddInProcessSchedules(assembly)` wraps each `IScheduleScopedJob` in a hosted scheduler. The desktop `App` calls both on the `PaperNexus.Shared` assembly, then on the desktop assembly; the phone's `MainApplication` calls only `AddServicesFrom`, on the shared assembly then its own. `timers.json` belongs to the `JobTimerStore` singleton, which both scheduler types receive by constructor. Screens are per-request registrations listed explicitly in `App`'s service setup (`MainWindow`, `SplashScreen`, `EasterEggListDialog`, `WallpaperConfigViewModel`, plus a `Func<EasterEggListDialog>` factory); `App` resolves them from its host instead of calling `new`. These windows have no parameterless constructor, so `AVLN3001` is suppressed in the csproj and the IDE markup previewer cannot open them.
+- **Host interfaces (`PaperNexus.Shared/Core/`):** shared code never calls a desktop-only type; it receives what only the host knows by constructor injection. `IAppFolders` (the folder holding `settings.json`, the data folder for `current.png`, `timers.json` and `logs/`, and the default download folder), `IAppInfo` (version label, started in debug mode), `IShellOpener` (open a file, URL or folder), `IStartupRegistration` (run at sign-in), plus `IWallpaperApplier` and `ICheckForUpdates`. The desktop implementations (`DesktopAppFolders`, `DesktopAppInfo`, `DesktopShellOpener`, `DesktopStartupRegistration`, `WallpaperApplier`, `AutoUpdateService`) and the phone's (`AndroidAppFolders`, `AndroidWallpaperApplier`) register through `IAddSingleton<T>`. Shared code never uses `AppContext.BaseDirectory` or a Pictures folder itself: those are `DesktopAppFolders` answers. `IStartupRegistration`, `ICheckForUpdates`, `ISwitchWallpaper` and `IDownloadWallpapers` are optional view model parameters: a host without the capability registers nothing and the view model skips or reports it. A host uses only the shared project's `public` types; `InternalsVisibleTo` is granted to the test projects only.
+- **Settings store (`Core/SettingsStore.cs`):** `ISettingsStore` (`LoadAsync`/`SaveAsync(settings)`) is a container singleton rooted at `IAppFolders.SettingsFolder` (the default install directory on the desktop, the app's files folder on the phone). It also fills an empty download folder with `IAppFolders.DefaultDownloadFolder`, so the settings model names no folder itself. **Nothing reaches `settings.json` except through `ISettingsStore`**, received by constructor injection; tests root a store in a temp directory via `TestHelpers.CreateSettingsStore()`. The one exception is `InstallScreen`, which runs before the container exists and writes a fresh file directly to the `PlatformPaths` location.
 - **Platform Layer (`PaperNexus/Core/Platform/`, desktop host only):** Every Windows/Linux difference is isolated here - no other file may call a Windows-only API, hardcode `.exe`, or compare paths case-insensitively. See `docs/platform-support.md`.
 - **Imaging Layer (`PaperNexus.Shared/Core/Imaging/`):** All image decoding, encoding and drawing lives here - resize-to-fit, gallery thumbnails, icon scaling, the tray menu icons, wallpaper annotation, the PNG/JPEG encode, and font lookup. No other file in either project may reference SkiaSharp (the desktop host calls `ImageResizing` and `MenuIcons` for its tray and launcher icons); callers pass paths, streams and settings in and get bytes back. Tests may use SkiaSharp only to build fixture images or read dimensions.
 - **Auto-Update:** Queries GitHub Releases API for the repository returned by `GitHubRepository.Current`, compares `vN` tag as integer against `Assembly.Version.Major`, downloads the per-platform asset (`PaperNexus.exe` / `PaperNexus-linux-x64`), verifies it (Authenticode on Windows, published SHA-256 on Linux), swaps via self-deleting script (`.bat` / `.sh`) with rollback.
@@ -125,8 +132,9 @@ PaperNexus/
 - **Auto-Install:** First run copies exe to the chosen install directory (default `%LOCALAPPDATA%\PaperNexus\`), migrates settings, writes a `.installed` sentinel file alongside the exe, then relaunches. On subsequent launches, `IsRunningFromInstallLocation` detects the sentinel file so custom install paths (not equal to the default AppData path) are recognised correctly and the install flow is not re-triggered.
 - **Single Instance:** Named `Mutex` + `EventWaitHandle` for IPC (signals running instance to show UI).
 - **Tray-only:** `ShutdownMode.OnExplicitShutdown`. Menu: "Open Settings", "Next Wallpaper", "Random Wallpaper", "Exit". Each item has a programmatically-drawn icon (`Core/Imaging/MenuIcons.cs`).
-- **Wallpaper Processing:** Writes to `current.png`/`.jpg`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp with HarfBuzz shaping for kerning) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB.
-- **`ISwitchWallpaper`:** Exposes `WallpaperChanged` event, `SwitchToNextAsync()`, and `SwitchToRandomAsync()`.
+- **Wallpaper Processing:** Writes to `current.png`/`.jpg` in `IAppFolders.DataFolder`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp with HarfBuzz shaping for kerning) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB. When `IWallpaperApplier.GetCanvas()` returns a `WallpaperCanvas` (the phone), the picture is first drawn onto the canvas for the fill style (`WallpaperFitting`; Span draws as Fill) and the title is placed inside the canvas's title area, the part the screen shows clear of the system bars; with `null` (the desktop) the picture keeps its size and the operating system fits it.
+- **`ISwitchWallpaper`:** Exposes `WallpaperChanged`, `SwitchToNextAsync()`, `SwitchToRandomAsync()`, `SwitchToSpecificAsync()` and `HasWallpapersAsync()`. Switches run one at a time. A wallpaper the device refuses (`SetWallpaper` returns false) throws `WallpaperRefusedException`; it is not recorded as current and `WallpaperChanged` is not raised.
+- **Downloads:** one run at a time. Each picture is written as `<name>.download` and renamed into place when complete, the way the settings store saves; each run deletes partial files a stopped process left behind, and nothing lists a `.download` file as a picture.
 - **Wallpaper Sources (JPath-based):** `HttpWallpaperSourceService` uses Newtonsoft `SelectTokens` with `ImageUrlJPath`/`TitleJPath`. Sources edited via `WallpaperSourceDialog` (name, URL, JPath, cron, enabled toggle, live Test button).
 - **`NonScrollableComboBox`:** Suppresses scroll wheel unless dropdown is open - prevents accidental changes while scrolling the settings page.
 - **Favorites:** Heart toggle, stored in `settings.json`, excluded from retention cleanup. The Favorites tab shows one `GalleryItem` card per favorite (thumbnail, title, set-as-current and remove buttons), built by the ViewModel's `FavoriteWallpapers` collection and sharing the Gallery's thumbnail load/dispose handlers.
@@ -145,9 +153,9 @@ No `Avalonia.Diagnostics` reference: it has no 12.x release, and `AttachDevTools
 
 ## Settings
 
-`PaperNexus.Shared/Core/WallpaperNexusSettings.cs` (plain data) → `%LOCALAPPDATA%\PaperNexus\settings.json` (`~/.local/share/PaperNexus/settings.json` on Linux), read and written only by `SettingsStore`. Load fills defaults and repairs empty or invalid fields, and returns a fresh default instance when the file is missing or corrupt; save writes a temp file then renames it over `settings.json`. `WallpaperNexusSettings.JsonFormat` is the on-disk JSON shape.
+`PaperNexus.Shared/Core/WallpaperNexusSettings.cs` (plain data) → `%LOCALAPPDATA%\PaperNexus\settings.json` (`~/.local/share/PaperNexus/settings.json` on Linux, the app's files folder on Android), read and written only by `SettingsStore`. Load fills defaults and repairs empty or invalid fields, and returns a fresh default instance when the file is missing or corrupt; save writes a temp file then renames it over `settings.json`. `WallpaperNexusSettings.JsonFormat` is the on-disk JSON shape.
 - `SlideshowSettings` - `Enabled` flag, schedule mode, interval (double) + `IntervalType` (Seconds/Minutes/Hours/Days/Weeks/Months/Years), cron expression, order (alphabetical/random/oldest/newest), fill style, `FavoritePriorityEnabled`, `FavoritePriorityWeight` (default: 3)
-- `DownloadSettings` - folder path (default: `%USERPROFILE%\Pictures\PaperNexus`, computed by `DownloadSettings.DefaultPicturesDirectory`), `ResolutionWidth`/`ResolutionHeight`, retention days (default: 365)
+- `DownloadSettings` - folder path (empty in the model; the store fills it with the host's default: `%USERPROFILE%\Pictures\PaperNexus` on the desktop, from `PlatformPaths.DefaultPicturesDirectory`; the app's no-backup `Wallpapers` folder on the phone), `ResolutionWidth`/`ResolutionHeight`, retention days (default: 365)
 - `List<WallpaperSource>` - name, URL, `ImageUrlJPath`, `TitleJPath`, cron, `IsEnabled`, `LastDownloadUtc`; defaults: "Bing Daily 4k" + "Spotlight Daily 4k"
 - `AnnotationSettings` - font (default Cinzel, bundled; the picker lists every installed system family, never a hardcoded name list), size (default 18, UI range 8–200 - an absolute point size, so a title sized for 1080p is tiny on 4K), color (#F5F5F5), position, `OutlineEnabled` (stroke width `fontSize/12` with a 1px floor, drawn as a stroke pass then a fill pass so the outline does not thin small glyphs)
 - `FavoriteWallpapers`, `BannedWallpapers`, window position/size, `RunOnStartup`, `AutoUpdatesEnabled`, `DebugMode`, `AnnotateWallpaper`, `MinimizeToTray`, `CurrentWallpaperPath`
@@ -183,7 +191,7 @@ Enforced via `.editorconfig`: .NET 10, C#, file-scoped namespaces, 4-space inden
 ## Guidelines
 
 - .NET 10.0, Avalonia UI (not WPF), root namespace `PaperNexus` / `PaperNexus.Core` in both projects (moved files kept their namespaces)
-- **Where new code goes:** anything the phone also needs goes in `PaperNexus.Shared`; anything that calls a desktop-only API, opens a `Window`, or touches install/update/tray goes in `PaperNexus`. When shared code needs a host capability, add an interface in `PaperNexus.Shared/Core/` and a desktop implementation registered with `IAddSingleton<T>`
+- **Where new code goes:** anything the phone also needs goes in `PaperNexus.Shared`; anything that calls a desktop-only API, opens a `Window`, or touches install/update/tray goes in `PaperNexus`. When shared code needs a host capability, add an interface in `PaperNexus.Shared/Core/` (or a question on an existing one) and an implementation in each host registered with `IAddSingleton<T>` (the phone's live in `PaperNexus.Android/Platform/`)
 - **Platform differences go in `PaperNexus/Core/Platform/`** (desktop host; `PaperNexus.Shared` has none) - read `docs/platform-support.md` before touching wallpaper setting, startup registration, single-instance, install/update paths, or any path comparison
 - AXAML assets: `avares://PaperNexus/Assets/...`
 - New scheduled jobs: use `IScheduleScopedJob` pattern, not `ScheduledJobService`
@@ -196,6 +204,6 @@ Enforced via `.editorconfig`: .NET 10, C#, file-scoped namespaces, 4-space inden
 - **CodeQL:** code scanning default setup (`actions` + `csharp`) supplies the required `CodeQL` check. It only attaches to PRs opened *after* it was enabled. Closing and reopening an older PR does not trigger it. Push a new commit to the branch, an empty one is enough, for the check to appear.
 - **Always start work on a feature branch** - never commit directly to `main`; create a descriptive branch (e.g., `feature/wallpaper-preview`, `fix/auto-update`) before making any changes
 - **Comment addition tasks:** Add comments in small, focused batches (1–3 files at a time) rather than delegating all files to a single agent. Large batches risk code corruption.
-- **Android host:** read `docs/android.md` before touching `PaperNexus.Android`, the Android build or CI steps, or driving the emulator; update it when the prerequisites, the commands, or the app's structure change. Verify Android changes on the emulator from a screenshot of the real screen.
+- **Android host:** read `docs/android.md` before touching `PaperNexus.Android`, the Android build or CI steps, the phone's folders or wallpaper canvas, or driving the emulator; update it when the prerequisites, the commands, the app's structure or a measured Android behavior change. Verify Android changes on the emulator from a screenshot of the real screen.
 - **Verify Linux changes against the real desktop**, not the app log - read the desktop's own state (e.g. `gsettings get org.gnome.desktop.background picture-uri`). Setup is in `docs/platform-support.md`.
 - **No system-level calls in unit tests:** Tests must never invoke real OS APIs (e.g., `NativeMethods`, registry writes, `SetDesktopWallpaper`). Use injectable interfaces with no-op test doubles (e.g., `NoOpWallpaperApplier`) to isolate from the system.

@@ -6,9 +6,26 @@ namespace PaperNexus.Tests;
 
 internal static class TestHelpers
 {
-    internal static readonly string BaseDir = AppContext.BaseDirectory;
+    // The data folder every test's host folders name: a temporary folder for this test run,
+    // so the processed current.png/current.jpg never land beside the test assembly.
+    internal static readonly string BaseDir = CreateDataFolder();
     internal static readonly string PngPath = Path.Combine(BaseDir, "current.png");
     internal static readonly string JpgPath = Path.Combine(BaseDir, "current.jpg");
+
+    // Host folders for tests: settings and downloads are given per test, working files go to
+    // BaseDir.
+    internal static readonly TestAppFolders AppFolders = new(BaseDir);
+
+    private static string CreateDataFolder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), $"PaperNexus_Data_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(folder);
+        return folder;
+    }
+
+    // A timer store for code that needs one but whose test never runs a schedule; nothing is
+    // written to its folder.
+    internal static JobTimerStore UnusedTimerStore() => new(BaseDir);
 
     internal static void CreateSmallPng(string path, byte r = 100, byte g = 150, byte b = 200)
     {
@@ -84,11 +101,13 @@ internal static class TestHelpers
 
     // A settings store rooted in its own new temporary directory. Tests never use the
     // production store, so no test can read, write or delete the real settings.json.
+    // Its default download folder is a "Downloads" folder beside the settings, which no test
+    // creates unless it means to.
     internal static SettingsStore CreateSettingsStore()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Settings_{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
-        return new SettingsStore(directory);
+        return new SettingsStore(directory, Path.Combine(directory, "Downloads"));
     }
 
     // A settings view model wired to the given store and to do-nothing host services, so no
@@ -96,7 +115,7 @@ internal static class TestHelpers
     // they were when the view model looked them up from a running app that tests never had.
     internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store)
     {
-        var viewModel = new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener());
+        var viewModel = new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders);
         return viewModel;
     }
 
@@ -142,15 +161,21 @@ internal static class TestHelpers
     }
 }
 
-// Host stand-ins for the shared code's host interfaces.
-internal sealed class TestSettingsDirectory : ISettingsDirectory
+// Host stand-ins for the shared code's host interfaces. Every folder is the one given.
+internal sealed class TestAppFolders : IAppFolders
 {
-    public TestSettingsDirectory(string fullPath)
+    public TestAppFolders(string folder)
     {
-        FullPath = fullPath;
+        SettingsFolder = folder;
+        DataFolder = folder;
+        DefaultDownloadFolder = Path.Combine(folder, "Downloads");
     }
 
-    public string FullPath { get; }
+    public string SettingsFolder { get; }
+
+    public string DataFolder { get; }
+
+    public string DefaultDownloadFolder { get; }
 }
 
 internal sealed class TestAppInfo : IAppInfo

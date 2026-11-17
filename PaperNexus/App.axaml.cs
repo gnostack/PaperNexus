@@ -53,7 +53,8 @@ public partial class App : Application
                 .ConfigureServices(services =>
                 {
                     var minLogLevel = Program.IsDebugMode ? LogLevel.Debug : LogLevel.Information;
-                    services.AddLogging(b => b.AddProvider(new FileLoggerProvider(minLogLevel)));
+                    var logDirectory = FileLoggerProvider.LogDirectoryIn(new DesktopAppFolders().DataFolder);
+                    services.AddLogging(b => b.AddProvider(new FileLoggerProvider(logDirectory, minLogLevel)));
                     services.AddSingleton<HttpWallpaperSourceService>();
                     // Screens are per request: each opening gets a fresh window, view model and
                     // dialog with the settings store injected. The auto-registration below only
@@ -64,11 +65,14 @@ public partial class App : Application
                     services.AddTransient<SplashScreen>();
                     services.AddTransient<EasterEggListDialog>();
                     services.AddTransient<Func<EasterEggListDialog>>(sp => () => sp.GetRequiredService<EasterEggListDialog>());
-                    // Auto-discover and register all IAddSingleton / IAddHostedSingleton / IScheduleScopedJob
-                    // implementations: the shared services first, then this host's implementations of
-                    // the interfaces they need (settings folder, wallpaper applier, shell, updates).
+                    // Auto-discover and register all IAddSingleton / IAddHostedSingleton implementations:
+                    // the shared services first, then this host's implementations of the interfaces
+                    // they need (folders, wallpaper applier, shell, updates). The desktop runs its
+                    // scheduled jobs (the slideshow, the update check) on its own timers.
                     services.AddServicesFrom(typeof(WallpaperConfigViewModel).Assembly);
+                    services.AddInProcessSchedules(typeof(WallpaperConfigViewModel).Assembly);
                     services.AddServicesFrom(typeof(App).Assembly);
+                    services.AddInProcessSchedules(typeof(App).Assembly);
                 })
                 .Build();
 

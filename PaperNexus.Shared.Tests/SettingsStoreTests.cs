@@ -65,6 +65,48 @@ public class SettingsStoreTests : IDisposable
         Assert.True(loaded.RunOnStartup);
     }
 
+    // The host names the download folder used when the settings name none: a fresh install
+    // (no file) and a file whose folder is blank both get it.
+    [Fact]
+    public async Task Load_NoFile_UsesTheHostsDownloadFolder()
+    {
+        var directory = Path.GetDirectoryName(_store.FilePath);
+
+        var loaded = await _store.LoadAsync();
+
+        Assert.Equal(Path.Combine(directory, "Downloads"), loaded.Download.Folder);
+        Assert.True(loaded.IsConfigured);
+    }
+
+    [Fact]
+    public async Task Load_BlankFolder_UsesTheHostsDownloadFolder()
+    {
+        var directory = Path.GetDirectoryName(_store.FilePath);
+        await _store.SaveAsync(new WallpaperNexusSettings { Download = new DownloadSettings { Folder = "  " } });
+
+        var loaded = await _store.LoadAsync();
+
+        Assert.Equal(Path.Combine(directory, "Downloads"), loaded.Download.Folder);
+    }
+
+    // A folder the person chose is kept.
+    [Fact]
+    public async Task Load_ChosenFolder_IsKept()
+    {
+        await _store.SaveAsync(new WallpaperNexusSettings { Download = new DownloadSettings { Folder = "/somewhere/else" } });
+
+        var loaded = await _store.LoadAsync();
+
+        Assert.Equal("/somewhere/else", loaded.Download.Folder);
+    }
+
+    // The settings model itself names no folder, so it never depends on the device.
+    [Fact]
+    public void NewSettings_NameNoDownloadFolder()
+    {
+        Assert.Equal(string.Empty, new WallpaperNexusSettings().Download.Folder);
+    }
+
     // The container hands out one production store, so every consumer shares it. The host
     // supplies the settings folder; a temporary one stands in for it here.
     [Fact]
@@ -72,7 +114,7 @@ public class SettingsStoreTests : IDisposable
     {
         var directory = Path.GetDirectoryName(_store.FilePath);
         var services = new ServiceCollection();
-        services.AddSingleton<ISettingsDirectory>(new TestSettingsDirectory(directory));
+        services.AddSingleton<IAppFolders>(new TestAppFolders(directory));
         services.AddServicesFrom(typeof(SettingsStore).Assembly);
         using var provider = services.BuildServiceProvider();
 

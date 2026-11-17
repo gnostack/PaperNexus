@@ -15,7 +15,7 @@ public class SettingsLocationTests : IDisposable
     {
         _directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Settings_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _store = new SettingsStore(new TemporarySettingsDirectory(_directory));
+        _store = new SettingsStore(new TemporaryAppFolders(_directory));
     }
 
     public void Dispose()
@@ -24,12 +24,33 @@ public class SettingsLocationTests : IDisposable
         catch { }
     }
 
+    // The desktop keeps every file where it kept them before the folders became a host
+    // interface: settings in the install directory, working files beside the executable,
+    // downloads in Pictures/PaperNexus.
     [Fact]
-    public void DesktopSettingsDirectory_IsTheDefaultInstallDirectory()
+    public void DesktopAppFolders_AreTheDesktopsFixedLocations()
     {
-        var directory = new DesktopSettingsDirectory();
+        var folders = new DesktopAppFolders();
 
-        Assert.Equal(PlatformPaths.DefaultInstallDirectory, directory.FullPath);
+        Assert.Equal(PlatformPaths.DefaultInstallDirectory, folders.SettingsFolder);
+        Assert.Equal(AppContext.BaseDirectory, folders.DataFolder);
+        Assert.Equal(Path.Combine(PlatformPaths.DefaultPicturesDirectory, "PaperNexus"), folders.DefaultDownloadFolder);
+    }
+
+    [Fact]
+    public void DefaultPicturesDirectory_IsAnAbsolutePath()
+    {
+        Assert.True(Path.IsPathRooted(PlatformPaths.DefaultPicturesDirectory));
+    }
+
+    // A settings file that names no download folder (a fresh install) gets the desktop's
+    // Pictures/PaperNexus folder, as it did when the default lived in the settings model.
+    [Fact]
+    public async Task Load_NoFolderSaved_UsesTheDesktopDownloadFolder()
+    {
+        var loaded = await _store.LoadAsync();
+
+        Assert.Equal(Path.Combine(PlatformPaths.DefaultPicturesDirectory, "PaperNexus"), loaded.Download.Folder);
     }
 
     // Guards the reason the store exists (issue 190): the suite used to delete and overwrite
@@ -39,7 +60,7 @@ public class SettingsLocationTests : IDisposable
     [Fact]
     public async Task TemporaryStoreCycle_LeavesRealSettingsFileUnchanged()
     {
-        var realDirectory = new DesktopSettingsDirectory().FullPath;
+        var realDirectory = new DesktopAppFolders().SettingsFolder;
         var realPath = Path.Combine(realDirectory, SettingsStore.FileName);
         var existedBefore = File.Exists(realPath);
         var timestampBefore = existedBefore ? File.GetLastWriteTimeUtc(realPath) : DateTime.MinValue;
@@ -63,13 +84,20 @@ public class SettingsLocationTests : IDisposable
         }
     }
 
-    private sealed class TemporarySettingsDirectory : ISettingsDirectory
+    // Settings in a temporary folder; downloads default to the desktop's real default, since
+    // these tests never download anything.
+    private sealed class TemporaryAppFolders : IAppFolders
     {
-        public TemporarySettingsDirectory(string fullPath)
+        public TemporaryAppFolders(string fullPath)
         {
-            FullPath = fullPath;
+            SettingsFolder = fullPath;
+            DataFolder = fullPath;
         }
 
-        public string FullPath { get; }
+        public string SettingsFolder { get; }
+
+        public string DataFolder { get; }
+
+        public string DefaultDownloadFolder => new DesktopAppFolders().DefaultDownloadFolder;
     }
 }

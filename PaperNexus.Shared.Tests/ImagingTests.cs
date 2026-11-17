@@ -80,6 +80,18 @@ public class ImagingTests : IDisposable
         Assert.Equal((ImageResizing.ThumbnailWidth, expectedHeight), TestHelpers.ReadDimensions(png));
     }
 
+    // The phone's Current tab shows the picture at the screen's pixel width.
+    [Fact]
+    public void CreatePngOfWidth_IsTheRequestedWidthWithProportionalHeight()
+    {
+        var path = Path.Combine(_tempDir, "wide-source.png");
+        TestHelpers.CreateTestPng(path, 3840, 2160);
+
+        var png = ImageResizing.CreatePngOfWidth(path, 1080);
+
+        Assert.Equal((1080, 608), TestHelpers.ReadDimensions(png));
+    }
+
     [Fact]
     public void ResizeToSquarePng_ProducesTheRequestedIconSize()
     {

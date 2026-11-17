@@ -34,6 +34,20 @@ public static class PlatformPaths
         }
     }
 
+    // The user's pictures folder, the parent of the default download folder.
+    // Environment.GetFolderPath(MyPictures) returns an empty string on Linux when the
+    // XDG user-dirs config is missing, which would otherwise yield a relative path.
+    public static string DefaultPicturesDirectory
+    {
+        get
+        {
+            var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            if (string.IsNullOrEmpty(pictures))
+                pictures = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures");
+            return pictures;
+        }
+    }
+
     // Marks a freshly copied file as executable. No-op on Windows, which has no execute bit.
     public static void EnsureExecutable(string path)
     {
@@ -53,9 +67,16 @@ public static class PlatformPaths
     }
 }
 
-// The desktop's settings folder for the shared settings store: the default install
-// directory, whatever folder the executable itself was installed to.
-internal sealed class DesktopSettingsDirectory : ISettingsDirectory, IAddSingleton<ISettingsDirectory>
+// Where the desktop keeps the app's files:
+// - settings.json in the default install directory, whatever folder the executable itself
+//   was installed to;
+// - the processed current wallpaper, timers.json and the logs folder beside the executable;
+// - downloaded wallpapers in Pictures/PaperNexus unless the person chose another folder.
+internal sealed class DesktopAppFolders : IAppFolders, IAddSingleton<IAppFolders>
 {
-    public string FullPath => PlatformPaths.DefaultInstallDirectory;
+    public string SettingsFolder => PlatformPaths.DefaultInstallDirectory;
+
+    public string DataFolder => AppContext.BaseDirectory;
+
+    public string DefaultDownloadFolder => Path.Combine(PlatformPaths.DefaultPicturesDirectory, "PaperNexus");
 }

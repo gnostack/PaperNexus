@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.DependencyInjection;
 using PaperNexus.Views;
 
 namespace PaperNexus;
@@ -17,11 +18,18 @@ public partial class App : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // Each activity asks the factory for its view. PageNavigationHost passes the system bars'
-        // insets to the page, so the bottom tabs sit above Android's navigation bar instead of
-        // being drawn underneath it (Android 15 and later always draw apps edge to edge).
+        // Each activity asks the factory for its view, built from the services MainApplication
+        // created for the process. PageNavigationHost passes the system bars' insets to the
+        // page, so the bottom tabs sit above Android's navigation bar instead of being drawn
+        // underneath it (Android 15 and later always draw apps edge to edge).
         if (ApplicationLifetime is IActivityApplicationLifetime activity)
-            activity.MainViewFactory = () => new PageNavigationHost { Page = new MainView() };
+        {
+            var application = (MainApplication)global::Android.App.Application.Context;
+            activity.MainViewFactory = () => new PageNavigationHost
+            {
+                Page = application.Services.GetRequiredService<MainView>(),
+            };
+        }
 
         base.OnFrameworkInitializationCompleted();
     }

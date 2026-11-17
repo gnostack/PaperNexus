@@ -10,21 +10,28 @@ Windows-only API, hardcode `.exe`, or compare paths case-insensitively.
 `PaperNexus.Shared` holds the code both devices use (it is also the base of the Android
 host `PaperNexus.Android`, issue #203; see `docs/android.md`). It has no operating-system-specific code and never references
 `Avalonia.Desktop`. What only a host knows reaches it through interfaces it receives by
-constructor injection; the desktop implementations live beside the code they wrap and
-register through `IAddSingleton<T>`:
+constructor injection; each host's implementations live beside the code they wrap and
+register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Platform/`):
 
-| Shared interface | Used by | Desktop implementation |
-| --- | --- | --- |
-| `ISettingsDirectory` | `SettingsStore` | `DesktopSettingsDirectory` (`PlatformPaths.cs`): the default install directory |
-| `IAppInfo` | `WallpaperConfigViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` |
-| `IShellOpener` | `WallpaperConfigViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) |
-| `IStartupRegistration` (optional) | `WallpaperConfigViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) |
-| `IWallpaperApplier` | `SwitchWallpaper` | `WallpaperApplier` (`NativeMethods.cs`) |
-| `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` |
+| Shared interface | Used by | Desktop implementation | Phone implementation |
+| --- | --- | --- | --- |
+| `IAppFolders` | `SettingsStore`, `SwitchWallpaper`, `JobTimerStore`, `WallpaperConfigViewModel`; the logger's folder | `DesktopAppFolders` (`PlatformPaths.cs`): settings in the default install directory, `current.png`/`timers.json`/`logs/` beside the executable (`AppContext.BaseDirectory`), downloads in `Pictures/PaperNexus` | `AndroidAppFolders`: settings in the files folder, everything else in the no-backup folder |
+| `IAppInfo` | `WallpaperConfigViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | none yet (step 4) |
+| `IShellOpener` | `WallpaperConfigViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | none yet (step 4) |
+| `IStartupRegistration` (optional) | `WallpaperConfigViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
+| `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
+| `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |
 
 An optional interface is one a host may lack: the phone has no run-at-sign-in and updates
 through the store, so it registers neither, and the view model skips the call or reports the
 service as unavailable.
+
+`IWallpaperApplier.GetCanvas()` says who fits the picture to the screen. The desktop answers
+`null`: the switcher writes the picture at its own size with the title against its edges, and
+the operating system fits it from the fill style, as it always has. The phone answers with a
+`WallpaperCanvas`, and the switcher draws the picture onto it for the fill style before
+placing the title (see `docs/android.md`). A wallpaper the device refuses (`SetWallpaper`
+returns false) is never recorded as current, on either device.
 
 ## The platform layer
 

@@ -24,8 +24,9 @@ public static class ImageResizing
     // Shrinks the image file at filePath in place so it fits within maxWidth x maxHeight,
     // preserving the aspect ratio. An image already inside the box is left untouched (never
     // upscaled) and false is returned. The file keeps its format: a .jpg/.jpeg is re-encoded
-    // as JPEG, anything else as 8-bit RGB PNG.
-    internal static bool ResizeFileToFit(string filePath, int maxWidth, int maxHeight)
+    // as JPEG, anything else as 8-bit RGB PNG. formatPath, when given, is the name whose
+    // extension decides that instead (a partial download carries no picture extension).
+    internal static bool ResizeFileToFit(string filePath, int maxWidth, int maxHeight, string? formatPath = null)
     {
         using var source = ImageCodec.DecodeFile(filePath);
         if (source.Width <= maxWidth && source.Height <= maxHeight)
@@ -34,7 +35,7 @@ public static class ImageResizing
         var (width, height) = FitWithin(source.Width, source.Height, maxWidth, maxHeight);
         using var resized = ImageCodec.Resize(source, width, height);
 
-        var ext = Path.GetExtension(filePath);
+        var ext = Path.GetExtension(formatPath ?? filePath);
         var isJpeg = ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
 
@@ -50,12 +51,17 @@ public static class ImageResizing
 
     // PNG bytes of a ThumbnailWidth-wide copy of the image file at path, height proportional.
     // Smaller images are scaled up to the same width so every gallery card lines up.
-    internal static byte[] CreateThumbnailPng(string path)
+    internal static byte[] CreateThumbnailPng(string path) => CreatePngOfWidth(path, ThumbnailWidth);
+
+    // PNG bytes of a width-pixels-wide copy of the image file at path, height proportional.
+    // Smaller images are scaled up. The phone's Current tab shows the current wallpaper's
+    // picture this way at the screen's own width, rather than holding a 4K picture in memory.
+    public static byte[] CreatePngOfWidth(string path, int width)
     {
         using var source = ImageCodec.DecodeFile(path);
-        var height = Math.Max(1, (int)Math.Round((double)source.Height * ThumbnailWidth / source.Width));
-        using var thumbnail = ImageCodec.Resize(source, ThumbnailWidth, height);
-        return ImageCodec.ToPngBytes(thumbnail);
+        var height = Math.Max(1, (int)Math.Round((double)source.Height * width / source.Width));
+        using var resized = ImageCodec.Resize(source, width, height);
+        return ImageCodec.ToPngBytes(resized);
     }
 
     // PNG bytes of the encoded image in source scaled to size x size. Used for the tray

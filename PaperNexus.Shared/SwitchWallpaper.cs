@@ -5,32 +5,113 @@ namespace PaperNexus;
 
 public interface ISwitchWallpaper
 {
+    // Raised with the source picture's path after the device accepted a new wallpaper.
     public event Action<string>? WallpaperChanged;
+
+    // Each switch returns the source path it set, or null when there was nothing to set (no
+    // wallpapers, or the file is gone). A wallpaper the device refuses throws
+    // WallpaperRefusedException and leaves the current wallpaper as it was.
     public Task<string?> SwitchToNextAsync();
     public Task<string?> SwitchToRandomAsync();
     public Task<string?> SwitchToSpecificAsync(string path);
+
+    // True when the download folder holds at least one picture that is not banned.
+    public Task<bool> HasWallpapersAsync();
+}
+
+// The device did not accept the wallpaper (IWallpaperApplier.SetWallpaper returned false).
+// Nothing was recorded: the previous wallpaper stays current.
+public sealed class WallpaperRefusedException : Exception
+{
+    public WallpaperRefusedException(string wallpaperPath)
+        : base("The device did not accept the new wallpaper.")
+    {
+        WallpaperPath = wallpaperPath;
+    }
+
+    // The source picture that was refused.
+    public string WallpaperPath { get; }
 }
 
 internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchWallpaper>
 {
+    // The processed wallpaper written to the data folder, as PNG or JPEG.
+    internal const string CurrentPngName = "current.png";
+    internal const string CurrentJpgName = "current.jpg";
+
     private readonly ILogger<SwitchWallpaper> _logger;
     private readonly IWallpaperApplier _wallpaperApplier;
     private readonly ISettingsStore _settingsStore;
+    private readonly string _dataFolder;
+
+    // One switch at a time: the window, the tray, the slideshow and the phone's buttons can
+    // ask together, and each switch reads the current wallpaper, writes the processed file and
+    // records the new one, so two at once would race on the file and on the settings.
+    private readonly SemaphoreSlim _switchLock = new(1);
 
     public event Action<string>? WallpaperChanged;
 
-    public SwitchWallpaper(ILogger<SwitchWallpaper> logger, IWallpaperApplier wallpaperApplier, ISettingsStore settingsStore)
+    public SwitchWallpaper(ILogger<SwitchWallpaper> logger, IWallpaperApplier wallpaperApplier, ISettingsStore settingsStore, IAppFolders appFolders)
     {
         _logger = logger.ThrowIfNull();
         _wallpaperApplier = wallpaperApplier.ThrowIfNull();
         _settingsStore = settingsStore.ThrowIfNull();
+        _dataFolder = appFolders.ThrowIfNull().DataFolder;
+    }
+
+    // The processed current wallpaper inside dataFolder, PNG preferred, or null when neither
+    // file exists. The desktop's settings window shows it as its preview.
+    public static string? FindCurrentImage(string dataFolder)
+    {
+        var pngPath = Path.Combine(dataFolder, CurrentPngName);
+        var jpgPath = Path.Combine(dataFolder, CurrentJpgName);
+        var currentImage = File.Exists(pngPath) ? pngPath : File.Exists(jpgPath) ? jpgPath : null;
+        return currentImage;
+    }
+
+    public async Task<bool> HasWallpapersAsync()
+    {
+        var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+        if (!settings.IsConfigured)
+            return false;
+
+        var bannedSet = new HashSet<string>(settings.BannedWallpapers, StringComparer.OrdinalIgnoreCase);
+        var any = GetWallpaperFiles(settings.Download.Folder).Any(f => !bannedSet.Contains(f.FullName));
+        return any;
+    }
+
+    public async Task<string?> SwitchToNextAsync()
+    {
+        using (await _switchLock.EnterAsync().ConfigureAwait(false))
+        {
+            return await SwitchToNextLockedAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task<string?> SwitchToRandomAsync()
+    {
+        using (await _switchLock.EnterAsync().ConfigureAwait(false))
+        {
+            return await SwitchToRandomLockedAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task<string?> SwitchToSpecificAsync(string path)
+    {
+        using (await _switchLock.EnterAsync().ConfigureAwait(false))
+        {
+            if (!File.Exists(path))
+                return null;
+            var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+            return await ApplyWallpaperAsync(path, settings).ConfigureAwait(false);
+        }
     }
 
     // Advances to the next wallpaper according to the configured slideshow order.
     // Banned wallpapers are excluded from the candidate pool. In Random order the
     // current wallpaper is excluded from candidates (unless it is the only one) so the
     // same image is not shown twice in a row. For sequential orders the list wraps around.
-    public async Task<string?> SwitchToNextAsync()
+    private async Task<string?> SwitchToNextLockedAsync()
     {
         var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
         if (!settings.IsConfigured)
@@ -75,7 +156,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
 
     // Picks a random wallpaper from the non-banned set, preferring to avoid repeating
     // the current wallpaper when more than one candidate is available.
-    public async Task<string?> SwitchToRandomAsync()
+    private async Task<string?> SwitchToRandomLockedAsync()
     {
         var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
         if (!settings.IsConfigured)
@@ -129,14 +210,6 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         return weighted;
     }
 
-    public async Task<string?> SwitchToSpecificAsync(string path)
-    {
-        if (!File.Exists(path))
-            return null;
-        var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
-        return await ApplyWallpaperAsync(path, settings).ConfigureAwait(false);
-    }
-
     private static List<FileInfo> GetWallpaperFiles(string folder)
     {
         // Return empty list rather than throwing DirectoryNotFoundException if folder hasn't been created yet
@@ -151,12 +224,16 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     }
 
     // Applies the chosen wallpaper: optionally composites the title annotation, encodes
-    // to the processed current file, sets the desktop wallpaper, and persists the
+    // to the processed current file, sets the device wallpaper, and persists the
     // current path to settings so the next run knows where it left off.
     //
-    // Write to a fixed current file in the execution directory so the original files are never modified.
+    // Write to a fixed current file in the host's data folder so the original files are never modified.
     // Apply the title overlay here rather than at download time to preserve source image quality.
     // Save as PNG; if it exceeds 16 MB fall back to JPEG stepping quality down by 3% from 97%.
+    // When the device wants a canvas (the phone), the picture is fitted to it before the title
+    // is drawn, so the title lands on the part of the picture the screen shows.
+    // A wallpaper the device refuses is not recorded: WallpaperRefusedException is thrown
+    // before the settings are saved or WallpaperChanged is raised.
     private async Task<string?> ApplyWallpaperAsync(string next, WallpaperNexusSettings settings)
     {
         // Strip the URL-stem suffix (" - <urlfile>") that was added during download to recover the human-readable title
@@ -167,12 +244,16 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
 
         var annotation = settings.AnnotateWallpaper ? BuildAnnotation(title, settings) : null;
 
+        var canvas = _wallpaperApplier.GetCanvas();
+        var fillStyle = settings.Slideshow.FillStyle;
+
         // Decoding, drawing and encoding a 4K image is CPU-bound and synchronous; run it on
         // the thread pool so a switch started from the settings window does not freeze the UI.
-        using var encoded = await Task.Run(() => WallpaperRenderer.Render(next, annotation)).ConfigureAwait(false);
+        using var encoded = await Task.Run(() => WallpaperRenderer.Render(next, annotation, canvas, fillStyle)).ConfigureAwait(false);
 
-        var pngPath = Path.Combine(AppContext.BaseDirectory, "current.png");
-        var jpgPath = Path.Combine(AppContext.BaseDirectory, "current.jpg");
+        Directory.CreateDirectory(_dataFolder);
+        var pngPath = Path.Combine(_dataFolder, CurrentPngName);
+        var jpgPath = Path.Combine(_dataFolder, CurrentJpgName);
         var isPng = encoded.Format == WallpaperFileFormat.Png;
         var currentPath = isPng ? pngPath : jpgPath;
         // Remove the alternate format file so the desktop doesn't pick up a stale version
@@ -185,11 +266,15 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         }
         File.Delete(stalePath);
 
-        _wallpaperApplier.ApplyFillStyle(settings.Slideshow.FillStyle);
-        // Log a warning if the platform call reports failure so silent wallpaper-not-set bugs surface in logs
+        _wallpaperApplier.ApplyFillStyle(fillStyle);
         var wallpaperSet = _wallpaperApplier.SetWallpaper(currentPath);
         if (!wallpaperSet)
-            _logger.LogWarning("SystemParametersInfo(SPI_SETDESKWALLPAPER) returned 0 for path: {Path}", currentPath);
+        {
+            // Nothing is recorded, so the previous wallpaper stays current and a later switch
+            // starts from it again
+            _logger.LogWarning("The device did not accept the wallpaper {Path}; the current wallpaper is unchanged.", next);
+            throw new WallpaperRefusedException(next);
+        }
         _logger.LogInformation("Switching wallpaper to: {Path}", next);
 
         // Persist the original source path (not the processed current.* path) so ordering is stable across restarts
