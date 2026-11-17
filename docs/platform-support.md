@@ -1,14 +1,36 @@
 # Platform Support
 
-PaperNexus runs on Windows and Linux from a single `net10.0` assembly. Every place the two
-operating systems differ is isolated in `PaperNexus/Core/Platform/`; no other file may call
-a Windows-only API, hardcode `.exe`, or compare paths case-insensitively.
+PaperNexus runs on Windows and Linux from one `net10.0` desktop host, `PaperNexus`, built on
+the shared class library `PaperNexus.Shared`. Every place the two operating systems differ is
+isolated in the desktop host's `PaperNexus/Core/Platform/`; no other file may call a
+Windows-only API, hardcode `.exe`, or compare paths case-insensitively.
+
+## The shared library and its host interfaces
+
+`PaperNexus.Shared` holds the code both devices use (it is also the base for the planned
+Android app, issue #203). It has no operating-system-specific code and never references
+`Avalonia.Desktop`. What only a host knows reaches it through interfaces it receives by
+constructor injection; the desktop implementations live beside the code they wrap and
+register through `IAddSingleton<T>`:
+
+| Shared interface | Used by | Desktop implementation |
+| --- | --- | --- |
+| `ISettingsDirectory` | `SettingsStore` | `DesktopSettingsDirectory` (`PlatformPaths.cs`): the default install directory |
+| `IAppInfo` | `WallpaperConfigViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` |
+| `IShellOpener` | `WallpaperConfigViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) |
+| `IStartupRegistration` (optional) | `WallpaperConfigViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) |
+| `IWallpaperApplier` | `SwitchWallpaper` | `WallpaperApplier` (`NativeMethods.cs`) |
+| `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` |
+
+An optional interface is one a host may lack: the phone has no run-at-sign-in and updates
+through the store, so it registers neither, and the view model skips the call or reports the
+service as unavailable.
 
 ## The platform layer
 
 | File | Concern | Windows | Linux |
 | --- | --- | --- | --- |
-| `PlatformPaths.cs` | Executable name, install/pictures directories, path comparison, execute bit | `PaperNexus.exe`, `%LOCALAPPDATA%`, case-insensitive compare | `PaperNexus`, `~/.local/share`, case-sensitive compare, `chmod +x` |
+| `PlatformPaths.cs` | Executable name, install directory, path comparison, execute bit | `PaperNexus.exe`, `%LOCALAPPDATA%`, case-insensitive compare | `PaperNexus`, `~/.local/share`, case-sensitive compare, `chmod +x` |
 | `SingleInstance.cs` | One running copy, plus "show the window" from a second launch | Named `Mutex` + named `EventWaitHandle` | Unix domain socket in `$XDG_RUNTIME_DIR` |
 | `StartupRegistration.cs` | Launch at login | `HKCU\...\CurrentVersion\Run` | `~/.config/autostart/PaperNexus.desktop` |
 | `IWallpaperBackend.cs`, `LinuxWallpaperBackend.cs`, `NativeMethods.cs` | Setting the desktop wallpaper and its fill style | `SystemParametersInfo` + `HKCU\Control Panel\Desktop` | KDE Plasma / GNOME / generic setters |
@@ -16,7 +38,8 @@ a Windows-only API, hardcode `.exe`, or compare paths case-insensitively.
 | `DesktopEntry.cs` | Application launcher and icon so the app can be pinned | not used (icon comes from the executable's own resources) | `~/.local/share/applications/PaperNexus.desktop` + hicolor icon |
 | `ShellOpener.cs` | Opening folders, URLs, and relaunching the app | `explorer.exe`, shell execute | `xdg-open`, shell execute |
 
-`WallpaperApplier` remains the single type registered for `IWallpaperApplier`, so the
+`WallpaperApplier` remains the single type registered for `IWallpaperApplier` (the interface
+lives in `PaperNexus.Shared`), so the
 `IAddSingleton<T>` auto-discovery in `Bootstrapper` still resolves exactly one
 implementation; it selects a backend in its constructor rather than being replaced.
 

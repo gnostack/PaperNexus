@@ -3,7 +3,7 @@ using PaperNexus.Core;
 
 namespace PaperNexus;
 
-internal class HttpWallpaperSourceService
+public class HttpWallpaperSourceService
 {
     private readonly ILogger<HttpWallpaperSourceService> _logger;
 

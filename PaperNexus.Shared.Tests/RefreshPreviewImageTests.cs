@@ -44,7 +44,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
     {
         // Arrange
         TestHelpers.Cleanup();
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         // Act
         vm.RefreshPreviewImage();
@@ -60,7 +60,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         // Arrange
         TestHelpers.Cleanup();
         TestHelpers.CreateSmallPng(TestHelpers.PngPath);
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         // Act & Assert: method should not throw
         vm.RefreshPreviewImage();
@@ -73,7 +73,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         // Arrange
         TestHelpers.Cleanup();
         TestHelpers.CreateSmallJpeg(TestHelpers.JpgPath);
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         // Act & Assert: method should not throw
         vm.RefreshPreviewImage();
@@ -90,7 +90,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
         var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store);
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         // Act: switch wallpaper, then refresh preview (simulates window reopen)
         var result = await switcher.SwitchToNextAsync();

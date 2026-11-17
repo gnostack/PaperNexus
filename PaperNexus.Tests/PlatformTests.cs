@@ -47,12 +47,6 @@ public class PlatformPathsTests
         Assert.True(Path.IsPathRooted(installDir));
         Assert.EndsWith("PaperNexus", installDir);
     }
-
-    [Fact]
-    public void DefaultPicturesDirectory_IsAnAbsolutePath()
-    {
-        Assert.True(Path.IsPathRooted(PlatformPaths.DefaultPicturesDirectory));
-    }
 }
 
 public class LinuxDesktopTests

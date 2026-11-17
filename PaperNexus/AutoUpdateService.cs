@@ -6,11 +6,6 @@ using System.Text.Json;
 
 namespace PaperNexus;
 
-internal interface ICheckForUpdates
-{
-    public Task CheckAsync(bool forceUpdate = false, IProgress<string>? progress = null);
-}
-
 internal sealed class AutoUpdateService : ICheckForUpdates, IAddSingleton<ICheckForUpdates>
 {
     // Each platform ships its own release asset. The Windows build is Authenticode-signed,

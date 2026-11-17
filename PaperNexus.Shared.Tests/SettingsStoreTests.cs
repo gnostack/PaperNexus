@@ -1,12 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using PaperNexus.Core;
-using PaperNexus.Core.Platform;
 using Xunit;
 
 namespace PaperNexus.Tests;
 
-// Tests for ISettingsStore: the round trip, the corrupt-file fallback, and the guarantee
-// that a test store never reaches the real settings.json in the install directory.
+// Tests for ISettingsStore: the round trip, the corrupt-file fallback and the container
+// registration. The guarantee that a test store never reaches the real settings.json lives
+// with the desktop host's tests, because the host decides where the real file is.
 public class SettingsStoreTests : IDisposable
 {
     private readonly SettingsStore _store;
@@ -19,36 +19,6 @@ public class SettingsStoreTests : IDisposable
     public void Dispose()
     {
         TestHelpers.DeleteSettingsStore(_store);
-    }
-
-    // Guards the reason the store exists (issue 190): the suite used to delete and overwrite
-    // the developer's real settings file. This only reads the real file, then drives a full
-    // load-and-save cycle through a temporary store and checks the real file is exactly as
-    // it was - or still absent, when there was none to begin with.
-    [Fact]
-    public async Task TemporaryStoreCycle_LeavesRealSettingsFileUnchanged()
-    {
-        var realPath = Path.Combine(PlatformPaths.DefaultInstallDirectory, "settings.json");
-        var existedBefore = File.Exists(realPath);
-        var timestampBefore = existedBefore ? File.GetLastWriteTimeUtc(realPath) : DateTime.MinValue;
-        var contentBefore = existedBefore ? await File.ReadAllBytesAsync(realPath) : [];
-
-        var settings = await _store.LoadAsync();
-        settings.RunOnStartup = !settings.RunOnStartup;
-        settings.DiscoveredEasterEggs.Add("konami");
-        await _store.SaveAsync(settings);
-        var reloaded = await _store.LoadAsync();
-
-        Assert.NotEqual(realPath, _store.FilePath);
-        Assert.Contains("konami", reloaded.DiscoveredEasterEggs);
-        Assert.Equal(existedBefore, File.Exists(realPath));
-        if (existedBefore)
-        {
-            var timestampAfter = File.GetLastWriteTimeUtc(realPath);
-            var contentAfter = await File.ReadAllBytesAsync(realPath);
-            Assert.Equal(timestampBefore, timestampAfter);
-            Assert.Equal(contentBefore, contentAfter);
-        }
     }
 
     [Fact]
@@ -95,11 +65,14 @@ public class SettingsStoreTests : IDisposable
         Assert.True(loaded.RunOnStartup);
     }
 
-    // The container hands out one production store, so every consumer shares it.
+    // The container hands out one production store, so every consumer shares it. The host
+    // supplies the settings folder; a temporary one stands in for it here.
     [Fact]
     public void Container_ResolvesOneProductionStore()
     {
+        var directory = Path.GetDirectoryName(_store.FilePath);
         var services = new ServiceCollection();
+        services.AddSingleton<ISettingsDirectory>(new TestSettingsDirectory(directory));
         services.AddServicesFrom(typeof(SettingsStore).Assembly);
         using var provider = services.BuildServiceProvider();
 

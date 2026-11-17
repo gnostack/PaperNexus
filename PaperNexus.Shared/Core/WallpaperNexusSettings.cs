@@ -29,8 +29,8 @@ public enum SlideshowOrder
 public enum SlideshowScheduleMode
 {
     CronExpression,
-    IntervalMinutes, // deprecated — migrated to Interval on load
-    IntervalHours,   // deprecated — migrated to Interval on load
+    IntervalMinutes, // deprecated - migrated to Interval on load
+    IntervalHours,   // deprecated - migrated to Interval on load
     Interval,
 }
 
@@ -101,11 +101,24 @@ public class AnnotationSettings
 
 public class DownloadSettings
 {
-    public string Folder { get; set; } = Path.Combine(
-        PaperNexus.Core.Platform.PlatformPaths.DefaultPicturesDirectory, "PaperNexus");
+    public string Folder { get; set; } = Path.Combine(DefaultPicturesDirectory, "PaperNexus");
     public int ResolutionWidth { get; set; } = 0;
     public int ResolutionHeight { get; set; } = 0;
     public int RetentionDays { get; set; } = 365;
+
+    // The user's pictures folder, the parent of the default download folder.
+    // Environment.GetFolderPath(MyPictures) returns an empty string on Linux when the
+    // XDG user-dirs config is missing, which would otherwise yield a relative path.
+    internal static string DefaultPicturesDirectory
+    {
+        get
+        {
+            var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            if (string.IsNullOrEmpty(pictures))
+                pictures = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures");
+            return pictures;
+        }
+    }
 }
 
 // Plain data: the contents of settings.json. Reading and writing the file belongs to

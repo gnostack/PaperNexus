@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Everything both devices use: the settings model and store, wallpaper sources and downloads,
+       wallpaper switching, the imaging layer, the view models, easter eggs, logging and the DI
+       helpers. It compiles for plain net10.0 and never references Avalonia.Desktop or an
+       operating-system-specific API; a host supplies those through the interfaces in Core/. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PaperNexus</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Embed the URL of the repository this build came from as AssemblyMetadata("RepositoryUrl").
+         The SDK's built-in source control support reads it from the checkout's git origin remote;
+         see RequireRepositoryUrl below. GitHubRepository reads it from this assembly. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PaperNexus.Shared.Tests" />
+  </ItemGroup>
+
+  <!-- Every package either host needs is declared here once; a host gets them through its
+       project reference and adds only its own platform package (Avalonia.Desktop). -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CronExpressionDescriptor" Version="2.51.0" />
+    <PackageReference Include="Cronos" Version="0.13.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Cinzel.ttf" LogicalName="PaperNexus.Cinzel.ttf" />
+  </ItemGroup>
+
+  <!-- The auto-updater, the Report Bug link and the project link all address the GitHub repository
+       named in the RepositoryUrl assembly metadata (read by GitHubRepository). It comes from git
+       rather than a value written in the repo, so a transfer or rename of the repository is picked up
+       by the next build instead of leaving a stale owner/name compiled into every installed client
+       (issue #179: the transfer to the gnostack organization). A build with no origin remote has nothing to
+       embed, so it stops here rather than shipping a binary that cannot find its own releases. -->
+  <Target Name="RequireRepositoryUrl"
+          AfterTargets="InitializeSourceControlInformation"
+          BeforeTargets="GetAssemblyAttributes">
+    <Error Condition="'$(RepositoryUrl)' == '' and '$(PrivateRepositoryUrl)' == ''"
+           Text="PaperNexus embeds its GitHub repository URL from the git 'origin' remote, and none was found. Build from a git clone whose 'origin' remote points at the GitHub repository (git remote add origin https://github.com/OWNER/PaperNexus)." />
+  </Target>
+
+</Project>

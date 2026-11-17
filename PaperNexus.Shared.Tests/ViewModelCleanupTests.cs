@@ -41,7 +41,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task Cleanup_WithPendingSave_DoesNotThrow()
     {
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         // Trigger a property change to arm the debounce timer (sets _hasPendingSave = true
         // while _isLoading is false, as would happen during normal use).
@@ -66,7 +66,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task ShowTransientStatus_AfterCleanup_DoesNotThrow()
     {
-        var vm = new WallpaperConfigViewModel(_store);
+        var vm = TestHelpers.CreateViewModel(_store);
 
         // Arm a pending save and flush it via Cleanup; this leaves a fresh _statusCts in place
         vm.Folder = _wallpaperDir;

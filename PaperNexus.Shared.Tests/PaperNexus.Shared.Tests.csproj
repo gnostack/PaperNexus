@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <!-- The test runner brings its own native SkiaSharp and HarfBuzz libraries for Linux test
+         runs, the same ones Avalonia.Desktop gives the desktop app through Avalonia.Skia.
+         PaperNexus.Shared references only the managed SkiaSharp, which carries no Linux native
+         library. Keep this version equal to Avalonia's: it moves with Avalonia. -->
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PaperNexus.Shared\PaperNexus.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

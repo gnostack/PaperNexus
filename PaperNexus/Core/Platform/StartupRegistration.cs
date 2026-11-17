@@ -104,3 +104,13 @@ public static class StartupRegistration
         catch (UnauthorizedAccessException) { /* best-effort */ }
     }
 }
+
+// The desktop's run-at-sign-in setting for the shared view model. Registers the running
+// executable, as the settings window always has.
+internal sealed class DesktopStartupRegistration : IStartupRegistration, IAddSingleton<IStartupRegistration>
+{
+    public void Update(bool enable)
+    {
+        StartupRegistration.Update(enable);
+    }
+}

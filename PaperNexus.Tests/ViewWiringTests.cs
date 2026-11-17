@@ -4,7 +4,8 @@ using Xunit;
 
 namespace PaperNexus.Tests;
 
-// Guards the wiring between a view's AXAML and its code-behind.
+// Guards the wiring between a view's AXAML and its code-behind, for the desktop host's views.
+// PaperNexus.Shared.Tests runs the same check over the shared views.
 public class ViewWiringTests
 {
     private static IEnumerable<Type> ViewTypes => typeof(App).Assembly
@@ -39,22 +40,5 @@ public class ViewWiringTests
         Assert.True(offenders.Count == 0,
             "These views declare their own parameterless InitializeComponent, which suppresses " +
             "Avalonia's generated one and leaves every x:Name field null: " + string.Join(", ", offenders));
-    }
-
-    [Fact]
-    public void EveryViewType_HasTheGeneratedNameFieldsItReferences()
-    {
-        // A view whose AXAML declares x:Name should end up with a matching private field.
-        // If the generator was suppressed, the type has no such fields at all - which is the
-        // shape the v147 crash took.
-        var overlay = typeof(PaperNexus.Views.EasterEggOverlay);
-        var nameFields = overlay
-            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
-            .Select(f => f.Name)
-            .ToList();
-
-        Assert.Contains("MessageText", nameFields);
-        Assert.Contains("SpriteCanvas", nameFields);
-        Assert.Contains("ScanlineCanvas", nameFields);
     }
 }
