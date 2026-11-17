@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- The app's Android theme. Avalonia's activity is an AppCompat activity, so the theme must
+       descend from an AppCompat theme; NoActionBar because Avalonia draws the whole screen. The
+       window background is the desktop window color: Android 12 and later show it, with the
+       launcher icon, as the launch screen, and it is what shows before Avalonia's first frame. -->
+  <style name="PaperNexusTheme" parent="Theme.AppCompat.NoActionBar">
+    <item name="android:windowBackground">@color/window_background</item>
+  </style>
+
+  <color name="window_background">#2B2B2B</color>
+  <!-- The light green of the logo's own background, filling the launcher tile around the logo. -->
+  <color name="icon_background">#DBE7D3</color>
+</resources>

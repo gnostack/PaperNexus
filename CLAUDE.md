@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-.NET 10.0 Avalonia app for automated wallpaper rotation on Windows and Linux, with an Android app planned (issue #203). Solution: `PaperNexus.sln`, three projects plus two test projects:
+.NET 10.0 Avalonia app for automated wallpaper rotation on Windows and Linux, with an Android app in progress (issue #203). Solution: `PaperNexus.sln`, three projects plus two test projects:
 
-- `PaperNexus.Shared` - class library (`net10.0`) with everything both devices use: settings model and store, wallpaper sources and downloads, wallpaper switching, the imaging layer, the view models, easter eggs, logging, DI helpers. No `Avalonia.Desktop` and no Windows/Linux-only API, so it can later compile for `net10.0-android`.
+- `PaperNexus.Shared` - class library (`net10.0`) with everything both devices use: settings model and store, wallpaper sources and downloads, wallpaper switching, the imaging layer, the view models, easter eggs, logging, DI helpers. No `Avalonia.Desktop` and no Windows/Linux-only API, so the Android host references it unchanged.
 - `PaperNexus` - the desktop host (Windows/Linux exe): `Program`, the tray `App`, every window and dialog, install, auto-update, single instance, startup registration and the platform layer. The project, assembly and exe keep the name `PaperNexus`, because the release asset names, `WM_CLASS` and `StartupWMClass` depend on it.
-- `PaperNexus.Android` - not yet created (step 2 of issue #203).
+- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, and its screens. So far it opens on five bottom tabs that show only their names (step 2 of issue #203). Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
 - `PaperNexus.Shared.Tests` covers `PaperNexus.Shared`; `PaperNexus.Tests` covers the desktop host. Each references only the project it covers.
 
 ## Quick Reference
@@ -17,6 +17,8 @@ dotnet build PaperNexus.sln --configuration Release
 dotnet run --project PaperNexus --configuration Release -- --debug
 dotnet test --configuration Release
 ```
+
+The solution build includes `PaperNexus.Android`, so it needs `ANDROID_HOME` and `JAVA_HOME` exported; `dotnet build PaperNexus` builds the desktop host alone without them. Android build, install and emulator commands are in `docs/android.md`.
 
 **Always use `--debug` when running locally.** Without it, `dotnet run` triggers the auto-install path (copies exe to `%LOCALAPPDATA%\PaperNexus\`) and exits immediately - the window never appears directly.
 
@@ -38,7 +40,8 @@ PaperNexus/
 │       └── deploy-website.yml           # Azure Static Web Apps deploy (website/ only)
 ├── docs/
 │   ├── ui-style-guide.md               # Avalonia AXAML patterns reference
-│   └── platform-support.md             # Windows/Linux platform layer reference
+│   ├── platform-support.md             # Windows/Linux platform layer reference
+│   └── android.md                      # Android host: prerequisites, build, emulator
 ├── PaperNexus.Shared/                   # Shared class library (everything both devices use)
 │   ├── PaperNexus.Shared.csproj         # Declares every package; embeds RepositoryUrl
 │   ├── GlobalUsings.cs                  # Project-wide usings (copy of the host's minus Platform)
@@ -92,7 +95,17 @@ PaperNexus/
 │       ├── EasterEggListDialog.axaml(.cs) # Secrets checklist
 │       ├── WallpaperSourceDialog.axaml(.cs)  # Add/edit wallpaper source dialog
 │       └── NonScrollableComboBox.cs    # ComboBox that ignores scroll unless dropdown is open
-└── PaperNexus.Tests/                    # Tests for the desktop host (xUnit)
+├── PaperNexus.Tests/                    # Tests for the desktop host (xUnit)
+└── PaperNexus.Android/                  # Android host (net10.0-android)
+    ├── PaperNexus.Android.csproj        # References PaperNexus.Shared + Avalonia.Android; links the desktop logo
+    ├── MainApplication.cs               # [Application]: label, launcher icon, theme; AvaloniaAndroidApplication<App>
+    ├── MainActivity.cs                  # Launcher activity (AvaloniaMainActivity)
+    ├── App.axaml(.cs)                   # The phone's Avalonia App: MainView inside PageNavigationHost
+    ├── Views/
+    │   └── MainView.axaml(.cs)         # TabbedPage: Current, Gallery, Favorites, Sources, Settings
+    └── Resources/
+        ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window)
+        └── mipmap-anydpi-v26/icon.xml  # Adaptive launcher icon around the linked logo
 ```
 
 ## Key Architecture
@@ -124,7 +137,7 @@ PaperNexus/
 
 Every package is declared once, in `PaperNexus.Shared.csproj`; the desktop host gets them through its project reference and declares only `Avalonia.Desktop` 12.1.1 (which also brings the Linux SkiaSharp/HarfBuzz native libraries via `Avalonia.Skia`). `PaperNexus.Shared.Tests` declares `Avalonia.Skia` 12.1.1 for the same reason: the test runner needs those native libraries on Linux, and `PaperNexus.Shared` carries only the managed SkiaSharp. Keep its version equal to Avalonia's; Dependabot does not group the Avalonia packages, so update them together by hand when one moves. The xUnit packages are declared in both test projects.
 
-Avalonia 12.1.1, Avalonia.Themes.Fluent 12.1.1, Avalonia.Fonts.Inter 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.11, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries; Dependabot ignores it, and it is updated together with Avalonia), SkiaSharp.HarfBuzz 3.119.2 (text shaping for the annotation's kerning; pinned at 3.119.2 in Dependabot because later versions require a newer HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships - lift the pin when Avalonia moves)
+Avalonia 12.1.1, Avalonia.Themes.Fluent 12.1.1, Avalonia.Fonts.Inter 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.11, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries; Dependabot ignores it, and it is updated together with Avalonia), SkiaSharp.HarfBuzz 3.119.2 (text shaping for the annotation's kerning; pinned at 3.119.2 in Dependabot because later versions require a newer HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships - lift the pin when Avalonia moves). The Android host adds only Avalonia.Android 12.1.1, which moves with Avalonia; its Skia and HarfBuzz native libraries resolve to the same versions.
 
 No `Avalonia.Diagnostics` reference: it has no 12.x release, and `AttachDevTools` was never called. Adding the visual-tree inspector back would mean pinning Avalonia to 11.x.
 
@@ -155,8 +168,8 @@ Enforced via `.editorconfig`: .NET 10, C#, file-scoped namespaces, 4-space inden
 
 ## Build & CI/CD
 
-- **PR workflow:** set up .NET → restore → build (Release) → test (continue-on-error), all at solution level, so both test projects run. GitHub-hosted runner (`ubuntu-latest`), `actions/checkout@v7`.
-- **Deploy workflow:** push to `main`/tags/manual → publish win-x64 and linux-x64 single-file → sign the exe, checksum the Linux binary → GitHub Release with three assets. GitHub-hosted runner (`ubuntu-latest`); signing uses `openssl` + `osslsigncode` (Linux equivalents of `New-SelfSignedCertificate`/`signtool.exe`).
+- **PR workflow:** set up .NET → restore → build (Release) → test (continue-on-error), all at solution level, so both test projects run and `PaperNexus.Android` is built. A `dotnet workload restore` step installs the workloads the projects need (the `android` workload; the runner image already has the Android SDK and a JDK). GitHub-hosted runner (`ubuntu-latest`), `actions/checkout@v7`.
+- **Deploy workflow:** push to `main`/tags/manual → restore and build `PaperNexus/PaperNexus.csproj` only (it publishes nothing from the Android host, so it needs no workload) → publish win-x64 and linux-x64 single-file → sign the exe, checksum the Linux binary → GitHub Release with three assets. GitHub-hosted runner (`ubuntu-latest`); signing uses `openssl` + `osslsigncode` (Linux equivalents of `New-SelfSignedCertificate`/`signtool.exe`).
 - **Version:** Default `0.0.0`, CI sets `-p:Version=$buildNum.0.0`. Tags use `vN` format. Auto-updater compares `Version.Major` as integer.
 - **Code signing:** Self-signed cert, auto-generated on first run, stored as `SIGNING_CERTIFICATE`/`SIGNING_CERTIFICATE_PASSWORD` secrets. Requires `GH_PAT` for persistence. 5-year validity, auto-renews at 30 days remaining.
 - **Publishing:** the desktop host is published; `PaperNexus.Shared.dll` is bundled inside the single-file binary, so the release assets are unchanged. `dotnet publish PaperNexus/PaperNexus.csproj -c Release -r <win-x64|linux-x64> --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false`. The Linux output is renamed to `PaperNexus-linux-x64` because the auto-updater looks the asset up by that exact name.
@@ -180,5 +193,6 @@ Enforced via `.editorconfig`: .NET 10, C#, file-scoped namespaces, 4-space inden
 - **CodeQL:** code scanning default setup (`actions` + `csharp`) supplies the required `CodeQL` check. It only attaches to PRs opened *after* it was enabled. Closing and reopening an older PR does not trigger it. Push a new commit to the branch, an empty one is enough, for the check to appear.
 - **Always start work on a feature branch** - never commit directly to `main`; create a descriptive branch (e.g., `feature/wallpaper-preview`, `fix/auto-update`) before making any changes
 - **Comment addition tasks:** Add comments in small, focused batches (1–3 files at a time) rather than delegating all files to a single agent. Large batches risk code corruption.
+- **Android host:** read `docs/android.md` before touching `PaperNexus.Android`, the Android build or CI steps, or driving the emulator; update it when the prerequisites, the commands, or the app's structure change. Verify Android changes on the emulator from a screenshot of the real screen.
 - **Verify Linux changes against the real desktop**, not the app log - read the desktop's own state (e.g. `gsettings get org.gnome.desktop.background picture-uri`). Setup is in `docs/platform-support.md`.
 - **No system-level calls in unit tests:** Tests must never invoke real OS APIs (e.g., `NativeMethods`, registry writes, `SetDesktopWallpaper`). Use injectable interfaces with no-op test doubles (e.g., `NoOpWallpaperApplier`) to isolate from the system.

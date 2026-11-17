@@ -20,6 +20,12 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    # Installs the .NET workloads the solution's projects need: today the android workload for
+    # PaperNexus.Android. The runner image has the Android SDK and a JDK but no .NET workloads,
+    # and without it restoring the solution fails. The list comes from the projects themselves.
+    - name: Install .NET workloads
+      run: dotnet workload restore
+
     - name: Restore dependencies
       run: dotnet restore
 
