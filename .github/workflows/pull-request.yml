@@ -20,18 +20,15 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    # Installs the .NET workloads the solution's projects need: today the android workload for
-    # PaperNexus.Android. The runner image has the Android SDK and a JDK but no .NET workloads,
-    # and without it restoring the solution fails. The list comes from the projects themselves.
-    - name: Install .NET workloads
-      run: dotnet workload restore
-
+    # PaperNexus.Desktop.slnf is the solution without PaperNexus.Android: the desktop host, the
+    # shared library and both test projects. The Android host is built by its own workflow
+    # (pull-request-android.yml), so this one needs no Android workload.
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore PaperNexus.Desktop.slnf
 
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build PaperNexus.Desktop.slnf --configuration Release --no-restore
 
     - name: Test
-      run: dotnet test --configuration Release --no-build --verbosity normal
+      run: dotnet test PaperNexus.Desktop.slnf --configuration Release --no-build --verbosity normal
       continue-on-error: true

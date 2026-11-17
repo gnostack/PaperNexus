@@ -1,0 +1,61 @@
+name: PR Android Build
+
+# Builds the Android host, PaperNexus.Android, apart from the desktop build in pull-request.yml.
+# The workflow starts on every pull request so its check always reports, but the build job is
+# skipped (a skipped job counts as passed) unless the pull request changes something the Android
+# app is built from.
+
+on:
+  pull_request:
+    branches: ['main']
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+
+    steps:
+    # The Android app is built from its own project, the shared library, the desktop logo it links
+    # as its launcher icon, and this workflow.
+    - name: Find Android-relevant changes
+      id: filter
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        files=$(gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --name-only)
+        pattern='^(PaperNexus\.Android/|PaperNexus\.Shared/|PaperNexus/Assets/logo\.png$|\.github/workflows/pull-request-android\.yml$)'
+        if echo "$files" | grep -qE "$pattern"; then
+          echo "android=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "android=false" >> "$GITHUB_OUTPUT"
+        fi
+
+  build-android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+
+    # The runner image has the Android SDK and a JDK but no .NET workloads. This installs the
+    # ones the project declares it needs (the android workload).
+    - name: Install .NET workloads
+      run: dotnet workload restore PaperNexus.Android/PaperNexus.Android.csproj
+
+    - name: Restore dependencies
+      run: dotnet restore PaperNexus.Android/PaperNexus.Android.csproj
+
+    - name: Build
+      run: dotnet build PaperNexus.Android/PaperNexus.Android.csproj --configuration Release --no-restore
