@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Android host: the Android application and activity, the phone's Avalonia App and its
+       screens. Logic and view models live in PaperNexus.Shared, the way the desktop host keeps
+       only its windows and platform layer. Building it needs the .NET android workload and the
+       ANDROID_HOME and JAVA_HOME environment variables; see docs/android.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <!-- Android 12 (API 31) is the oldest version Avalonia 12 supports without commercial support
+         (issue #203, decision 6). The target, API 36, comes from net10.0-android. -->
+    <SupportedOSPlatformVersion>31</SupportedOSPlatformVersion>
+    <!-- PaperNexus rather than PaperNexus.Android: code inside a PaperNexus.Android namespace would
+         resolve Android.* names against it instead of the Android SDK's own namespaces. It is also
+         the root namespace of PaperNexus.Shared, so the phone's views sit in PaperNexus.Views. -->
+    <RootNamespace>PaperNexus</RootNamespace>
+    <ApplicationId>com.gnostack.papernexus</ApplicationId>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!-- Only the Android platform package; every other package arrives through PaperNexus.Shared.
+       No AndroidX SplashScreen package: it backports the Android 12 launch screen to older
+       versions, and Android 12 is the minimum here, so the system draws it from the launcher icon
+       and the theme's window background on its own. -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Android" Version="12.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PaperNexus.Shared\PaperNexus.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- The launcher icon is the desktop's logo, linked rather than copied. drawable-nodpi keeps
+       Android from scaling the 2048 px image up for the screen density when it loads it; the
+       adaptive icon in Resources/mipmap-anydpi-v26/icon.xml places it on the launcher tile. -->
+  <ItemGroup>
+    <AndroidResource Include="..\PaperNexus\Assets\logo.png" Link="Resources\drawable-nodpi\logo.png" />
+  </ItemGroup>
+
+</Project>

@@ -7,8 +7,8 @@ Windows-only API, hardcode `.exe`, or compare paths case-insensitively.
 
 ## The shared library and its host interfaces
 
-`PaperNexus.Shared` holds the code both devices use (it is also the base for the planned
-Android app, issue #203). It has no operating-system-specific code and never references
+`PaperNexus.Shared` holds the code both devices use (it is also the base of the Android
+host `PaperNexus.Android`, issue #203; see `docs/android.md`). It has no operating-system-specific code and never references
 `Avalonia.Desktop`. What only a host knows reaches it through interfaces it receives by
 constructor injection; the desktop implementations live beside the code they wrap and
 register through `IAddSingleton<T>`:
