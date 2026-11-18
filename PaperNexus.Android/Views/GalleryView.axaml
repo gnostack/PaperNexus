@@ -15,7 +15,7 @@
     </UserControl.Styles>
 
     <Panel>
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="Cards"
                           ItemsSource="{Binding Items}"
                           ContainerPrepared="OnContainerPrepared"

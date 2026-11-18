@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's one activity is declared here by hand rather than generated from MainActivity's
+     [Activity] attribute, because its configChanges must include assetsPaths, which the .NET
+     Android manifest generator drops from the attribute (ConfigChanges.AssetsPaths). The build
+     merges the rest of the manifest (application, permissions, providers) as before; for an
+     activity declared here it generates nothing, so this entry carries everything the
+     attribute used to: the launcher intent filter and exported.
+
+     configChanges: rotation, window size and dark/light mode are handled by Avalonia inside the
+     running activity, and so is assetsPaths. On Android 12 and later every new wallpaper makes
+     the system rebuild its wallpaper-based color overlays, which is an asset paths change; an
+     activity that does not take it is destroyed and recreated, which threw the person back to
+     the Current tab after each wallpaper change (issue #203, step 4). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity android:name="com.gnostack.papernexus.MainActivity"
+              android:exported="true"
+              android:configChanges="orientation|screenSize|uiMode|assetsPaths">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

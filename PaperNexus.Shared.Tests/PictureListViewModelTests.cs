@@ -331,6 +331,42 @@ public class PictureListViewModelTests : IDisposable
         Assert.DoesNotContain(gallery.Items, i => i.FilePath == c);
     }
 
+    // The view model outlives the screen: a view built for a recreated screen finds the same
+    // cards (not listed again), the confirmation line still within its three seconds, and the
+    // place in the list.
+    [Fact]
+    public async Task ASecondViewAttaching_FindsTheCardsTheLineAndThePlace()
+    {
+        var (a, _, _) = await ThreePicturesAsync();
+        using var gallery = CreateGallery();
+        await gallery.EnsureLoadedAsync();
+        var cards = gallery.Items.ToList();
+        await gallery.Items.Single(i => i.FilePath == a).ToggleFavoriteCommand.ExecuteAsync(null);
+        gallery.ScrollOffset = 1234;
+        // A picture added since is not listed by the second view; a reload would list it
+        AddPicture("Late - d.png");
+
+        await gallery.EnsureLoadedAsync();
+
+        Assert.Equal(cards, gallery.Items);
+        Assert.Equal("Added to favorites.", gallery.StatusMessage);
+        Assert.Equal(1234, gallery.ScrollOffset);
+    }
+
+    // The line still goes after its three seconds, whichever view shows it.
+    [Fact]
+    public async Task TheConfirmationLine_GoesAfterThreeSeconds()
+    {
+        var (a, _, _) = await ThreePicturesAsync();
+        using var gallery = CreateGallery();
+        await gallery.EnsureLoadedAsync();
+
+        await gallery.Items.Single(i => i.FilePath == a).ToggleBanCommand.ExecuteAsync(null);
+        Assert.True(gallery.HasStatus);
+
+        await WaitUntil(() => !gallery.HasStatus);
+    }
+
     // A closed tab stops following the library.
     [Fact]
     public async Task Dispose_StopsFollowingChanges()

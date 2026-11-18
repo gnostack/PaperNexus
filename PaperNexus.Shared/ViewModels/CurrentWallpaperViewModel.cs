@@ -32,6 +32,10 @@ public enum CurrentWallpaperState
 //
 // Delete removes the current wallpaper's picture from the phone (the view asks first) and
 // sets the next one; after the last picture it downloads new ones.
+//
+// It lives as long as the process: a view built for a recreated screen attaches to it and
+// finds the wallpaper and the confirmation line as they were (EnsureLoadedAsync does the
+// first-open work once).
 public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
 {
     public const string DownloadingText = "No wallpapers yet. Downloading…";
@@ -173,7 +177,17 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Decides what the tab shows. Called once when the tab appears.
+    // The first-open work, once per view model: a view attaching again after the screen was
+    // recreated finds the tab already showing what it should.
+    public Task EnsureLoadedAsync()
+    {
+        _loadTask ??= LoadAsync();
+        return _loadTask;
+    }
+
+    private Task? _loadTask;
+
+    // Decides what the tab shows.
     public async Task LoadAsync()
     {
         IsWorking = true;

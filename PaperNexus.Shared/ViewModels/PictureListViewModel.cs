@@ -20,6 +20,11 @@ public enum StatusTone
 // The cards are loaded the first time the tab is shown. After that the library's Changed
 // event keeps them current, applied on the thread that created the view model (the screen's
 // thread), so a heart tapped on one tab shows on the others at once.
+//
+// On the phone the view model lives as long as the process, not the screen: Android destroys
+// and recreates its screen (a new font size, language or display size), and the new screen's
+// view attaches to this same view model, so the cards, the confirmation line and the place in
+// the list are still there. It never holds a view.
 public abstract partial class PictureListViewModel : ObservableObject, IDisposable
 {
     public const string SwitchingText = "Switching wallpaper...";
@@ -80,6 +85,14 @@ public abstract partial class PictureListViewModel : ObservableObject, IDisposab
 
     public bool IsStatusError => StatusTone == StatusTone.Error;
 
+    // How far down the list was scrolled, in the view's units, kept here so a view built for
+    // a recreated screen can return to the same place.
+    public double ScrollOffset { get; set; }
+
+    // Lists the pictures the first time a view shows the tab; a later view (after the screen
+    // was recreated) finds them already listed and kept current.
+    public Task EnsureLoadedAsync() => IsLoaded ? Task.CompletedTask : LoadAsync();
+
     // Lists the tab's pictures. Kept cards (and their thumbnails) are reused and moved into
     // the new order; new pictures get new cards; cards for pictures no longer listed go.
     public async Task LoadAsync()
@@ -92,7 +105,9 @@ public abstract partial class PictureListViewModel : ObservableObject, IDisposab
         catch (Exception ex)
         {
             Logger.LogError(ex, "Listing the pictures failed.");
-            ShowStatus(LoadFailedText(ex), StatusTone.Error);
+            var sentence = LoadFailedText(ex);
+            if (sentence is not null)
+                ShowStatus(sentence, StatusTone.Error);
         }
         finally
         {
@@ -110,8 +125,8 @@ public abstract partial class PictureListViewModel : ObservableObject, IDisposab
     // tab already made itself changes nothing.
     protected abstract Task ApplyChangeAsync(LibraryChange change);
 
-    // The sentence when listing failed.
-    protected abstract string LoadFailedText(Exception ex);
+    // The sentence when listing failed, or null for a tab whose listing cannot fail.
+    protected abstract string? LoadFailedText(Exception ex);
 
     // Whether this device lets the app change the wallpaper; cards are created with it.
     protected bool AllowsSetAsCurrent => _wallpaperApplier.CanSetWallpaper;

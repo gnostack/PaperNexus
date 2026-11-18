@@ -92,6 +92,67 @@ public class ImagingTests : IDisposable
         Assert.Equal((1080, 608), TestHelpers.ReadDimensions(png));
     }
 
+    // A JPEG decodes straight to the smallest eighth of its size that is still wide enough,
+    // and reports its full size.
+    [Theory]
+    [InlineData(1080, 1440)] // 3/8
+    [InlineData(600, 960)]   // 2/8
+    [InlineData(400, 480)]   // 1/8
+    [InlineData(4000, 3840)] // wider than the picture: full size
+    public void DecodeFileAtLeast_Jpeg_DecodesAtTheSmallestEighthWideEnough(int minWidth, int expectedWidth)
+    {
+        var path = Path.Combine(_tempDir, "big.jpg");
+        TestHelpers.CreateDetailedJpeg(path, 3840, 2160);
+
+        using var bitmap = ImageCodec.DecodeFileAtLeast(path, minWidth, out var fullWidth, out var fullHeight);
+
+        Assert.Equal(expectedWidth, bitmap.Width);
+        Assert.Equal((3840, 2160), (fullWidth, fullHeight));
+    }
+
+    // PNG has no scaled decode in Skia's codec, so it is decoded at full size.
+    [Fact]
+    public void DecodeFileAtLeast_Png_DecodesAtFullSize()
+    {
+        var path = Path.Combine(_tempDir, "big.png");
+        TestHelpers.CreateTestPng(path, 1920, 1080);
+
+        using var bitmap = ImageCodec.DecodeFileAtLeast(path, 600, out var fullWidth, out _);
+
+        Assert.Equal(1920, bitmap.Width);
+        Assert.Equal(1920, fullWidth);
+    }
+
+    // The reduced decode gives a thumbnail of the same size as the full decode did, and the
+    // same picture: every pixel within a few levels of the full-decode thumbnail.
+    [Theory]
+    [InlineData(ImageResizing.ThumbnailWidth, 338)]
+    [InlineData(1080, 608)]
+    public void CreatePngOfWidth_Jpeg_MatchesTheFullDecode(int width, int expectedHeight)
+    {
+        var path = Path.Combine(_tempDir, "big.jpg");
+        TestHelpers.CreateDetailedJpeg(path, 3840, 2160);
+
+        var png = ImageResizing.CreatePngOfWidth(path, width);
+        using var reduced = SKBitmap.Decode(png);
+        using var full = ImageCodec.DecodeFile(path);
+        using var expected = ImageCodec.Resize(full, width, expectedHeight);
+
+        Assert.Equal((width, expectedHeight), (reduced.Width, reduced.Height));
+        double total = 0;
+        for (var y = 0; y < expectedHeight; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var a = reduced.GetPixel(x, y);
+                var b = expected.GetPixel(x, y);
+                total += Math.Abs(a.Red - b.Red) + Math.Abs(a.Green - b.Green) + Math.Abs(a.Blue - b.Blue);
+            }
+        }
+        var meanPerChannel = total / (width * expectedHeight * 3.0);
+        Assert.True(meanPerChannel < 2.0, $"Mean difference per channel was {meanPerChannel:F2} levels.");
+    }
+
     [Fact]
     public void ResizeToSquarePng_ProducesTheRequestedIconSize()
     {

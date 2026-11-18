@@ -21,7 +21,9 @@ public sealed class FavoritesViewModel : PictureListViewModel
 
     protected override Task<IReadOnlyList<LibraryPicture>> ListAsync() => Library.ListFavoritesAsync();
 
-    protected override string LoadFailedText(Exception ex) => $"Error loading favorites: {ex.Message}";
+    // Listing the favorites only reads the settings, and reading the settings never fails (a
+    // missing or damaged file reads as the defaults), so there is no sentence for it.
+    protected override string? LoadFailedText(Exception ex) => null;
 
     // The card's heart action is its "Remove from favorites" button; it has no ban or delete.
     protected override GalleryItem CreateItem(LibraryPicture picture)

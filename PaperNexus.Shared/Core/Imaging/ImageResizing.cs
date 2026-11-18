@@ -53,13 +53,16 @@ public static class ImageResizing
     // Smaller images are scaled up to the same width so every gallery card lines up.
     internal static byte[] CreateThumbnailPng(string path) => CreatePngOfWidth(path, ThumbnailWidth);
 
-    // PNG bytes of a width-pixels-wide copy of the image file at path, height proportional.
-    // Smaller images are scaled up. The phone's Current tab shows the current wallpaper's
-    // picture this way at the screen's own width, rather than holding a 4K picture in memory.
+    // PNG bytes of a width-pixels-wide copy of the image file at path, height proportional
+    // to the picture's full size. Smaller images are scaled up. The gallery thumbnails on both
+    // devices and the phone's Current tab are made this way. A JPEG is decoded straight at the
+    // smallest size at least width wide (ImageCodec.DecodeFileAtLeast) rather than at full 4K,
+    // which is what bounds the memory of a gallery scrolled quickly; the result has the same
+    // size as a full decode would give.
     public static byte[] CreatePngOfWidth(string path, int width)
     {
-        using var source = ImageCodec.DecodeFile(path);
-        var height = Math.Max(1, (int)Math.Round((double)source.Height * width / source.Width));
+        using var source = ImageCodec.DecodeFileAtLeast(path, width, out var fullWidth, out var fullHeight);
+        var height = Math.Max(1, (int)Math.Round((double)fullHeight * width / fullWidth));
         using var resized = ImageCodec.Resize(source, width, height);
         return ImageCodec.ToPngBytes(resized);
     }

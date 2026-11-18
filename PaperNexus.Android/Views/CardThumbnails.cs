@@ -12,16 +12,13 @@ internal static class CardThumbnails
 {
     public static void Load(Control list, ContainerPreparedEventArgs e)
     {
-        if (e.Container.DataContext is not GalleryItem item)
-            return;
         var pixelWidth = PixelWidth(list);
-        _ = item.LoadAsync(pixelWidth);
+        CardThumbnailHolder.Prepared(e.Container, pixelWidth);
     }
 
     public static void Release(ContainerClearingEventArgs e)
     {
-        if (e.Container.DataContext is GalleryItem item)
-            item.DisposeThumbnail();
+        CardThumbnailHolder.Clearing(e.Container);
     }
 
     // A tab's page leaves the visual tree when another tab is chosen (measured on the

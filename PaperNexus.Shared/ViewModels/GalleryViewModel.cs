@@ -30,7 +30,8 @@ public sealed class GalleryViewModel : PictureListViewModel
         return listing.Pictures;
     }
 
-    protected override string LoadFailedText(Exception ex) => $"Error loading gallery: {ex.Message}";
+    // Listing reads the download folder, which can fail (the folder cannot be read).
+    protected override string? LoadFailedText(Exception ex) => $"Error loading gallery: {ex.Message}";
 
     protected override GalleryItem CreateItem(LibraryPicture picture)
     {

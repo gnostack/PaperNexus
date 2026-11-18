@@ -76,7 +76,8 @@ PaperNexus/
 │   │   ├── WallpaperDisplayName.cs     # A wallpaper's shown name from its file name
 │   │   └── GalleryItem.cs              # Gallery item view model
 │   └── Views/
-│       └── EasterEggOverlay.axaml(.cs) # Easter egg animation control (used by MainWindow)
+│       ├── EasterEggOverlay.axaml(.cs) # Easter egg animation control (used by MainWindow)
+│       └── CardThumbnailHolder.cs      # Gallery thumbnails held only while a list shows the card (both apps)
 ├── PaperNexus.Shared.Tests/             # Tests for PaperNexus.Shared (xUnit)
 ├── PaperNexus/                          # Desktop host (Windows/Linux exe)
 │   ├── PaperNexus.csproj                # References PaperNexus.Shared + Avalonia.Desktop
@@ -107,7 +108,8 @@ PaperNexus/
 └── PaperNexus.Android/                  # Android host (net10.0-android)
     ├── PaperNexus.Android.csproj        # References PaperNexus.Shared + Avalonia.Android; links the desktop logo
     ├── MainApplication.cs               # [Application]: label, icon, theme; builds the service container
-    ├── MainActivity.cs                  # Launcher activity (AvaloniaMainActivity)
+    ├── MainActivity.cs                  # Launcher activity (AvaloniaMainActivity); fixed Java name
+    ├── AndroidManifest.xml              # Hand-written activity entry: launcher, configChanges incl. assetsPaths
     ├── App.axaml(.cs)                   # The phone's Avalonia App: MainView inside PageNavigationHost
     ├── Platform/
     │   ├── AndroidAppFolders.cs        # IAppFolders: files (settings) and no_backup (everything else)
@@ -121,6 +123,8 @@ PaperNexus/
     │   ├── PictureListStyles.axaml     # Card, picture-button and confirmation-line styles
     │   ├── PictureFrame.cs             # 16:9 picture box so every card has the same height
     │   ├── CardThumbnails.cs           # Load/release card thumbnails at the screen's pixel width
+    │   ├── MainScreenState.cs          # Selected tab, kept for the process's lifetime
+    │   ├── ListPlace.cs                # Keeps a list's scroll place in its view model
     │   └── ConfirmationDialog.axaml(.cs) # Reusable in-page question (dimmed page, centered box)
     └── Resources/
         ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window)

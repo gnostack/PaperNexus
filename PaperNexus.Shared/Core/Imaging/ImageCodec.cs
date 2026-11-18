@@ -30,6 +30,38 @@ internal static class ImageCodec
         return Decode(encoded);
     }
 
+    // Decodes the image file at path at the smallest size the format can decode directly that
+    // is still at least minWidth pixels wide, and gives the picture's full size. JPEG (and
+    // WebP) decode straight to n/8 of their size, so a 3840 px picture wanted 1080 px wide is
+    // decoded at 1440 px (3/8), about a ninth of the memory of the full decode. PNG has no
+    // scaled decode in Skia's codec: it reports only its full size and is decoded at that
+    // size, as before. A picture narrower than minWidth is decoded whole. Throws when the file
+    // cannot be decoded, like DecodeFile.
+    public static SKBitmap DecodeFileAtLeast(string path, int minWidth, out int fullWidth, out int fullHeight)
+    {
+        using var codec = SKCodec.Create(path)
+            ?? throw new InvalidDataException("The image could not be decoded.");
+        var full = codec.Info;
+        fullWidth = full.Width;
+        fullHeight = full.Height;
+
+        var size = new SKSizeI(full.Width, full.Height);
+        for (var eighths = 1; eighths < 8; eighths++)
+        {
+            var scaled = codec.GetScaledDimensions(eighths / 8f);
+            if (scaled.Width >= minWidth)
+            {
+                size = scaled;
+                break;
+            }
+        }
+
+        var info = full.WithSize(size.Width, size.Height);
+        var bitmap = SKBitmap.Decode(codec, info)
+            ?? throw new InvalidDataException("The image could not be decoded.");
+        return bitmap;
+    }
+
     // Returns a resampled copy of source at exactly width x height; the caller owns it.
     public static SKBitmap Resize(SKBitmap source, int width, int height)
     {

@@ -48,6 +48,26 @@ internal static class TestHelpers
         return data.ToArray();
     }
 
+    // A JPEG of the given size with a color gradient and shapes, so a downscaled copy has
+    // detail to compare.
+    internal static void CreateDetailedJpeg(string path, int width, int height)
+    {
+        var info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
+        using var bitmap = new SKBitmap(info);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            using var gradient = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0), new SKPoint(width, height),
+                [new SKColor(20, 60, 160), new SKColor(240, 180, 40)], SKShaderTileMode.Clamp);
+            using var fill = new SKPaint { Shader = gradient };
+            canvas.DrawRect(0, 0, width, height, fill);
+            using var shape = new SKPaint { Color = new SKColor(250, 250, 250), IsAntialias = true };
+            for (var i = 0; i < 8; i++)
+                canvas.DrawCircle(width * (i + 1) / 9f, height / 2f, height / 10f, shape);
+        }
+        Save(bitmap, path, SKEncodedImageFormat.Jpeg, 90);
+    }
+
     internal static void CreateSmallJpeg(string path, byte r = 200, byte g = 100, byte b = 50)
     {
         using var bitmap = CreateSolidBitmap(100, 100, new SKColor(r, g, b));

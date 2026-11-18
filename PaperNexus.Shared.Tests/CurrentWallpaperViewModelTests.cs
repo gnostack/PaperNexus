@@ -231,6 +231,27 @@ public class CurrentWallpaperViewModelTests : IDisposable
         Assert.DoesNotContain(current, (await _store.LoadAsync()).FavoriteWallpapers);
     }
 
+    // The view model outlives the screen: a view built for a recreated screen calls
+    // EnsureLoadedAsync again and finds the wallpaper as it was, without the first-open work
+    // (here, setting a wallpaper) running a second time.
+    [Fact]
+    public async Task EnsureLoaded_ASecondViewAttaching_DoesNotRedoTheFirstOpen()
+    {
+        AddPicture("One - a.png");
+        AddPicture("Two - b.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
+        using var viewModel = CreateViewModel();
+
+        await viewModel.EnsureLoadedAsync();
+        var shown = viewModel.PicturePath;
+        await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
+        await viewModel.EnsureLoadedAsync();
+
+        Assert.Equal(1, _switcher.Switches);
+        Assert.Equal(shown, viewModel.PicturePath);
+        Assert.Equal("Added to favorites.", viewModel.StatusMessage);
+    }
+
     // Delete removes the picture (and its favorite) and sets the next one, saying which.
     [Fact]
     public async Task Delete_SetsTheNextWallpaper_AndSaysWhich()

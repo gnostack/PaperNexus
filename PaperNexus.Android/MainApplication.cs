@@ -46,10 +46,15 @@ public class MainApplication : AvaloniaAndroidApplication<App>
             {
                 services.AddLogging(b => b.AddProvider(_loggerProvider));
                 services.AddSingleton<HttpWallpaperSourceService>();
-                // Screens are per request: each new activity gets a fresh view and view model.
-                services.AddTransient<CurrentWallpaperViewModel>();
-                services.AddTransient<GalleryViewModel>();
-                services.AddTransient<FavoritesViewModel>();
+                // Each new activity gets a fresh view, but the tabs' view models and the selected
+                // tab live as long as the process: Android recreates the activity (a new font
+                // size, language or display size) and the new view attaches to the same state,
+                // so the person sees what they were looking at. The view models are created on
+                // the screen's thread when the first view asks for them.
+                services.AddSingleton<CurrentWallpaperViewModel>();
+                services.AddSingleton<GalleryViewModel>();
+                services.AddSingleton<FavoritesViewModel>();
+                services.AddSingleton<MainScreenState>();
                 services.AddTransient<MainView>();
                 // The shared services, then this host's implementations of the interfaces they
                 // need (folders, wallpaper applier). No AddInProcessSchedules: the slideshow
