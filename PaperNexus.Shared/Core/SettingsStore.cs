@@ -11,8 +11,14 @@ public interface ISettingsStore
     // default instance when the file does not exist or is corrupt.
     public Task<WallpaperNexusSettings> LoadAsync();
 
-    // Writes the settings atomically, so the file is never left half-written.
-    public Task SaveAsync(WallpaperNexusSettings settings);
+    // The only way to change the settings. Reads them, applies change to what was read, and
+    // writes them back, holding the store's lock from the read to the write, so no other
+    // update can save in between. Each caller sets only the fields it owns on the settings
+    // it is handed, which are always the latest, so nobody can write back a stale copy of
+    // someone else's fields. change runs synchronously under the lock and must not call the
+    // store. When it throws, nothing is written and the exception reaches the caller.
+    // Returns the settings as written.
+    public Task<WallpaperNexusSettings> UpdateAsync(Action<WallpaperNexusSettings> change);
 }
 
 public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore>
@@ -21,6 +27,10 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
 
     private readonly string _directory;
     private readonly string _defaultDownloadFolder;
+
+    // Held from the read to the write of every update. The store is a container singleton,
+    // so every writer in the process shares this one lock.
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     // The production store: settings live in the folder the host names, which on the
     // desktop is the default install directory regardless of where the executable itself
@@ -129,17 +139,50 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
         settings.Sources ??= WallpaperNexusSettings.DefaultSources;
     }
 
+    public async Task<WallpaperNexusSettings> UpdateAsync(Action<WallpaperNexusSettings> change)
+    {
+        change.ThrowIfNull();
+        await _writeLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var settings = await LoadAsync().ConfigureAwait(false);
+            change(settings);
+            await WriteFileAsync(settings).ConfigureAwait(false);
+            return settings;
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    // Replaces the whole file with settings, under the same lock as UpdateAsync. Only tests
+    // use it, to put a prepared settings file in place before the code under test runs;
+    // nothing in the app may write a whole settings object it read earlier.
+    internal async Task WriteAsync(WallpaperNexusSettings settings)
+    {
+        await _writeLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await WriteFileAsync(settings).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     // Writes to a temporary file then renames it over the real settings path.
     // This ensures the settings file is never left in a partial/corrupt state if the
     // process is killed mid-write; the old file is preserved until the rename succeeds.
-    public async Task SaveAsync(WallpaperNexusSettings settings)
+    private async Task WriteFileAsync(WallpaperNexusSettings settings)
     {
         Directory.CreateDirectory(_directory);
         var tempPath = Path.Combine(_directory, $".settings-{Guid.NewGuid():N}.tmp");
         try
         {
             var json = JsonConvert.SerializeObject(settings, WallpaperNexusSettings.JsonFormat);
-            await File.WriteAllTextAsync(tempPath, json);
+            await File.WriteAllTextAsync(tempPath, json).ConfigureAwait(false);
             File.Move(tempPath, FilePath, overwrite: true);
         }
         catch

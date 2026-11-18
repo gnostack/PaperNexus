@@ -495,12 +495,14 @@ public partial class MainWindow : Window
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            settings.WindowX = x;
-            settings.WindowY = y;
-            settings.WindowWidth = w;
-            settings.WindowHeight = h;
-            await _settingsStore.SaveAsync(settings);
+            // The window owns only its geometry; everything else is left as saved
+            await _settingsStore.UpdateAsync(latest =>
+            {
+                latest.WindowX = x;
+                latest.WindowY = y;
+                latest.WindowWidth = w;
+                latest.WindowHeight = h;
+            });
         }
         catch { }
     }

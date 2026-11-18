@@ -195,13 +195,17 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
 
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            var wasFavorite = settings.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
-            if (wasFavorite)
-                settings.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
-            else
-                settings.FavoriteWallpapers.Add(path);
-            await _settingsStore.SaveAsync(settings);
+            // Decided from the latest saved list, inside the update, so a favorite saved
+            // elsewhere a moment ago is toggled from what is really saved
+            var wasFavorite = false;
+            await _settingsStore.UpdateAsync(latest =>
+            {
+                wasFavorite = latest.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
+                if (wasFavorite)
+                    latest.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
+                else
+                    latest.FavoriteWallpapers.Add(path);
+            });
             IsFavorite = !wasFavorite;
         }
         catch (Exception ex)

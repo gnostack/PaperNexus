@@ -179,7 +179,7 @@ public class SwitchWallpaperDeviceTests : IDisposable
         TestHelpers.CreateSmallPng(banned);
         var settings = await _store.LoadAsync();
         settings.BannedWallpapers.Add(banned);
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
         Assert.False(await switcher.HasWallpapersAsync());
 
         TestHelpers.CreateSmallPng(Path.Combine(_wallpaperDir, "good.png"));

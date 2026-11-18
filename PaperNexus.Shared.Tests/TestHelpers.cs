@@ -40,6 +40,14 @@ internal static class TestHelpers
         Save(bitmap, path, SKEncodedImageFormat.Png, 100);
     }
 
+    // The encoded bytes of a small PNG, for a test that serves a picture rather than writing one.
+    internal static byte[] CreateSmallPngBytes()
+    {
+        using var bitmap = CreateSolidBitmap(100, 100, new SKColor(100, 150, 200));
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
     internal static void CreateSmallJpeg(string path, byte r = 200, byte g = 100, byte b = 50)
     {
         using var bitmap = CreateSolidBitmap(100, 100, new SKColor(r, g, b));
@@ -127,7 +135,7 @@ internal static class TestHelpers
         catch { }
     }
 
-    internal static async Task WriteSettingsAsync(ISettingsStore store, string wallpaperFolder, string currentWallpaperPath = "")
+    internal static async Task WriteSettingsAsync(SettingsStore store, string wallpaperFolder, string currentWallpaperPath = "")
     {
         var settings = new WallpaperNexusSettings
         {
@@ -143,7 +151,7 @@ internal static class TestHelpers
             AutoUpdatesEnabled = false,
             Sources = [],
         };
-        await store.SaveAsync(settings);
+        await store.WriteAsync(settings);
     }
 
     // Removes the processed current.* wallpaper files, which the switcher writes beside the
