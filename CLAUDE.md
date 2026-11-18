@@ -6,7 +6,7 @@
 
 - `PaperNexus.Shared` - class library (`net10.0`) with everything both devices use: settings model and store, wallpaper sources and downloads, wallpaper switching, the imaging layer, the view models, easter eggs, logging, DI helpers. No `Avalonia.Desktop` and no Windows/Linux-only API, so the Android host references it unchanged.
 - `PaperNexus` - the desktop host (Windows/Linux exe): `Program`, the tray `App`, every window and dialog, install, auto-update, single instance, startup registration and the platform layer. The project, assembly and exe keep the name `PaperNexus`, because the release asset names, `WM_CLASS` and `StartupWMClass` depend on it.
-- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); the other four tabs show only their names until step 4. Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
+- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); Gallery and Favorites list the pictures and Current deletes one (step 4, part 1); Sources and Settings show only their names until step 4's later parts. Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
 - `PaperNexus.Shared.Tests` covers `PaperNexus.Shared`; `PaperNexus.Tests` covers the desktop host. Each references only the project it covers.
 
 ## Quick Reference
@@ -43,13 +43,14 @@ PaperNexus/
 ├── docs/
 │   ├── ui-style-guide.md               # Avalonia AXAML patterns reference
 │   ├── platform-support.md             # Windows/Linux platform layer reference
-│   └── android.md                      # Android host: build, emulator, Current tab, files, wallpaper canvas
+│   └── android.md                      # Android host: build, emulator, Current/Gallery/Favorites tabs, files, wallpaper canvas
 ├── PaperNexus.Shared/                   # Shared class library (everything both devices use)
 │   ├── PaperNexus.Shared.csproj         # Declares every package; embeds RepositoryUrl
 │   ├── GlobalUsings.cs                  # Project-wide usings (copy of the host's minus Platform)
 │   ├── DownloadWallpapers.cs            # Scheduled wallpaper downloader (IDownloadWallpapers)
 │   ├── HttpWallpaperSourceService.cs    # HTTP feed client + WallpaperImage DTO
 │   ├── SwitchWallpaper.cs               # Wallpaper switching logic + job wrapper
+│   ├── WallpaperLibrary.cs              # IWallpaperLibrary: list, heart, ban, delete pictures; Changed
 │   ├── IWallpaperApplier.cs             # Sets the device wallpaper (host implements); WallpaperCanvas
 │   ├── ICheckForUpdates.cs              # Self-update check (only a self-updating host implements)
 │   ├── Assets/                          # Cinzel.ttf (embedded) + its OFL licence
@@ -69,10 +70,14 @@ PaperNexus/
 │   ├── ViewModels/
 │   │   ├── WallpaperConfigViewModel.cs # The desktop settings window's view model (CommunityToolkit.Mvvm)
 │   │   ├── CurrentWallpaperViewModel.cs # The phone's Current tab
+│   │   ├── PictureListViewModel.cs     # The phone's Gallery and Favorites tabs' shared base
+│   │   ├── GalleryViewModel.cs         # The phone's Gallery tab
+│   │   ├── FavoritesViewModel.cs       # The phone's Favorites tab
 │   │   ├── WallpaperDisplayName.cs     # A wallpaper's shown name from its file name
 │   │   └── GalleryItem.cs              # Gallery item view model
 │   └── Views/
-│       └── EasterEggOverlay.axaml(.cs) # Easter egg animation control (used by MainWindow)
+│       ├── EasterEggOverlay.axaml(.cs) # Easter egg animation control (used by MainWindow)
+│       └── CardThumbnailHolder.cs      # Gallery thumbnails held only while a list shows the card (both apps)
 ├── PaperNexus.Shared.Tests/             # Tests for PaperNexus.Shared (xUnit)
 ├── PaperNexus/                          # Desktop host (Windows/Linux exe)
 │   ├── PaperNexus.csproj                # References PaperNexus.Shared + Avalonia.Desktop
@@ -103,7 +108,8 @@ PaperNexus/
 └── PaperNexus.Android/                  # Android host (net10.0-android)
     ├── PaperNexus.Android.csproj        # References PaperNexus.Shared + Avalonia.Android; links the desktop logo
     ├── MainApplication.cs               # [Application]: label, icon, theme; builds the service container
-    ├── MainActivity.cs                  # Launcher activity (AvaloniaMainActivity)
+    ├── MainActivity.cs                  # Launcher activity (AvaloniaMainActivity); fixed Java name
+    ├── AndroidManifest.xml              # Hand-written activity entry: launcher, configChanges incl. assetsPaths
     ├── App.axaml(.cs)                   # The phone's Avalonia App: MainView inside PageNavigationHost
     ├── Platform/
     │   ├── AndroidAppFolders.cs        # IAppFolders: files (settings) and no_backup (everything else)
@@ -111,7 +117,15 @@ PaperNexus/
     │   └── AndroidPermissions.cs       # INTERNET and SET_WALLPAPER
     ├── Views/
     │   ├── MainView.axaml(.cs)         # TabbedPage: Current, Gallery, Favorites, Sources, Settings
-    │   └── CurrentWallpaperView.axaml(.cs) # The Current tab
+    │   ├── CurrentWallpaperView.axaml(.cs) # The Current tab
+    │   ├── GalleryView.axaml(.cs)      # The Gallery tab
+    │   ├── FavoritesView.axaml(.cs)    # The Favorites tab
+    │   ├── PictureListStyles.axaml     # Card, picture-button and confirmation-line styles
+    │   ├── PictureFrame.cs             # 16:9 picture box so every card has the same height
+    │   ├── CardThumbnails.cs           # Load/release card thumbnails at the screen's pixel width
+    │   ├── MainScreenState.cs          # Selected tab, kept for the process's lifetime
+    │   ├── ListPlace.cs                # Keeps a list's scroll place in its view model
+    │   └── ConfirmationDialog.axaml(.cs) # Reusable in-page question (dimmed page, centered box)
     └── Resources/
         ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window)
         └── mipmap-anydpi-v26/icon.xml  # Adaptive launcher icon around the linked logo
@@ -137,6 +151,7 @@ PaperNexus/
 - **Downloads:** one run at a time. Each picture is written as `<name>.download` and renamed into place when complete, the way the settings store saves; each run deletes partial files a stopped process left behind, and nothing lists a `.download` file as a picture.
 - **Wallpaper Sources (JPath-based):** `HttpWallpaperSourceService` uses Newtonsoft `SelectTokens` with `ImageUrlJPath`/`TitleJPath`. Sources edited via `WallpaperSourceDialog` (name, URL, JPath, cron, enabled toggle, live Test button).
 - **`NonScrollableComboBox`:** Suppresses scroll wheel unless dropdown is open - prevents accidental changes while scrolling the settings page.
+- **Picture library (`PaperNexus.Shared/WallpaperLibrary.cs`):** `IWallpaperLibrary` holds the rules for listing the gallery (newest first by last write time) and the favorites (hearted order), hearting, banning and deleting pictures, for both devices. **No view model reads or writes `FavoriteWallpapers`/`BannedWallpapers` or deletes a picture file itself**; each asks the library and shows the result. One delete rule: the file, its favorite and its ban go, and deleting the current wallpaper sets the next one. The library raises `Changed` after every save (and `PicturesChanged` after a download run), so every open screen follows changes made on another; view models apply it on the thread that created them. Setting a picture as the wallpaper stays with `ISwitchWallpaper`.
 - **Favorites:** Heart toggle, stored in `settings.json`, excluded from retention cleanup. The Favorites tab shows one `GalleryItem` card per favorite (thumbnail, title, set-as-current and remove buttons), built by the ViewModel's `FavoriteWallpapers` collection and sharing the Gallery's thumbnail load/dispose handlers.
 - **Easter eggs (`Core/EasterEggs.cs`, `EasterEggSprites.cs`, `EasterEggAnimation.cs`, `PaperNexus.Shared/Views/EasterEggOverlay.axaml`):** Eggs play a retro pixel animation in a full-window overlay - auto-dismisses after ~3s, click or Esc skips. Sprites are `'X'`/`'.'` bitmasks; motion is a pure function of (particle, frame) with no `Random` and no accumulated state, so the visuals are unit tested and can be rendered offscreen for inspection. The overlay only creates rectangles and moves them. The ViewModel raises `EasterEggTriggered`; `MainWindow` owns the overlay. Currently: Konami (burst), version-label ×5 (rise), favorite milestones (rise), word-spelling annotation hex colours (fall), plus an occasional alternate splash line. Each show carries a catalog `Id`, and `EasterEggOverlay.Play` records discovery through the injected `EasterEggProgress` service (handed to the overlay by `MainWindow`, since Avalonia creates the overlay from markup), so a new egg cannot be left out of the checklist. The **Secrets** button beside the version label opens `EasterEggListDialog`, a checklist of `EasterEggCatalog.All` with progress; discovery ids persist in `settings.json` as `DiscoveredEasterEggs` and **must never be renamed** (that resets the egg to unfound for everyone). **Check these files before adding one** - the Konami egg already existed in `MainWindow.axaml.cs` and was nearly duplicated.
 - **Startup at login:** Registry key at `HKCU\...\Run\PaperNexus` on Windows; `~/.config/autostart/PaperNexus.desktop` on Linux.

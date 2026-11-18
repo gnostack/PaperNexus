@@ -1,0 +1,56 @@
+<!-- The look shared by the Gallery and Favorites cards and their confirmation line, after the
+     desktop's gallery card (docs/ui-style-guide.md). -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- A card: the desktop's gallery card colors, full width, 8 dp apart. -->
+    <Style Selector="Border.card">
+        <Setter Property="Background" Value="#222222"/>
+        <Setter Property="BorderBrush" Value="#383838"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="ClipToBounds" Value="True"/>
+        <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+
+    <!-- A button on the picture: a 48 dp touch target on a dark see-through square, so its
+         icon shows on light and dark pictures alike. Dimmed while the card works, as the
+         desktop dims a disabled button. -->
+    <Style Selector="Button.onPicture">
+        <Setter Property="Width" Value="48"/>
+        <Setter Property="Height" Value="48"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="#99000000"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.onPicture:disabled">
+        <Setter Property="Opacity" Value="0.35"/>
+    </Style>
+    <Style Selector="Button.onPicture PathIcon">
+        <Setter Property="Width" Value="24"/>
+        <Setter Property="Height" Value="24"/>
+    </Style>
+
+    <!-- The ban icon: grey when the picture is in rotation, the desktop's orange when banned. -->
+    <Style Selector="PathIcon.ban">
+        <Setter Property="Foreground" Value="#888888"/>
+    </Style>
+    <Style Selector="PathIcon.ban.active">
+        <Setter Property="Foreground" Value="#F97316"/>
+    </Style>
+
+    <!-- The line that confirms a tap: white while working, green when it worked, red when it
+         failed (the desktop status bar's colors). -->
+    <Style Selector="TextBlock.status">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style Selector="TextBlock.status.success">
+        <Setter Property="Foreground" Value="#4ADE80"/>
+    </Style>
+    <Style Selector="TextBlock.status.error">
+        <Setter Property="Foreground" Value="#F87171"/>
+    </Style>
+</Styles>

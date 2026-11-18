@@ -27,19 +27,40 @@ public enum CurrentWallpaperState
 // On opening it shows the current wallpaper. When there is none, it makes one: with no
 // pictures it downloads them, and with pictures it sets the next one in slideshow order, the
 // same rule "Next" uses, without a tap. Every change of wallpaper made elsewhere (another copy
-// of the tab after Android recreates the screen) arrives through WallpaperChanged.
+// of the tab after Android recreates the screen, the Gallery's set-as-current) arrives through
+// WallpaperChanged, and a heart or delete made on another tab through the library's Changed.
+//
+// Delete removes the current wallpaper's picture from the phone (the view asks first) and
+// sets the next one; after the last picture it downloads new ones.
+//
+// It lives as long as the process: a view built for a recreated screen attaches to it and
+// finds the wallpaper and the confirmation line as they were (EnsureLoadedAsync does the
+// first-open work once).
 public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
 {
     public const string DownloadingText = "No wallpapers yet. Downloading…";
     public const string DownloadFailedText = "Could not download wallpapers. Check your connection.";
     public const string NotAllowedText = "This phone does not allow apps to change the wallpaper.";
     public const string SwitchFailedText = "Could not change the wallpaper. Try again.";
+    public const string AddedText = "Added to favorites.";
+    public const string RemovedText = "Removed from favorites.";
+    public const string DeleteQuestion = "Delete this wallpaper file from disk?";
+    public const string DeletedText = "Wallpaper deleted.";
+    public const string DeletedNoMoreText = "Wallpaper deleted. No more wallpapers.";
 
     private readonly ISettingsStore _settingsStore;
+    private readonly IWallpaperLibrary _library;
     private readonly ISwitchWallpaper _switchWallpaper;
     private readonly IDownloadWallpapers _downloadWallpapers;
     private readonly IWallpaperApplier _wallpaperApplier;
     private readonly ILogger<CurrentWallpaperViewModel> _logger;
+    private readonly SynchronizationContext? _screenContext;
+    private CancellationTokenSource _statusCts = new();
+    private readonly object _statusLock = new();
+
+    // True while this tab deletes its own picture, so the library's report of that delete
+    // is not handled a second time.
+    private bool _deleting;
 
     // True from creation until LoadAsync has decided what to show, and while a download or a
     // switch runs. Next and Random are dimmed meanwhile.
@@ -52,12 +73,24 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(PlaceholderText))]
     [NotifyPropertyChangedFor(nameof(CanSwitch))]
     [NotifyPropertyChangedFor(nameof(CanFavorite))]
+    [NotifyPropertyChangedFor(nameof(CanDelete))]
     private CurrentWallpaperState _state = CurrentWallpaperState.NoWallpaper;
 
     // The source picture of the current wallpaper (the downloaded file, not the processed one).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanFavorite))]
+    [NotifyPropertyChangedFor(nameof(CanDelete))]
     private string? _picturePath;
+
+    // The short line under the buttons that confirms a heart or a delete, for three seconds.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus))]
+    private string? _statusMessage;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStatusSuccess))]
+    [NotifyPropertyChangedFor(nameof(IsStatusError))]
+    private StatusTone _statusTone;
 
     [ObservableProperty]
     private string _title = string.Empty;
@@ -78,17 +111,21 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
 
     public CurrentWallpaperViewModel(
         ISettingsStore settingsStore,
+        IWallpaperLibrary library,
         ISwitchWallpaper switchWallpaper,
         IDownloadWallpapers downloadWallpapers,
         IWallpaperApplier wallpaperApplier,
         ILogger<CurrentWallpaperViewModel> logger)
     {
         _settingsStore = settingsStore.ThrowIfNull();
+        _library = library.ThrowIfNull();
         _switchWallpaper = switchWallpaper.ThrowIfNull();
         _downloadWallpapers = downloadWallpapers.ThrowIfNull();
         _wallpaperApplier = wallpaperApplier.ThrowIfNull();
         _logger = logger.ThrowIfNull();
+        _screenContext = SynchronizationContext.Current;
         _switchWallpaper.WallpaperChanged += OnWallpaperChanged;
+        _library.Changed += OnLibraryChanged;
     }
 
     public bool IsShowing => State == CurrentWallpaperState.Showing;
@@ -116,6 +153,15 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
 
     public bool HasError => ErrorMessage is not null;
 
+    // Delete acts on the current wallpaper, and waits while a switch or download runs.
+    public bool CanDelete => CanFavorite && !IsWorking;
+
+    public bool HasStatus => StatusMessage is not null;
+
+    public bool IsStatusSuccess => StatusTone == StatusTone.Success;
+
+    public bool IsStatusError => StatusTone == StatusTone.Error;
+
     public string FavoriteToolTip => IsFavorite ? "Remove from favorites" : "Add to favorites";
 
     public bool IsWorking
@@ -124,11 +170,24 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         private set
         {
             if (SetProperty(ref _isWorking, value))
+            {
                 OnPropertyChanged(nameof(CanSwitch));
+                OnPropertyChanged(nameof(CanDelete));
+            }
         }
     }
 
-    // Decides what the tab shows. Called once when the tab appears.
+    // The first-open work, once per view model: a view attaching again after the screen was
+    // recreated finds the tab already showing what it should.
+    public Task EnsureLoadedAsync()
+    {
+        _loadTask ??= LoadAsync();
+        return _loadTask;
+    }
+
+    private Task? _loadTask;
+
+    // Decides what the tab shows.
     public async Task LoadAsync()
     {
         IsWorking = true;
@@ -142,7 +201,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
             var current = settings.CurrentWallpaperPath;
             if (!string.IsNullOrEmpty(current) && File.Exists(current))
             {
-                ShowWallpaper(current, settings.FavoriteWallpapers);
+                await ShowWallpaperAsync(current);
                 return;
             }
 
@@ -185,7 +244,8 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Makes the current wallpaper a favorite, or clears it when it already is one.
+    // Makes the current wallpaper a favorite, or clears it when it already is one, as the
+    // heart shows it, and says which in the line under the buttons.
     [RelayCommand]
     private async Task ToggleFavorite()
     {
@@ -193,25 +253,66 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         if (!CanFavorite || path is null)
             return;
 
+        var makeFavorite = !IsFavorite;
         try
         {
-            // Decided from the latest saved list, inside the update, so a favorite saved
-            // elsewhere a moment ago is toggled from what is really saved
-            var wasFavorite = false;
-            await _settingsStore.UpdateAsync(latest =>
-            {
-                wasFavorite = latest.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
-                if (wasFavorite)
-                    latest.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
-                else
-                    latest.FavoriteWallpapers.Add(path);
-            });
-            IsFavorite = !wasFavorite;
+            await _library.SetFavoriteAsync(path, makeFavorite);
+            IsFavorite = makeFavorite;
+            ShowStatus(makeFavorite ? AddedText : RemovedText, StatusTone.Success);
         }
         catch (Exception ex)
         {
             // The heart keeps showing what is saved
             _logger.LogError(ex, "Failed to update favorites for {Path}.", path);
+            ShowStatus($"Error updating favorites: {ex.Message}", StatusTone.Error);
+        }
+    }
+
+    // Deletes the current wallpaper's picture and sets the next one, as the desktop does.
+    // The view has already asked. After the last picture the tab downloads new ones.
+    [RelayCommand]
+    private async Task Delete()
+    {
+        var path = PicturePath;
+        if (!CanDelete || path is null)
+            return;
+
+        IsWorking = true;
+        _deleting = true;
+        try
+        {
+            var outcome = await _library.DeleteAsync(path);
+            if (outcome.SwitchedTo is not null)
+            {
+                await ShowWallpaperAsync(outcome.SwitchedTo);
+                ShowStatus($"Deleted and switched to: {Title}", StatusTone.Success);
+                return;
+            }
+
+            // The shown picture was not the saved current one (or nothing was left): set the
+            // next picture when there is one, otherwise download new ones
+            if (await _switchWallpaper.HasWallpapersAsync())
+            {
+                ShowStatus(DeletedText, StatusTone.Success);
+                await SetWallpaperAsync(_switchWallpaper.SwitchToNextAsync);
+                return;
+            }
+
+            ShowStatus(DeletedNoMoreText, StatusTone.Success);
+            PicturePath = null;
+            Title = string.Empty;
+            IsFavorite = false;
+            await MakeAWallpaperAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Deleting the wallpaper {Path} failed.", path);
+            ShowStatus($"Error deleting wallpaper: {ex.Message}", StatusTone.Error);
+        }
+        finally
+        {
+            _deleting = false;
+            IsWorking = false;
         }
     }
 
@@ -279,8 +380,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
             if (path is null)
                 return false;
 
-            var settings = await _settingsStore.LoadAsync();
-            ShowWallpaper(path, settings.FavoriteWallpapers);
+            await ShowWallpaperAsync(path);
             return true;
         }
         catch (Exception ex)
@@ -291,12 +391,41 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void ShowWallpaper(string path, IEnumerable<string> favorites)
+    // Shows the picture, with its heart as the library has it.
+    private async Task ShowWallpaperAsync(string path)
     {
+        var picture = await _library.GetPictureAsync(path);
         PicturePath = path;
-        Title = WallpaperDisplayName.FromPath(path);
-        IsFavorite = favorites.Contains(path, StringComparer.OrdinalIgnoreCase);
+        Title = picture.Title;
+        IsFavorite = picture.IsFavorite;
         State = CurrentWallpaperState.Showing;
+    }
+
+    // Shows a line for three seconds, replacing any earlier one.
+    private void ShowStatus(string message, StatusTone tone)
+    {
+        CancellationTokenSource cts;
+        lock (_statusLock)
+        {
+            _statusCts.Cancel();
+            _statusCts.Dispose();
+            cts = new CancellationTokenSource();
+            _statusCts = cts;
+        }
+
+        StatusTone = tone;
+        StatusMessage = message;
+        _ = ClearStatusAfterAsync(cts.Token);
+    }
+
+    private async Task ClearStatusAfterAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(PictureListViewModel.StatusDurationMs, token);
+            StatusMessage = null;
+        }
+        catch (OperationCanceledException) { }
     }
 
     // A wallpaper set anywhere in the app (another copy of this tab, after Android recreated
@@ -310,8 +439,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            ShowWallpaper(path, settings.FavoriteWallpapers);
+            await ShowWallpaperAsync(path);
         }
         catch (Exception ex)
         {
@@ -319,9 +447,66 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Stops listening to the switcher, which outlives this tab.
+    // A heart or delete made on another tab. A heart on this picture changes this heart. The
+    // picture deleted elsewhere is replaced by the library's switch to the next one, which
+    // arrives through WallpaperChanged; when no picture is left, the tab downloads new ones.
+    // Raised on a background thread; applied on the screen's thread.
+    private void OnLibraryChanged(LibraryChange change)
+    {
+        if (_screenContext is null)
+        {
+            _ = ApplyLibraryChangeAsync(change);
+            return;
+        }
+
+        _screenContext.Post(_ => _ = ApplyLibraryChangeAsync(change), null);
+    }
+
+    private async Task ApplyLibraryChangeAsync(LibraryChange change)
+    {
+        var isThisPicture = change.Path is not null && PicturePath is not null
+            && change.Path.Equals(PicturePath, StringComparison.OrdinalIgnoreCase);
+        if (!isThisPicture)
+            return;
+
+        try
+        {
+            switch (change.Kind)
+            {
+                case LibraryChangeKind.Favorited:
+                case LibraryChangeKind.Unfavorited:
+                    IsFavorite = change.Kind == LibraryChangeKind.Favorited;
+                    break;
+                case LibraryChangeKind.Deleted when !_deleting && !IsWorking:
+                    if (await _switchWallpaper.HasWallpapersAsync())
+                        return;
+                    IsWorking = true;
+                    try
+                    {
+                        PicturePath = null;
+                        Title = string.Empty;
+                        IsFavorite = false;
+                        await MakeAWallpaperAsync();
+                    }
+                    finally
+                    {
+                        IsWorking = false;
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Showing a change to {Path} failed.", change.Path);
+        }
+    }
+
+    // Stops listening to the switcher and the library, which outlive this tab.
     public void Dispose()
     {
         _switchWallpaper.WallpaperChanged -= OnWallpaperChanged;
+        _library.Changed -= OnLibraryChanged;
+        lock (_statusLock)
+            _statusCts.Cancel();
     }
 }

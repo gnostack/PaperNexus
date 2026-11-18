@@ -75,8 +75,10 @@ public class FavoriteCardsTests : IDisposable
         await vm.LoadAsync();
         vm.CurrentWallpaperPath = "/tmp/current.png";
 
-        vm.ToggleFavoriteCommand.Execute(null);
-        await WaitForAsync(() => vm.FavoriteWallpapers.Count == 1);
+        // The library's change notice can add the card before the command has finished, so
+        // the first tap is awaited: a second tap on a running command is ignored.
+        await vm.ToggleFavoriteCommand.ExecuteAsync(null);
+        Assert.Single(vm.FavoriteWallpapers);
         Assert.Equal("/tmp/current.png", vm.FavoriteWallpapers[0].FilePath);
 
         vm.ToggleFavoriteCommand.Execute(null);

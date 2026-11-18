@@ -15,6 +15,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
     private readonly FakeSwitcher _switcher;
     private readonly FakeDownloader _downloader;
     private readonly FakeWallpaperApplier _applier = new();
+    private readonly WallpaperLibrary _library;
 
     public CurrentWallpaperViewModelTests()
     {
@@ -23,6 +24,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
         _store = TestHelpers.CreateSettingsStore();
         _switcher = new FakeSwitcher(_store, _wallpaperDir);
         _downloader = new FakeDownloader(_wallpaperDir);
+        _library = TestHelpers.CreateLibrary(_store, _switcher);
     }
 
     public void Dispose()
@@ -34,7 +36,8 @@ public class CurrentWallpaperViewModelTests : IDisposable
 
     private CurrentWallpaperViewModel CreateViewModel()
     {
-        var viewModel = new CurrentWallpaperViewModel(_store, _switcher, _downloader, _applier, NullLogger<CurrentWallpaperViewModel>.Instance);
+        var viewModel = TestHelpers.WithoutSynchronizationContext(
+            () => new CurrentWallpaperViewModel(_store, _library, _switcher, _downloader, _applier, NullLogger<CurrentWallpaperViewModel>.Instance));
         return viewModel;
     }
 
@@ -218,11 +221,109 @@ public class CurrentWallpaperViewModelTests : IDisposable
         await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsFavorite);
         Assert.Equal("Remove from favorites", viewModel.FavoriteToolTip);
+        Assert.Equal("Added to favorites.", viewModel.StatusMessage);
+        Assert.True(viewModel.IsStatusSuccess);
         Assert.Contains(current, (await _store.LoadAsync()).FavoriteWallpapers);
 
         await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.False(viewModel.IsFavorite);
+        Assert.Equal("Removed from favorites.", viewModel.StatusMessage);
         Assert.DoesNotContain(current, (await _store.LoadAsync()).FavoriteWallpapers);
+    }
+
+    // The view model outlives the screen: a view built for a recreated screen calls
+    // EnsureLoadedAsync again and finds the wallpaper as it was, without the first-open work
+    // (here, setting a wallpaper) running a second time.
+    [Fact]
+    public async Task EnsureLoaded_ASecondViewAttaching_DoesNotRedoTheFirstOpen()
+    {
+        AddPicture("One - a.png");
+        AddPicture("Two - b.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
+        using var viewModel = CreateViewModel();
+
+        await viewModel.EnsureLoadedAsync();
+        var shown = viewModel.PicturePath;
+        await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
+        await viewModel.EnsureLoadedAsync();
+
+        Assert.Equal(1, _switcher.Switches);
+        Assert.Equal(shown, viewModel.PicturePath);
+        Assert.Equal("Added to favorites.", viewModel.StatusMessage);
+    }
+
+    // Delete removes the picture (and its favorite) and sets the next one, saying which.
+    [Fact]
+    public async Task Delete_SetsTheNextWallpaper_AndSaysWhich()
+    {
+        var one = AddPicture("One - a.png");
+        var two = AddPicture("Two - b.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: one);
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.Add(one));
+        using var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+        Assert.True(viewModel.CanDelete);
+
+        await viewModel.DeleteCommand.ExecuteAsync(null);
+
+        Assert.False(File.Exists(one));
+        Assert.Equal(two, viewModel.PicturePath);
+        Assert.Equal("Two", viewModel.Title);
+        Assert.Equal("Deleted and switched to: Two", viewModel.StatusMessage);
+        Assert.Empty((await _store.LoadAsync()).FavoriteWallpapers);
+        Assert.True(viewModel.CanDelete);
+        Assert.True(viewModel.CanSwitch);
+    }
+
+    // After the last picture the tab says so and downloads new ones, then shows the first.
+    [Fact]
+    public async Task Delete_TheLastPicture_DownloadsNewOnes()
+    {
+        var only = AddPicture("Only - a.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: only);
+        _downloader.PicturesToAdd = ["Fresh - f.png"];
+        using var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+
+        await viewModel.DeleteCommand.ExecuteAsync(null);
+
+        Assert.Equal("Wallpaper deleted. No more wallpapers.", viewModel.StatusMessage);
+        Assert.Equal(1, _downloader.Downloads);
+        Assert.Equal(CurrentWallpaperState.Showing, viewModel.State);
+        Assert.Equal(Path.Combine(_wallpaperDir, "Fresh - f.png"), viewModel.PicturePath);
+    }
+
+    // A heart set on another tab shows on this one.
+    [Fact]
+    public async Task HeartSetOnAnotherTab_ShowsHere()
+    {
+        var current = AddPicture("One - a.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: current);
+        using var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+
+        await _library.SetFavoriteAsync(current, true);
+        await WaitUntil(() => viewModel.IsFavorite);
+
+        await _library.SetFavoriteAsync(current, false);
+        await WaitUntil(() => !viewModel.IsFavorite);
+    }
+
+    // The current picture deleted from the Gallery when it was the last one: the tab
+    // downloads new pictures rather than showing a deleted one.
+    [Fact]
+    public async Task LastPictureDeletedOnAnotherTab_DownloadsNewOnes()
+    {
+        var only = AddPicture("Only - a.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: only);
+        _downloader.PicturesToAdd = ["Fresh - f.png"];
+        using var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+
+        await _library.DeleteAsync(only);
+        await WaitUntil(() => _downloader.Downloads == 1 && viewModel.State == CurrentWallpaperState.Showing);
+
+        Assert.Equal(Path.Combine(_wallpaperDir, "Fresh - f.png"), viewModel.PicturePath);
     }
 
     private static async Task WaitUntil(Func<bool> condition)
@@ -304,6 +405,9 @@ public class CurrentWallpaperViewModelTests : IDisposable
         public bool Fails { get; set; }
         public string[] PicturesToAdd { get; set; } = [];
         public int Downloads { get; private set; }
+
+        // This stand-in never reports a finished run.
+        public event Action? WallpapersDownloaded { add { } remove { } }
 
         public async Task DownloadAllAsync()
         {

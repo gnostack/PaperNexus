@@ -48,6 +48,26 @@ internal static class TestHelpers
         return data.ToArray();
     }
 
+    // A JPEG of the given size with a color gradient and shapes, so a downscaled copy has
+    // detail to compare.
+    internal static void CreateDetailedJpeg(string path, int width, int height)
+    {
+        var info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
+        using var bitmap = new SKBitmap(info);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            using var gradient = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0), new SKPoint(width, height),
+                [new SKColor(20, 60, 160), new SKColor(240, 180, 40)], SKShaderTileMode.Clamp);
+            using var fill = new SKPaint { Shader = gradient };
+            canvas.DrawRect(0, 0, width, height, fill);
+            using var shape = new SKPaint { Color = new SKColor(250, 250, 250), IsAntialias = true };
+            for (var i = 0; i < 8; i++)
+                canvas.DrawCircle(width * (i + 1) / 9f, height / 2f, height / 10f, shape);
+        }
+        Save(bitmap, path, SKEncodedImageFormat.Jpeg, 90);
+    }
+
     internal static void CreateSmallJpeg(string path, byte r = 200, byte g = 100, byte b = 50)
     {
         using var bitmap = CreateSolidBitmap(100, 100, new SKColor(r, g, b));
@@ -121,10 +141,41 @@ internal static class TestHelpers
     // A settings view model wired to the given store and to do-nothing host services, so no
     // test opens a browser or file manager. The background services stay unregistered, as
     // they were when the view model looked them up from a running app that tests never had.
+    // Its picture library uses a real switcher with a no-op wallpaper applier, so deleting the
+    // current wallpaper sets the next one without touching the machine's wallpaper.
     internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store)
     {
-        var viewModel = new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders);
+        var library = CreateLibrary(store);
+        var viewModel = WithoutSynchronizationContext(
+            () => new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders, library));
         return viewModel;
+    }
+
+    // Builds a view model with no synchronization context, so it applies the library's change
+    // notices inline, in order with the command that caused them. xunit runs tests under a
+    // context that posts to the thread pool, where a notice and the command would race; on a
+    // screen both run on the one UI thread.
+    internal static T WithoutSynchronizationContext<T>(Func<T> create)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            return create();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    // A picture library on the given store, with a real switcher that changes nothing on the
+    // machine (a no-op wallpaper applier, working files in BaseDir).
+    internal static WallpaperLibrary CreateLibrary(ISettingsStore store, ISwitchWallpaper? switcher = null)
+    {
+        switcher ??= new SwitchWallpaper(Microsoft.Extensions.Logging.Abstractions.NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, store, AppFolders);
+        var library = new WallpaperLibrary(store, switcher);
+        return library;
     }
 
     // Removes the temporary directory a test store was rooted in.

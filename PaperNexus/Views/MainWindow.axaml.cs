@@ -88,16 +88,16 @@ public partial class MainWindow : Window
             vm.LoadGalleryCommand.Execute(null);
     }
 
+    // A card's thumbnail is held only while the list shows the card; CardThumbnailHolder
+    // releases it when the list clears or reuses the card's container.
     private void OnGalleryContainerPrepared(object? sender, ContainerPreparedEventArgs e)
     {
-        if (e.Container.DataContext is GalleryItem item)
-            _ = item.LoadAsync();
+        CardThumbnailHolder.Prepared(e.Container, ImageResizing.ThumbnailWidth);
     }
 
     private void OnGalleryContainerClearing(object? sender, ContainerClearingEventArgs e)
     {
-        if (e.Container.DataContext is GalleryItem item)
-            item.DisposeThumbnail();
+        CardThumbnailHolder.Clearing(e.Container);
     }
 
     private async void OnWallpaperNameDoubleTapped(object? sender, TappedEventArgs e)

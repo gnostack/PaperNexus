@@ -40,6 +40,23 @@ public partial class CurrentWallpaperView : UserControl
         ShowPicture();
     }
 
+    // Asks first, with the desktop's question and buttons, then deletes.
+    private async void OnDeleteClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null)
+            return;
+        var confirmed = await Confirmation.ShowAsync(
+            CurrentWallpaperViewModel.DeleteQuestion,
+            "Delete",
+            "Permanently delete wallpaper file",
+            "Cancel",
+            "Cancel deletion",
+            isDestructive: true);
+        if (confirmed)
+            await viewModel.DeleteCommand.ExecuteAsync(null);
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(CurrentWallpaperViewModel.PicturePath))

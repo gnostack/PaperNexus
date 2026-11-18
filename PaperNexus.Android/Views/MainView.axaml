@@ -1,11 +1,12 @@
 <!-- The phone's main screen: five tabs along the bottom (issue #203, decision 9). TabbedPage places
      its tabs at the bottom on Android and draws each page's Icon above its Header. Current shows the
-     current wallpaper (step 3); the other pages show only their own name until their content
-     arrives in step 4. -->
+     current wallpaper (step 3), Gallery and Favorites the pictures (step 4); Sources and Settings
+     show only their own name until their content arrives. -->
 <TabbedPage xmlns="https://github.com/avaloniaui"
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
             xmlns:views="using:PaperNexus.Views"
             x:Class="PaperNexus.Views.MainView"
+            SelectionChanged="OnSelectionChanged"
             Background="#2B2B2B">
 
     <!-- Fluent's defaults color the selected tab with the plain accent, which is darker on this
@@ -31,20 +32,20 @@
         <views:CurrentWallpaperView x:Name="CurrentWallpaper"/>
     </ContentPage>
 
-    <ContentPage Header="Gallery">
+    <ContentPage x:Name="GalleryPage" Header="Gallery">
         <ContentPage.Icon>
             <!-- The desktop's Gallery tab icon (MainWindow.axaml). -->
             <PathIcon Data="M22 16V4C22 2.9 21.1 2 20 2H8C6.9 2 6 2.9 6 4V16C6 17.1 6.9 18 8 18H20C21.1 18 22 17.1 22 16ZM11 12L13.03 14.71L16 11L20 16H8L11 12ZM2 6V20C2 21.1 2.9 22 4 22H18V20H4V6H2Z"/>
         </ContentPage.Icon>
-        <TextBlock Text="Gallery" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <views:GalleryView x:Name="Gallery"/>
     </ContentPage>
 
-    <ContentPage Header="Favorites">
+    <ContentPage x:Name="FavoritesPage" Header="Favorites">
         <ContentPage.Icon>
             <!-- The desktop's Favorites tab icon (MainWindow.axaml). -->
             <PathIcon Data="M12 21.35L10.55 20.03C5.4 15.36 2 12.27 2 8.5C2 5.41 4.42 3 7.5 3C9.24 3 10.91 3.81 12 5.08C13.09 3.81 14.76 3 16.5 3C19.58 3 22 5.41 22 8.5C22 12.27 18.6 15.36 13.45 20.03L12 21.35Z"/>
         </ContentPage.Icon>
-        <TextBlock Text="Favorites" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <views:FavoritesView x:Name="Favorites"/>
     </ContentPage>
 
     <ContentPage Header="Sources">

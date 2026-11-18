@@ -10,19 +10,29 @@ project and its logic and view models in the shared project.
 | File | Job |
 | --- | --- |
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
-| `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. |
+| `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. |
+| `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
 | `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity. |
-| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the Current tab's `CurrentWallpaperViewModel` by constructor. The other four pages show only their names until step 4. |
-| `Views/CurrentWallpaperView.axaml(.cs)` | The Current tab: the current wallpaper's picture full width, its title, the heart, Next and Random. |
+| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery and Favorites to list their pictures the first time their tab is chosen. Sources and Settings show only their names until their parts of step 4. |
+| `Views/MainScreenState.cs` | The selected tab, kept for the process's lifetime. |
+| `Views/ListPlace.cs` | Records a list's scroll place in its view model and returns to it when the list reaches the screen again. |
+| `Views/CurrentWallpaperView.axaml(.cs)` | The Current tab: the current wallpaper's picture full width, its title, the heart, Next, Random and delete, the confirmation line, and the delete question. |
+| `Views/GalleryView.axaml(.cs)`, `Views/FavoritesView.axaml(.cs)` | The Gallery and Favorites tabs (see "Gallery and Favorites"). |
+| `Views/PictureListStyles.axaml` | The card, picture-button, ban-icon and confirmation-line styles both lists and the Current tab share. |
+| `Views/PictureFrame.cs` | Holds a card's picture in a 16:9 box as wide as the card, so every card has the same height. |
+| `Views/CardThumbnails.cs` | Loads a card's thumbnail at the screen's pixel width when the list builds the card, and releases it when the list clears or reuses the card (through the shared `CardThumbnailHolder`) or the tab leaves the screen. |
+| `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
 | `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
 
-There is no `AndroidManifest.xml` in the project: the build generates it from the attributes on
-`MainApplication` and `MainActivity` and from the csproj (`ApplicationId`,
-`SupportedOSPlatformVersion`). The generated file is
+The build generates the manifest from the attributes on `MainApplication` and the permission
+attributes, from the csproj (`ApplicationId`, `SupportedOSPlatformVersion`), and merges in
+`AndroidManifest.xml`, which declares the activity by hand: for an activity the hand-written
+file declares, the generator adds nothing, so that entry carries the launcher intent filter and
+`exported` itself. The generated file is
 `PaperNexus.Android/obj/<Configuration>/net10.0-android/android/AndroidManifest.xml`.
 
 Decisions that are easy to undo by accident:
@@ -71,9 +81,94 @@ Decisions that are easy to undo by accident:
   stay dimmed.
 - The picture is the downloaded source picture, scaled to the screen's pixel width by
   `ImageResizing.CreatePngOfWidth` (the shared imaging layer) rather than held at 4K.
-- Each activity gets a new view and view model. A wallpaper set by an older copy of the tab
-  reaches the new one through `ISwitchWallpaper.WallpaperChanged`; the old view model stops
-  listening when its view leaves the screen.
+- Each activity gets a new view; the view model lives as long as the process (see "Keeping
+  the screen"), so the first-open work runs once (`EnsureLoadedAsync`).
+- The heart says "Added to favorites." or "Removed from favorites." in a line under the
+  buttons for three seconds (green; a failure is red, "Error updating favorites: …").
+- The delete button (the desktop's trash icon, after Random) asks "Delete this wallpaper file
+  from disk?" in the in-page dialog, with "Cancel" and "Delete". On Delete the picture leaves
+  the phone, its favorite and its ban, and the next picture in slideshow order is set: "Deleted
+  and switched to: …". After the last picture the line says "Wallpaper deleted. No more
+  wallpapers." and the tab downloads new ones, as on first open.
+- A heart set, or the current picture deleted, on another tab shows here at once (the
+  library's `Changed`).
+
+## Gallery and Favorites
+
+The rules for listing, hearting, banning and deleting pictures are `IWallpaperLibrary`
+(`PaperNexus.Shared/WallpaperLibrary.cs`), which the desktop's settings window uses too;
+setting a picture as the wallpaper is `ISwitchWallpaper.SwitchToSpecificAsync`. The phone's
+`GalleryViewModel` and `FavoritesViewModel` share `PictureListViewModel`.
+
+| Tab | Lists | Buttons on each card | Empty |
+| --- | --- | --- | --- |
+| Gallery | every downloaded picture, newest first by the file's last write time | set as current, heart, ban, delete | "No wallpapers yet." |
+| Favorites | the favorites, in the order they were hearted | set as current, remove from favorites | "No favorites yet. Tap the heart on a wallpaper to add one." |
+
+- A card is the picture in a 16:9 frame the width of the screen, its title beneath (two lines
+  at most), and its buttons on the picture's bottom corners as on the desktop's card: 48 dp
+  buttons on a dark see-through square. A banned picture is tinted red (`#AA660000`) and its
+  ban icon is orange; Favorites cards, like the desktop's, show no tint.
+- Every tap shows a line over the bottom of the list for three seconds: green when it worked,
+  red when it failed, white ("Switching wallpaper...") while a switch waits its turn. The
+  card's buttons dim while its action runs. Gallery delete asks nothing, as on the desktop.
+- A change made on any tab shows on the others at once: the library raises `Changed` after
+  every save, and each view model applies it on the screen's thread. A finished download run
+  raises `PicturesChanged`, which adds the new pictures to an open Gallery.
+- On a phone that forbids changing the wallpaper, set as current stays dimmed.
+
+Measured on the Android 16 emulator (issue #203, step 4):
+
+- `TabbedPage.SelectionChanged` is raised for the first selection (the Current tab, as the
+  view attaches) and for every tab change, so the lists load on it.
+- A tab's page leaves the visual tree when another tab is chosen, but its list keeps its
+  cards; `CardThumbnails` releases their thumbnails then and reloads the cards in view when the
+  tab returns.
+- Memory with 55 pictures (4K JPEGs), total PSS from `dumpsys meminfo`, after the two fixes
+  below:
+
+  | Build | At rest | Gallery open | Peak while flinging the whole list twice | After leaving the Gallery |
+  | --- | --- | --- | --- | --- |
+  | Debug | 198 MB | 225 MB | 343 MB | 222 MB |
+  | Release | 154 MB | 173 MB | 282 MB | 184 MB |
+
+  Before them the Debug peak was 523 MB and 381 MB stayed after leaving. The growth was native
+  heap still in use, not memory kept by the allocator: every thumbnail the list had ever shown
+  was still held (55 of 55 with 3 cards built), because a virtualizing list reuses a card's
+  container without saying which picture it showed. `CardThumbnailHolder` (shared with the
+  desktop gallery, which had the same leak at 600 px) now remembers that and lets each
+  picture's thumbnail go. Thumbnails are also decoded at reduced size
+  (`ImageCodec.DecodeFileAtLeast`: a JPEG decodes straight to the smallest eighth of its size
+  that is wide enough; PNG has no scaled decode in Skia's codec and decodes whole); on its own
+  that lowered the Debug peak from 523 to 486 MB.
+
+## Keeping the screen
+
+Whatever the person is looking at survives Android destroying and recreating the activity
+(font size, language, display size):
+
+- The view models of the Current, Gallery and Favorites tabs and `MainScreenState` (the
+  selected tab) are container singletons, created on the screen's thread when the first view
+  asks for them. Each activity gets a new `MainView`, which binds to them when it reaches the
+  screen and sets the tabs' `DataContext` to null when it leaves, so a dead view holds no
+  subscription on a view model and is never updated by one. The view models subscribe to the
+  switcher and the library once, for the process.
+- A recreated screen opens on the same tab, with the same cards (not listed again), the same
+  confirmation line while it is within its three seconds, and the list at the same place
+  (`ListPlace`; rows whose titles wrap to two lines can put it a fraction of a row off).
+- Thumbnails are still released when a tab leaves the screen, and loaded again for the cards in
+  view when it returns.
+
+A wallpaper change does not recreate the activity at all. On Android 12 and later every new
+wallpaper makes the system rebuild its wallpaper-based color overlays, which is an asset paths
+configuration change; the activity declares `configChanges="...|assetsPaths"` in
+`AndroidManifest.xml` and keeps running (the .NET Android manifest generator drops
+`ConfigChanges.AssetsPaths` from the `[Activity]` attribute, hence the hand-written entry). So
+set as current and delete stay on their tab and show their line. Measured on the emulator
+(Debug and Release): the activity object is the same before and after a wallpaper change, and
+a font scale change still creates a new one. The tab accent color, which Avalonia takes from
+the system's wallpaper-based accent, still follows each new wallpaper without the rebuild.
+Rotation and dark/light mode changes still keep the activity, as before.
 
 ## Composition and lifecycle
 
@@ -216,6 +311,8 @@ There is no Android test project: a `net10.0` test project cannot reference a
 `net10.0-android` project. The logic the phone relies on lives in `PaperNexus.Shared` and is
 tested there: the canvas math (`WallpaperCanvas.ForScreen`), fitting and rendering for a
 canvas (`WallpaperFittingTests`), the switcher with a canvas or a refusal
-(`SwitchWallpaperDeviceTests`) and the Current tab's states (`CurrentWallpaperViewModelTests`).
+(`SwitchWallpaperDeviceTests`), the Current tab's states (`CurrentWallpaperViewModelTests`),
+the picture library (`WallpaperLibraryTests`) and the Gallery and Favorites tabs
+(`PictureListViewModelTests`).
 The Android classes only pass Android's numbers and calls through; they are verified on the
 emulator.
