@@ -22,8 +22,8 @@ public sealed partial class SourceFormViewModel : ObservableObject
 
     private readonly IWallpaperSources _sources;
 
-    // The name of the source being edited, or null when adding.
-    private readonly string? _editedName;
+    // The source being edited, or null when adding.
+    private readonly SourceKey? _editedKey;
 
     // The test running now, so a second Test or closing the form can cancel it.
     private CancellationTokenSource? _testCts;
@@ -74,12 +74,12 @@ public sealed partial class SourceFormViewModel : ObservableObject
         Title = AddTitle;
     }
 
-    // A form filled with an existing source's fields.
-    public SourceFormViewModel(IWallpaperSources sources, SourceFields editing)
+    // A form filled with an existing source's fields; Save replaces exactly that source.
+    public SourceFormViewModel(IWallpaperSources sources, SourceKey key, SourceFields editing)
         : this(sources)
     {
         editing.ThrowIfNull();
-        _editedName = editing.Name;
+        _editedKey = key.ThrowIfNull();
         Title = EditTitle;
         IsEnabled = editing.IsEnabled;
         Name = editing.Name;
@@ -91,7 +91,7 @@ public sealed partial class SourceFormViewModel : ObservableObject
 
     public string Title { get; }
 
-    public bool IsEditing => _editedName is not null;
+    public bool IsEditing => _editedKey is not null;
 
     public bool HasError => ErrorText is not null;
 
@@ -101,6 +101,10 @@ public sealed partial class SourceFormViewModel : ObservableObject
 
     // The name the source was saved under, once Save has worked.
     public string? SavedName { get; private set; }
+
+    // The key of the saved source, once Save has worked: an edit that keeps its name keeps its
+    // key; any other saved name is unique, so its key is the first of that name.
+    public SourceKey? SavedKey { get; private set; }
 
     // Reads the feed with the typed address and rules and shows what it found. A second Test
     // cancels the first, whose result is dropped.
@@ -154,9 +158,9 @@ public sealed partial class SourceFormViewModel : ObservableObject
         IsSaving = true;
         try
         {
-            var problem = _editedName is null
+            var problem = _editedKey is null
                 ? await _sources.AddAsync(fields)
-                : await _sources.ReplaceAsync(_editedName, fields);
+                : await _sources.ReplaceAsync(_editedKey, fields);
             if (problem is { } refused)
             {
                 ShowError(SaveRefusalText(refused, fields.Name.Trim()));
@@ -174,6 +178,9 @@ public sealed partial class SourceFormViewModel : ObservableObject
         }
 
         SavedName = fields.Name.Trim();
+        var keptName = _editedKey is not null
+            && string.Equals(_editedKey.Name.Trim(), SavedName, StringComparison.OrdinalIgnoreCase);
+        SavedKey = keptName ? _editedKey with { Name = SavedName } : new SourceKey(SavedName, 0);
         StopTest();
         Finished?.Invoke(true);
     }

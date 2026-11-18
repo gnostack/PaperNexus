@@ -136,6 +136,42 @@ public class WallpaperConfigSourcesTests : IDisposable
         vm.Cleanup();
     }
 
+    // An older file with "Twin" and "twin": the second row's delete, checkbox and edit change the
+    // second source only, and the dialog's save selects the row that was edited.
+    [Fact]
+    public async Task Twins_TheSecondRowActsOnTheSecondSource()
+    {
+        await _store.WriteAsync(new WallpaperNexusSettings
+        {
+            Slideshow = new SlideshowSettings { Enabled = false },
+            Sources =
+            [
+                new WallpaperSource { Name = "Twin", Url = "https://first.test/feed" },
+                new WallpaperSource { Name = "twin", Url = "https://second.test/feed" },
+                new WallpaperSource { Name = "TWIN", Url = "https://third.test/feed" },
+            ],
+        });
+        var sources = TestHelpers.CreateWallpaperSources(_store);
+        var vm = TestHelpers.CreateViewModel(_store, sources);
+        await vm.LoadAsync();
+
+        vm.Sources[1].IsEnabled = false;
+        await WaitUntil(() => vm.StatusMessage == "✓ Settings saved.");
+        var form = vm.CreateSourceForm(vm.Sources[2]);
+        form.Url = "https://edited.test/feed";
+        await form.SaveCommand.ExecuteAsync(null);
+        await vm.SourceSavedAsync(form);
+        Assert.Same(vm.Sources[2], vm.SelectedSource);
+        await vm.Sources[1].DeleteCommand.ExecuteAsync(null);
+
+        var saved = (await _store.LoadAsync()).Sources;
+        Assert.Equal(["https://first.test/feed", "https://edited.test/feed"], saved.Select(s => s.Url));
+        Assert.True(saved[0].IsEnabled);
+        await WaitUntil(() => vm.Sources.Count == 2);
+        Assert.Equal(["https://first.test/feed", "https://edited.test/feed"], vm.Sources.Select(s => s.Url));
+        vm.Cleanup();
+    }
+
     [Theory]
     [InlineData(2, 0, "✓ Download complete.")]
     [InlineData(2, 1, "✗ Download failed for 1 of 2 sources.")]

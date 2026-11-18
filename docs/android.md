@@ -179,8 +179,11 @@ dialog).
 - **Back** with the form open closes the form without saving, as Cancel does; the first back
   closes the keyboard if it is open. Back on the tabs leaves the app, as before.
 - **Names are unique**, compared ignoring case after trimming ("A source named … already exists.").
-  An older `settings.json` that already holds two sources with one name loads and lists both; the
-  switch, edit and delete of either row act on the first source with that name.
+  An older `settings.json` that already holds two sources with one name loads and lists both. A
+  source is known by its `SourceKey` (its name and which of the same-named sources it is), so the
+  switch, edit and delete of each row act on exactly that row's source. Either twin can be edited
+  keeping its own name; renaming one to another source's name is refused; nothing is renamed by
+  itself.
 
 Measured on the Android 16 emulator (1080x2400, the on-screen keyboard shown):
 
@@ -193,10 +196,20 @@ Measured on the Android 16 emulator (1080x2400, the on-screen keyboard shown):
   Its height changing while it stays open raises no `InputPane.StateChanged`, only
   `InsetsManager.SafeAreaChanged`, so the page follows both.
 - The keyboard's Next key moves to the next field; the schedule shows Done.
-- `TextInputOptions.ContentType="Url"` reaches Android as input type `0x10`, without the text
-  class, and the keyboard shows its ordinary layout; `ShowSuggestions="False"` on the URL field
-  is not passed on (Avalonia 12.1.1). On the two JPath fields and the schedule the options do
-  reach the keyboard (`0x80081`, no suggestion strip).
+
+### Text input options in Avalonia 12.1.1
+
+Measured with `adb shell dumpsys input_method` (the focused field's `inputType`), so they need
+not be measured again until Avalonia changes:
+
+- `TextInputOptions.ContentType="Url"` reaches Android as `inputType=0x10`: the URI variation
+  without the text class. The keyboard shows its ordinary layout, not the web-address one.
+- `TextInputOptions.ShowSuggestions="False"` on that same URL field is not passed on: no
+  no-suggestions flag, and the keyboard shows its suggestion strip.
+- The two JPath fields and the schedule (`ShowSuggestions="False"`, `AutoCapitalization="False"`)
+  reach Android as `inputType=0x80081`: text class, no-suggestions flag, and the password
+  variation (`0x80`). The text stays visible in the field, but the keyboard treats it as a
+  password field (no suggestion strip, nothing learned).
 
 ## Keeping the screen
 

@@ -112,13 +112,13 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
         }
     }
 
-    private SourceItem CreateItem(SourceFields fields)
+    private SourceItem CreateItem(ListedSource source)
     {
-        var item = new SourceItem(fields, EditSource, DeleteSourceAsync, SetEnabledAsync);
+        var item = new SourceItem(source, EditSource, DeleteSourceAsync, SetEnabledAsync);
         return item;
     }
 
-    private void EditSource(SourceItem item) => OpenForm(new SourceFormViewModel(_sources, item.Fields));
+    private void EditSource(SourceItem item) => OpenForm(new SourceFormViewModel(_sources, item.Key, item.Fields));
 
     // One form at a time; a second tap while one is open does nothing.
     private void OpenForm(SourceFormViewModel form)
@@ -144,7 +144,7 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
     {
         try
         {
-            await _sources.DeleteAsync(item.Name);
+            await _sources.DeleteAsync(item.Key);
             Items.Remove(item);
             Status.Show(SavedText, StatusTone.Success);
         }
@@ -160,7 +160,7 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
     {
         try
         {
-            await _sources.SetEnabledAsync(item.Name, isEnabled);
+            await _sources.SetEnabledAsync(item.Key, isEnabled);
             item.Apply(item.Fields with { IsEnabled = isEnabled });
             Status.Show(SavedText, StatusTone.Success);
         }

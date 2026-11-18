@@ -47,7 +47,7 @@ public class SourceFormViewModelTests : IDisposable
     public async Task EditForm_IsFilledWithTheSource()
     {
         var fields = new SourceFields("Lakes", "https://feeds.test/l", "$.a", "$.b", "0 1 * * *", false);
-        var form = new SourceFormViewModel(await CreateSourcesAsync(), fields);
+        var form = new SourceFormViewModel(await CreateSourcesAsync(), new SourceKey("Lakes", 0), fields);
 
         Assert.Equal("Edit Wallpaper Source", form.Title);
         Assert.False(form.IsEnabled);
@@ -109,7 +109,7 @@ public class SourceFormViewModelTests : IDisposable
     {
         var sources = await CreateSourcesAsync(null, new WallpaperSource { Name = "Lakes", Url = "https://old.test/f" });
         var editing = (await sources.ListAsync()).Single();
-        var form = new SourceFormViewModel(sources, editing) { Url = "https://new.test/f" };
+        var form = new SourceFormViewModel(sources, editing.Key, editing.Fields) { Url = "https://new.test/f" };
         bool? finished = null;
         form.Finished += saved => finished = saved;
 
@@ -241,15 +241,15 @@ public class SourceFormViewModelTests : IDisposable
 
         public event Action? Changed { add { } remove { } }
 
-        public Task<IReadOnlyList<SourceFields>> ListAsync() => Task.FromResult<IReadOnlyList<SourceFields>>([]);
+        public Task<IReadOnlyList<ListedSource>> ListAsync() => Task.FromResult<IReadOnlyList<ListedSource>>([]);
 
         public Task<SourceProblem?> AddAsync(SourceFields fields) => throw _error;
 
-        public Task<SourceProblem?> ReplaceAsync(string name, SourceFields fields) => throw _error;
+        public Task<SourceProblem?> ReplaceAsync(SourceKey key, SourceFields fields) => throw _error;
 
-        public Task DeleteAsync(string name) => throw _error;
+        public Task DeleteAsync(SourceKey key) => throw _error;
 
-        public Task SetEnabledAsync(string name, bool isEnabled) => throw _error;
+        public Task SetEnabledAsync(SourceKey key, bool isEnabled) => throw _error;
 
         public Task<SourceTestOutcome> TestAsync(SourceFields fields, CancellationToken cancellationToken) => throw _error;
     }

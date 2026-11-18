@@ -21,6 +21,8 @@ public class WallpaperSourcesTests : IDisposable
         string cron = "0 */8 * * *",
         bool isEnabled = true) => new(name, url, imageUrlJPath, titleJPath, cron, isEnabled);
 
+    private static SourceKey Key(string name, int occurrence = 0) => new(name, occurrence);
+
     private async Task WriteSourcesAsync(params WallpaperSource[] sources)
     {
         await _store.WriteAsync(new WallpaperNexusSettings { Sources = [.. sources] });
@@ -36,10 +38,12 @@ public class WallpaperSourcesTests : IDisposable
 
         var sources = await sut.ListAsync();
 
-        Assert.Equal(["One", "Two"], sources.Select(s => s.Name));
-        Assert.True(sources[0].IsEnabled);
-        Assert.False(sources[1].IsEnabled);
-        Assert.Equal("https://two.test/feed", sources[1].Url);
+        Assert.Equal(["One", "Two"], sources.Select(s => s.Fields.Name));
+        Assert.True(sources[0].Fields.IsEnabled);
+        Assert.False(sources[1].Fields.IsEnabled);
+        Assert.Equal("https://two.test/feed", sources[1].Fields.Url);
+        Assert.Equal(Key("One"), sources[0].Key);
+        Assert.Equal(Key("Two"), sources[1].Key);
     }
 
     [Fact]
@@ -118,7 +122,7 @@ public class WallpaperSourcesTests : IDisposable
             new WallpaperSource { Name = "Three", Url = "https://three.test/feed" });
         var sut = TestHelpers.CreateWallpaperSources(_store);
 
-        var problem = await sut.ReplaceAsync("Lakes", Fields(name: "LAKES", url: "https://new.test/feed"));
+        var problem = await sut.ReplaceAsync(Key("Lakes"), Fields(name: "LAKES", url: "https://new.test/feed"));
 
         Assert.Null(problem);
         var saved = (await _store.LoadAsync()).Sources;
@@ -133,7 +137,7 @@ public class WallpaperSourcesTests : IDisposable
         await WriteSourcesAsync(new WallpaperSource { Name = "Lakes", Url = "https://old.test/feed", LastDownloadUtc = DateTimeOffset.UtcNow });
         var sut = TestHelpers.CreateWallpaperSources(_store);
 
-        await sut.ReplaceAsync("Lakes", Fields(name: "Rivers"));
+        await sut.ReplaceAsync(Key("Lakes"), Fields(name: "Rivers"));
 
         var saved = (await _store.LoadAsync()).Sources.Single();
         Assert.Equal("Rivers", saved.Name);
@@ -148,7 +152,7 @@ public class WallpaperSourcesTests : IDisposable
             new WallpaperSource { Name = "Rivers", Url = "https://two.test/feed" });
         var sut = TestHelpers.CreateWallpaperSources(_store);
 
-        var problem = await sut.ReplaceAsync("Lakes", Fields(name: "rivers"));
+        var problem = await sut.ReplaceAsync(Key("Lakes"), Fields(name: "rivers"));
 
         Assert.Equal(SourceProblem.NameTaken, problem);
         Assert.Equal(["Lakes", "Rivers"], (await _store.LoadAsync()).Sources.Select(s => s.Name));
@@ -160,7 +164,7 @@ public class WallpaperSourcesTests : IDisposable
         await WriteSourcesAsync(new WallpaperSource { Name = "One", Url = "https://one.test/feed" });
         var sut = TestHelpers.CreateWallpaperSources(_store);
 
-        var problem = await sut.ReplaceAsync("Gone", Fields(name: "Lakes"));
+        var problem = await sut.ReplaceAsync(Key("Gone"), Fields(name: "Lakes"));
 
         Assert.Null(problem);
         Assert.Equal(["One", "Lakes"], (await _store.LoadAsync()).Sources.Select(s => s.Name));
@@ -174,37 +178,117 @@ public class WallpaperSourcesTests : IDisposable
             new WallpaperSource { Name = "Two", Url = "https://two.test/feed" });
         var sut = TestHelpers.CreateWallpaperSources(_store);
 
-        await sut.SetEnabledAsync("two", false);
-        await sut.DeleteAsync("ONE");
-        await sut.DeleteAsync("Nobody");
+        await sut.SetEnabledAsync(Key("two"), false);
+        await sut.DeleteAsync(Key("ONE"));
+        await sut.DeleteAsync(Key("Nobody"));
 
         var saved = (await _store.LoadAsync()).Sources;
         Assert.Equal("Two", saved.Single().Name);
         Assert.False(saved.Single().IsEnabled);
     }
 
-    // A file written before names were unique keeps both sources; each action takes the first.
-    [Fact]
-    public async Task OlderFileWithTwoSourcesOfOneName_LoadsAndActsOnTheFirst()
+    // A file written before names were unique keeps both sources. Each is listed with its own
+    // key, and every action changes exactly the source its key names.
+    private async Task WriteTwinsAsync()
     {
         await WriteSourcesAsync(
-            new WallpaperSource { Name = "Twin", Url = "https://first.test/feed" },
-            new WallpaperSource { Name = "twin", Url = "https://second.test/feed" });
+            new WallpaperSource { Name = "Twin", Url = "https://first.test/feed", LastDownloadUtc = DateTimeOffset.UnixEpoch },
+            new WallpaperSource { Name = "Other", Url = "https://other.test/feed" },
+            new WallpaperSource { Name = "twin", Url = "https://second.test/feed", LastDownloadUtc = DateTimeOffset.UnixEpoch.AddDays(1) });
+    }
+
+    private async Task<List<WallpaperSource>> SavedAsync() => (await _store.LoadAsync()).Sources;
+
+    [Fact]
+    public async Task OlderFileWithTwins_ListsEachWithItsOwnKey()
+    {
+        await WriteTwinsAsync();
         var sut = TestHelpers.CreateWallpaperSources(_store);
 
         var listed = await sut.ListAsync();
-        await sut.SetEnabledAsync("Twin", false);
-        var problem = await sut.ReplaceAsync("Twin", Fields(name: "Twin", url: "https://edited.test/feed", isEnabled: false));
 
-        Assert.Equal(2, listed.Count);
+        Assert.Equal([Key("Twin", 0), Key("Other", 0), Key("twin", 1)], listed.Select(l => l.Key));
+        Assert.True(listed[0].Key.IsSameSource(Key(" TWIN ", 0)));
+        Assert.False(listed[0].Key.IsSameSource(listed[2].Key));
+    }
+
+    [Fact]
+    public async Task OlderFileWithTwins_DeleteOfTheSecond_DeletesTheSecond()
+    {
+        await WriteTwinsAsync();
+        var sut = TestHelpers.CreateWallpaperSources(_store);
+
+        await sut.DeleteAsync(Key("twin", 1));
+
+        Assert.Equal(["https://first.test/feed", "https://other.test/feed"], (await SavedAsync()).Select(s => s.Url));
+    }
+
+    [Fact]
+    public async Task OlderFileWithTwins_SwitchOfTheSecond_SwitchesTheSecond()
+    {
+        await WriteTwinsAsync();
+        var sut = TestHelpers.CreateWallpaperSources(_store);
+
+        await sut.SetEnabledAsync(Key("twin", 1), false);
+
+        var saved = await SavedAsync();
+        Assert.True(saved[0].IsEnabled);
+        Assert.False(saved[2].IsEnabled);
+    }
+
+    // Keeping its own name is allowed for either twin; nothing is renamed.
+    [Fact]
+    public async Task OlderFileWithTwins_EditOfTheSecondKeepingItsName_EditsTheSecond()
+    {
+        await WriteTwinsAsync();
+        var sut = TestHelpers.CreateWallpaperSources(_store);
+
+        var problem = await sut.ReplaceAsync(Key("twin", 1), Fields(name: "twin", url: "https://edited.test/feed"));
+
         Assert.Null(problem);
-        var saved = (await _store.LoadAsync()).Sources;
-        Assert.Equal(["https://edited.test/feed", "https://second.test/feed"], saved.Select(s => s.Url));
-        Assert.False(saved[0].IsEnabled);
-        Assert.True(saved[1].IsEnabled);
+        var saved = await SavedAsync();
+        Assert.Equal(["Twin", "Other", "twin"], saved.Select(s => s.Name));
+        Assert.Equal(["https://first.test/feed", "https://other.test/feed", "https://edited.test/feed"], saved.Select(s => s.Url));
+        Assert.Equal(DateTimeOffset.UnixEpoch, saved[0].LastDownloadUtc);
+        Assert.Equal(DateTimeOffset.UnixEpoch.AddDays(1), saved[2].LastDownloadUtc);
+    }
 
-        await sut.DeleteAsync("TWIN");
-        Assert.Equal("https://second.test/feed", (await _store.LoadAsync()).Sources.Single().Url);
+    [Fact]
+    public async Task OlderFileWithTwins_RenamingTheSecondToAnotherSourcesName_IsRefused()
+    {
+        await WriteTwinsAsync();
+        var sut = TestHelpers.CreateWallpaperSources(_store);
+
+        var problem = await sut.ReplaceAsync(Key("twin", 1), Fields(name: "other"));
+
+        Assert.Equal(SourceProblem.NameTaken, problem);
+        Assert.Equal(["Twin", "Other", "twin"], (await SavedAsync()).Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task OlderFileWithTwins_RenamingTheSecondToANewName_RenamesOnlyIt()
+    {
+        await WriteTwinsAsync();
+        var sut = TestHelpers.CreateWallpaperSources(_store);
+
+        var problem = await sut.ReplaceAsync(Key("twin", 1), Fields(name: "Rivers"));
+
+        Assert.Null(problem);
+        Assert.Equal(["Twin", "Other", "Rivers"], (await SavedAsync()).Select(s => s.Name));
+        Assert.Equal(["Twin", "Other", "Rivers"], (await sut.ListAsync()).Select(l => l.Key.Name));
+    }
+
+    // An edited source deleted meanwhile is added back, but never as a second source of a name.
+    [Fact]
+    public async Task Replace_SourceDeletedMeanwhileWhoseNameIsNowTaken_IsRefused()
+    {
+        await WriteSourcesAsync(new WallpaperSource { Name = "Twin", Url = "https://first.test/feed" });
+        var sut = TestHelpers.CreateWallpaperSources(_store);
+
+        var problem = await sut.ReplaceAsync(Key("twin", 1), Fields(name: "twin"));
+
+        Assert.Equal(SourceProblem.NameTaken, problem);
+        Assert.Single(await SavedAsync());
     }
 
     // Each change touches only the sources: a favorite and a download time saved by others stay.
@@ -220,7 +304,7 @@ public class WallpaperSourcesTests : IDisposable
             latest.Sources[0].LastDownloadUtc = downloaded;
         });
 
-        await sut.SetEnabledAsync("Lakes", false);
+        await sut.SetEnabledAsync(Key("Lakes"), false);
         await sut.AddAsync(Fields(name: "Rivers"));
 
         var saved = await _store.LoadAsync();
@@ -239,9 +323,9 @@ public class WallpaperSourcesTests : IDisposable
         await sut.AddAsync(Fields(name: "Lakes"));
         await sut.AddAsync(Fields(name: "lakes"));
         await sut.AddAsync(Fields(name: ""));
-        await sut.ReplaceAsync("Lakes", Fields(name: "Rivers"));
-        await sut.SetEnabledAsync("Rivers", false);
-        await sut.DeleteAsync("Rivers");
+        await sut.ReplaceAsync(Key("Lakes"), Fields(name: "Rivers"));
+        await sut.SetEnabledAsync(Key("Rivers"), false);
+        await sut.DeleteAsync(Key("Rivers"));
 
         Assert.Equal(4, raised);
     }

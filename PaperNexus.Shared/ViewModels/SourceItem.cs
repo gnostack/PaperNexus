@@ -5,8 +5,10 @@ using CommunityToolkit.Mvvm.Input;
 namespace PaperNexus.ViewModels;
 
 // One row of a sources list, on either device: the source's fields, its on/off switch, and its
-// edit and delete buttons. The list that owns the row passes in what each control does, so the
-// row holds no reference to a view model or a service.
+// edit and delete buttons. The row carries the key of the source it shows, so its buttons act on
+// exactly that source, even one of two same-named sources in an older settings file. The list
+// that owns the row passes in what each control does, so the row holds no reference to a view
+// model or a service.
 public partial class SourceItem : ObservableObject
 {
     private readonly Action<SourceItem> _edit;
@@ -32,17 +34,22 @@ public partial class SourceItem : ObservableObject
     private bool _isBusy;
 
     public SourceItem(
-        SourceFields fields,
+        ListedSource source,
         Action<SourceItem> edit,
         Func<SourceItem, Task> delete,
         Func<SourceItem, bool, Task> setEnabled)
     {
-        _fields = fields.ThrowIfNull();
-        _isEnabled = fields.IsEnabled;
+        source.ThrowIfNull();
+        Key = source.Key;
+        _fields = source.Fields;
+        _isEnabled = source.Fields.IsEnabled;
         _edit = edit.ThrowIfNull();
         _delete = delete.ThrowIfNull();
         _setEnabled = setEnabled.ThrowIfNull();
     }
+
+    // Which source this row shows.
+    public SourceKey Key { get; private set; }
 
     public string Name => Fields.Name;
 
@@ -95,21 +102,30 @@ public partial class SourceItem : ObservableObject
         }
     }
 
+    // Shows the saved source the row now stands for (its key can change when a same-named
+    // source before it was deleted), without saving anything.
+    public void Apply(ListedSource source)
+    {
+        source.ThrowIfNull();
+        Key = source.Key;
+        Apply(source.Fields);
+    }
+
     // Brings the rows into the order and values of the saved list, reusing the row already shown
-    // for a name (so the desktop's selection and the phone's place in the list stay), creating
+    // for a source (so the desktop's selection and the phone's place in the list stay), creating
     // rows for new sources and removing the rest.
     public static void Reconcile(
         ObservableCollection<SourceItem> items,
-        IReadOnlyList<SourceFields> sources,
-        Func<SourceFields, SourceItem> create)
+        IReadOnlyList<ListedSource> sources,
+        Func<ListedSource, SourceItem> create)
     {
         for (var index = 0; index < sources.Count; index++)
         {
-            var fields = sources[index];
+            var source = sources[index];
             var existing = -1;
             for (var at = index; at < items.Count; at++)
             {
-                if (string.Equals(items[at].Name, fields.Name, StringComparison.OrdinalIgnoreCase))
+                if (items[at].Key.IsSameSource(source.Key))
                 {
                     existing = at;
                     break;
@@ -118,13 +134,13 @@ public partial class SourceItem : ObservableObject
 
             if (existing < 0)
             {
-                items.Insert(index, create(fields));
+                items.Insert(index, create(source));
                 continue;
             }
 
             if (existing != index)
                 items.Move(existing, index);
-            items[index].Apply(fields);
+            items[index].Apply(source);
         }
 
         while (items.Count > sources.Count)

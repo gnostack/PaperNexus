@@ -6,34 +6,36 @@ namespace PaperNexus;
 // adds, edits, deletes, turns on and off, and tests sources through this one service, so the
 // rules for a source are written once. Downloading from them belongs to IDownloadWallpapers.
 //
-// A source is known by its name: names are unique, compared ignoring case after trimming, which
-// is also how the downloader records each source's last download time. A settings file written
-// before this rule may still hold two sources with the same name; it loads and lists as it is,
-// and an edit, a delete or the on/off switch acts on the first source with that name.
+// Names are unique, compared ignoring case after trimming, which is also how the downloader
+// records each source's last download time. A settings file written before this rule may still
+// hold two sources with the same name; it loads and lists as it is. So a source is known by its
+// SourceKey: its name plus which of the sources sharing that name it is (0 for the first). An
+// edit, a delete or the on/off switch acts on exactly the source its key names, never on a twin.
 public interface IWallpaperSources
 {
     // Raised after every change this service saved, so each open screen can show it. Raised on
     // a background thread.
     public event Action? Changed;
 
-    // Every source, in its stored order.
-    public Task<IReadOnlyList<SourceFields>> ListAsync();
+    // Every source with its key, in its stored order.
+    public Task<IReadOnlyList<ListedSource>> ListAsync();
 
     // Checks the fields and adds the source at the end. Returns the first problem found, in the
     // order a person reads the form, and saves nothing then; null when it was saved.
     public Task<SourceProblem?> AddAsync(SourceFields fields);
 
-    // Checks the fields and replaces the source named name, in the same place. A source that
-    // keeps its name keeps its last download time; a renamed one counts as never downloaded.
-    // When no source has that name any more (it was deleted meanwhile), the source is added at
-    // the end. Returns the first problem, or null when it was saved.
-    public Task<SourceProblem?> ReplaceAsync(string name, SourceFields fields);
+    // Checks the fields and replaces the source the key names, in the same place. Keeping its own
+    // name is never a clash, even for one of two older same-named sources; taking another
+    // source's name is. A source that keeps its name keeps its last download time; a renamed one
+    // counts as never downloaded. When the source is gone (deleted meanwhile), it is added at the
+    // end, unless its name is taken. Returns the first problem, or null when it was saved.
+    public Task<SourceProblem?> ReplaceAsync(SourceKey key, SourceFields fields);
 
-    // Deletes the source with this name. Nothing happens when there is none.
-    public Task DeleteAsync(string name);
+    // Deletes the source the key names. Nothing happens when there is none.
+    public Task DeleteAsync(SourceKey key);
 
-    // Turns the source with this name on or off. Nothing happens when there is none.
-    public Task SetEnabledAsync(string name, bool isEnabled);
+    // Turns the source the key names on or off. Nothing happens when there is none.
+    public Task SetEnabledAsync(SourceKey key, bool isEnabled);
 
     // Reads the source's feed with its picture-finding rules, without saving anything. The
     // address and both rules are checked first, as Save checks them (the name may be empty). A
@@ -50,6 +52,22 @@ public sealed record SourceFields(
     string TitleJPath,
     string CronExpression,
     bool IsEnabled);
+
+// Which source: its name, and which of the sources sharing that name (ignoring case, trimmed) it
+// is, 0 for the first. Only an older settings file can hold more than one.
+public sealed record SourceKey(string Name, int Occurrence)
+{
+    // Whether both keys name the same source.
+    public bool IsSameSource(SourceKey other)
+    {
+        other.ThrowIfNull();
+        var sameName = string.Equals(Name?.Trim(), other.Name?.Trim(), StringComparison.OrdinalIgnoreCase);
+        return sameName && Occurrence == other.Occurrence;
+    }
+}
+
+// A listed source: the key that names it and its fields.
+public sealed record ListedSource(SourceKey Key, SourceFields Fields);
 
 // Why a source was not saved or tested.
 public enum SourceProblem
@@ -83,11 +101,18 @@ internal sealed class WallpaperSources : IWallpaperSources, IAddSingleton<IWallp
         _feedReader = feedReader.ThrowIfNull();
     }
 
-    public async Task<IReadOnlyList<SourceFields>> ListAsync()
+    public async Task<IReadOnlyList<ListedSource>> ListAsync()
     {
         var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
-        var sources = settings.Sources.Select(ToFields).ToList();
-        return sources;
+        var listed = new List<ListedSource>();
+        for (var index = 0; index < settings.Sources.Count; index++)
+        {
+            var source = settings.Sources[index];
+            var occurrence = settings.Sources.Take(index).Count(s => SameName(s.Name, source.Name));
+            var key = new SourceKey(Clean(source.Name), occurrence);
+            listed.Add(new ListedSource(key, ToFields(source)));
+        }
+        return listed;
     }
 
     public async Task<SourceProblem?> AddAsync(SourceFields fields)
@@ -114,30 +139,34 @@ internal sealed class WallpaperSources : IWallpaperSources, IAddSingleton<IWallp
         return null;
     }
 
-    public async Task<SourceProblem?> ReplaceAsync(string name, SourceFields fields)
+    public async Task<SourceProblem?> ReplaceAsync(SourceKey key, SourceFields fields)
     {
-        name.ThrowIfNull();
+        key.ThrowIfNull();
         var problem = Check(fields, out var source);
         if (problem is not null)
             return problem;
 
-        // Keeping the name (even with other capitals) is never a clash, so an older file that
-        // already holds two sources of one name can still edit the first of them.
-        var keepsName = SameName(name, source.Name);
+        // Keeping its own name (even with other capitals) is never a clash, so either of two
+        // older same-named sources can be edited without renaming it.
+        var keepsName = SameName(key.Name, source.Name);
         try
         {
             await _settingsStore.UpdateAsync(latest =>
             {
-                var index = FindIndex(latest.Sources, name);
-                if (!keepsName && FindIndex(latest.Sources, source.Name) >= 0)
-                    throw new RefusedException(SourceProblem.NameTaken);
+                var index = FindIndex(latest.Sources, key);
+                var nameTaken = FindIndex(latest.Sources, source.Name) >= 0;
                 if (index < 0)
                 {
                     // Deleted while the form was open: the edited source is added at the end,
-                    // as the desktop always did
+                    // as the desktop always did, unless that would repeat a name
+                    if (nameTaken)
+                        throw new RefusedException(SourceProblem.NameTaken);
                     latest.Sources.Add(source);
                     return;
                 }
+
+                if (!keepsName && nameTaken)
+                    throw new RefusedException(SourceProblem.NameTaken);
 
                 if (keepsName)
                     source.LastDownloadUtc = latest.Sources[index].LastDownloadUtc;
@@ -153,24 +182,24 @@ internal sealed class WallpaperSources : IWallpaperSources, IAddSingleton<IWallp
         return null;
     }
 
-    public async Task DeleteAsync(string name)
+    public async Task DeleteAsync(SourceKey key)
     {
-        name.ThrowIfNull();
+        key.ThrowIfNull();
         await _settingsStore.UpdateAsync(latest =>
         {
-            var index = FindIndex(latest.Sources, name);
+            var index = FindIndex(latest.Sources, key);
             if (index >= 0)
                 latest.Sources.RemoveAt(index);
         }).ConfigureAwait(false);
         Raise();
     }
 
-    public async Task SetEnabledAsync(string name, bool isEnabled)
+    public async Task SetEnabledAsync(SourceKey key, bool isEnabled)
     {
-        name.ThrowIfNull();
+        key.ThrowIfNull();
         await _settingsStore.UpdateAsync(latest =>
         {
-            var index = FindIndex(latest.Sources, name);
+            var index = FindIndex(latest.Sources, key);
             if (index >= 0)
                 latest.Sources[index].IsEnabled = isEnabled;
         }).ConfigureAwait(false);
@@ -257,11 +286,27 @@ internal sealed class WallpaperSources : IWallpaperSources, IAddSingleton<IWallp
 
     private static string Clean(string? text) => text?.Trim() ?? string.Empty;
 
-    // The first source with this name, ignoring case and surrounding spaces, or -1.
+    // The first source with this name, ignoring case and surrounding spaces, or -1: whether a
+    // name is taken.
     private static int FindIndex(List<WallpaperSource> sources, string name)
     {
         var index = sources.FindIndex(s => SameName(s.Name, name));
         return index;
+    }
+
+    // The source the key names: the key's occurrence among the sources of its name, or -1.
+    private static int FindIndex(List<WallpaperSource> sources, SourceKey key)
+    {
+        var seen = 0;
+        for (var index = 0; index < sources.Count; index++)
+        {
+            if (!SameName(sources[index].Name, key.Name))
+                continue;
+            if (seen == key.Occurrence)
+                return index;
+            seen++;
+        }
+        return -1;
     }
 
     private static bool SameName(string? first, string? second)

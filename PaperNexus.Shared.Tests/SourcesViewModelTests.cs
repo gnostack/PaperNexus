@@ -198,13 +198,71 @@ public class SourcesViewModelTests : IDisposable
         await vm.LoadAsync();
         var row = vm.Items[0];
 
-        await sources.SetEnabledAsync("One", false);
+        await sources.SetEnabledAsync(new SourceKey("One", 0), false);
         await sources.AddAsync(new SourceFields("Two", "https://two.test/feed", "$[*].imageUrl", "$[*].title", "", true));
         await WaitUntil(() => vm.Items.Count == 2);
 
         Assert.Same(row, vm.Items[0]);
         Assert.False(row.IsEnabled);
         Assert.Equal("Two", vm.Items[1].Name);
+    }
+
+    // An older file with "Twin" and "twin": the second row's buttons change the second source and
+    // leave the first untouched.
+    private static WallpaperSource[] Twins() =>
+    [
+        new WallpaperSource { Name = "Twin", Url = "https://first.test/feed" },
+        new WallpaperSource { Name = "twin", Url = "https://second.test/feed" },
+    ];
+
+    [Fact]
+    public async Task Twins_DeleteOnTheSecondRow_DeletesTheSecondSource()
+    {
+        using var vm = Create(await SourcesAsync(Twins()));
+        await vm.LoadAsync();
+
+        await vm.Items[1].DeleteCommand.ExecuteAsync(null);
+        await WaitUntil(() => vm.Items.Count == 1);
+
+        Assert.Equal(["https://first.test/feed"], (await _store.LoadAsync()).Sources.Select(s => s.Url));
+        Assert.Equal("https://first.test/feed", vm.Items.Single().Url);
+    }
+
+    [Fact]
+    public async Task Twins_SwitchOnTheSecondRow_SwitchesTheSecondSource()
+    {
+        using var vm = Create(await SourcesAsync(Twins()));
+        await vm.LoadAsync();
+
+        vm.Items[1].IsEnabled = false;
+        await WaitUntil(() => vm.Status.IsShown);
+
+        var saved = (await _store.LoadAsync()).Sources;
+        Assert.True(saved[0].IsEnabled);
+        Assert.False(saved[1].IsEnabled);
+        Assert.True(vm.Items[0].IsEnabled);
+        Assert.False(vm.Items[1].IsEnabled);
+    }
+
+    [Fact]
+    public async Task Twins_EditOnTheSecondRow_KeepingItsName_EditsTheSecondSource()
+    {
+        using var vm = Create(await SourcesAsync(Twins()));
+        await vm.LoadAsync();
+
+        vm.Items[1].EditCommand.Execute(null);
+        var form = vm.Form;
+        Assert.Equal("twin", form.Name);
+        Assert.Equal("https://second.test/feed", form.Url);
+        form.Url = "https://edited.test/feed";
+        await form.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(vm.Form);
+        var saved = (await _store.LoadAsync()).Sources;
+        Assert.Equal(["Twin", "twin"], saved.Select(s => s.Name));
+        Assert.Equal(["https://first.test/feed", "https://edited.test/feed"], saved.Select(s => s.Url));
+        await WaitUntil(() => vm.Items[1].Url == "https://edited.test/feed");
+        Assert.Equal("https://first.test/feed", vm.Items[0].Url);
     }
 
     [Theory]
@@ -278,15 +336,15 @@ public class SourcesViewModelTests : IDisposable
 
         public event Action? Changed { add { } remove { } }
 
-        public Task<IReadOnlyList<SourceFields>> ListAsync() => _inner.ListAsync();
+        public Task<IReadOnlyList<ListedSource>> ListAsync() => _inner.ListAsync();
 
         public Task<SourceProblem?> AddAsync(SourceFields fields) => Task.FromException<SourceProblem?>(new IOException("The disk is full."));
 
-        public Task<SourceProblem?> ReplaceAsync(string name, SourceFields fields) => Task.FromException<SourceProblem?>(new IOException("The disk is full."));
+        public Task<SourceProblem?> ReplaceAsync(SourceKey key, SourceFields fields) => Task.FromException<SourceProblem?>(new IOException("The disk is full."));
 
-        public Task DeleteAsync(string name) => Task.FromException(new IOException("The disk is full."));
+        public Task DeleteAsync(SourceKey key) => Task.FromException(new IOException("The disk is full."));
 
-        public Task SetEnabledAsync(string name, bool isEnabled) => Task.FromException(new IOException("The disk is full."));
+        public Task SetEnabledAsync(SourceKey key, bool isEnabled) => Task.FromException(new IOException("The disk is full."));
 
         public Task<SourceTestOutcome> TestAsync(SourceFields fields, CancellationToken cancellationToken) => _inner.TestAsync(fields, cancellationToken);
     }

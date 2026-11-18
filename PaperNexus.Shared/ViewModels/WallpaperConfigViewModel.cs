@@ -459,9 +459,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
     // only a window can own.
     public event Action<SourceItem>? EditSourceRequested;
 
-    private SourceItem CreateSourceItem(SourceFields fields)
+    private SourceItem CreateSourceItem(ListedSource source)
     {
-        var item = new SourceItem(fields, RequestEditSource, DeleteSourceAsync, SetSourceEnabledAsync);
+        var item = new SourceItem(source, RequestEditSource, DeleteSourceAsync, SetSourceEnabledAsync);
         return item;
     }
 
@@ -472,7 +472,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         var form = editing is null
             ? new SourceFormViewModel(_wallpaperSources)
-            : new SourceFormViewModel(_wallpaperSources, editing.Fields);
+            : new SourceFormViewModel(_wallpaperSources, editing.Key, editing.Fields);
         return form;
     }
 
@@ -482,7 +482,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
     public async Task SourceSavedAsync(SourceFormViewModel form)
     {
         await ReloadSourcesAsync();
-        SelectedSource = Sources.FirstOrDefault(s => string.Equals(s.Name, form.SavedName, StringComparison.OrdinalIgnoreCase));
+        var savedKey = form.SavedKey;
+        SelectedSource = savedKey is null ? null : Sources.FirstOrDefault(s => s.Key.IsSameSource(savedKey));
         _ = ShowTransientStatusAsync("✓ Settings saved.");
     }
 
@@ -491,7 +492,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            await _wallpaperSources.DeleteAsync(item.Name);
+            await _wallpaperSources.DeleteAsync(item.Key);
             Sources.Remove(item);
             _ = ShowTransientStatusAsync("✓ Settings saved.");
         }
@@ -506,7 +507,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            await _wallpaperSources.SetEnabledAsync(item.Name, isEnabled);
+            await _wallpaperSources.SetEnabledAsync(item.Key, isEnabled);
             item.Apply(item.Fields with { IsEnabled = isEnabled });
             _ = ShowTransientStatusAsync("✓ Settings saved.");
         }
