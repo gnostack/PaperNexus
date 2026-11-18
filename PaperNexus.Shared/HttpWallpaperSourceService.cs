@@ -11,11 +11,19 @@ public class HttpWallpaperSourceService
     // HttpClient is thread-safe for concurrent requests; creating one per call drains the
     // ephemeral port pool because disposed clients leave sockets in TIME_WAIT for ~4 min.
     // The service is registered as a singleton, so this instance lives for the process lifetime.
-    private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _client;
 
     public HttpWallpaperSourceService(ILogger<HttpWallpaperSourceService> logger)
+        : this(logger, new HttpClientHandler())
+    {
+    }
+
+    // Internal so the container only ever sees the public constructor; tests pass a handler
+    // that answers an https address themselves, since a source must use https.
+    internal HttpWallpaperSourceService(ILogger<HttpWallpaperSourceService> logger, HttpMessageHandler handler)
     {
         _logger = logger.ThrowIfNull();
+        _client = new HttpClient(handler.ThrowIfNull()) { Timeout = TimeSpan.FromSeconds(30) };
     }
 
     // Fetches the JSON feed from the wallpaper source URL and returns all images

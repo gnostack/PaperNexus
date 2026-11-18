@@ -8,8 +8,8 @@ namespace PaperNexus.Views;
 
 // Keeps a list's scroll place in its view model, which outlives the view: the place is recorded
 // as the person scrolls, and a view that reaches the screen (a recreated activity's new view,
-// or the tab chosen again) returns to it once its cards are laid out. The list's rows all have
-// the same height (PictureFrame), so the place is the same picture.
+// or the tab chosen again) returns to it once its rows are laid out. The picture lists' rows all
+// have the same height (PictureFrame), so the place is the same picture.
 internal sealed class ListPlace
 {
     private readonly Control _view;
@@ -23,7 +23,7 @@ internal sealed class ListPlace
         _scroller.ScrollChanged += OnScrollChanged;
     }
 
-    private PictureListViewModel? ViewModel => _view.DataContext as PictureListViewModel;
+    private IScrollPlace? ViewModel => _view.DataContext as IScrollPlace;
 
     // Called when the view reaches the screen. The offset is set after the layout pass that
     // builds the cards; until then the scroll position the new layout reports is not the

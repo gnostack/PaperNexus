@@ -1,0 +1,139 @@
+<!-- The phone's add or edit source form (issue #203, step 4): the desktop's source dialog as a
+     full-screen page over the tabs. The title and the Enabled switch on top; the fields scroll,
+     each with the desktop's label, placeholder and hint; Cancel, Test and Save stay at the bottom
+     with the red refusal line or the green test result just above them, so a tap on Save or Test
+     always shows its answer beside the button. Back closes the form without saving, as Cancel. -->
+<ContentPage xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PaperNexus.ViewModels"
+             x:Class="PaperNexus.Views.SourceFormPage"
+             x:DataType="vm:SourceFormViewModel"
+             Background="#2B2B2B">
+
+    <ContentPage.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Opacity" Value="0.8"/>
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.formAction">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </ContentPage.Styles>
+
+    <Grid x:Name="Layout" RowDefinitions="Auto,*,Auto">
+        <!-- The desktop dialog's title row: the title and the Enabled switch -->
+        <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,4">
+            <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <ToggleSwitch Grid.Column="1"
+                          IsChecked="{Binding IsEnabled}"
+                          OnContent="Enabled" OffContent="Enabled"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Turn this source on or off"/>
+        </Grid>
+
+        <ScrollViewer x:Name="Fields" Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16,8,16,16" Spacing="16">
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="Name"/>
+                    <TextBox x:Name="NameBox"
+                             Text="{Binding Name}"
+                             PlaceholderText="e.g. Bing Daily"
+                             TextInputOptions.ReturnKeyType="Next"/>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="URL"/>
+                    <TextBox x:Name="UrlBox"
+                             Text="{Binding Url}"
+                             PlaceholderText="https://example.com/feed.json"
+                             TextInputOptions.ContentType="Url"
+                             TextInputOptions.ShowSuggestions="False"
+                             TextInputOptions.AutoCapitalization="False"
+                             TextInputOptions.ReturnKeyType="Next"/>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="Image URL JPath"/>
+                    <TextBox x:Name="ImageUrlJPathBox"
+                             Text="{Binding ImageUrlJPath}"
+                             PlaceholderText="e.g. $[*].imageUrl"
+                             TextInputOptions.ShowSuggestions="False"
+                             TextInputOptions.AutoCapitalization="False"
+                             TextInputOptions.ReturnKeyType="Next"/>
+                    <TextBlock Classes="hint" Text="JPath expression to locate image URLs in the JSON response"/>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="Title JPath"/>
+                    <TextBox x:Name="TitleJPathBox"
+                             Text="{Binding TitleJPath}"
+                             PlaceholderText="e.g. $[*].title"
+                             TextInputOptions.ShowSuggestions="False"
+                             TextInputOptions.AutoCapitalization="False"
+                             TextInputOptions.ReturnKeyType="Next"/>
+                    <TextBlock Classes="hint" Text="JPath expression to locate image titles in the JSON response"/>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="Download Schedule (Cron)"/>
+                    <TextBox x:Name="CronBox"
+                             Text="{Binding CronExpression}"
+                             PlaceholderText="e.g. 0 * * * * (every hour)"
+                             TextInputOptions.ShowSuggestions="False"
+                             TextInputOptions.AutoCapitalization="False"
+                             TextInputOptions.ReturnKeyType="Done"/>
+                    <TextBlock Classes="hint" Text="5-field cron: min hour day month weekday"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- The answer to the last Save or Test, then the buttons, in the desktop's order -->
+        <Border Grid.Row="2" Background="#1E1E1E" BorderBrush="#333" BorderThickness="0,1,0,0" Padding="16,12">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding ErrorText}"
+                           Foreground="#F87171" FontSize="14" TextWrapping="Wrap"
+                           IsVisible="{Binding HasError}"/>
+                <ScrollViewer MaxHeight="200" IsVisible="{Binding HasTestResult}"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <SelectableTextBlock Text="{Binding TestResultText}"
+                                         Foreground="#86EFAC" FontSize="14" TextWrapping="Wrap"/>
+                </ScrollViewer>
+                <Grid ColumnDefinitions="*,8,*,8,*">
+                    <Button Classes="formAction" Content="Cancel"
+                            Command="{Binding CancelCommand}"
+                            ToolTip.Tip="Close without saving"/>
+                    <Button Grid.Column="2" Classes="formAction"
+                            Command="{Binding TestCommand}"
+                            ToolTip.Tip="Test the source configuration">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="M8 5v14l11-7z" Width="14" Height="14"/>
+                            <TextBlock Text="{Binding TestButtonText}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Grid.Column="4" Classes="formAction"
+                            Command="{Binding SaveCommand}"
+                            ToolTip.Tip="Save wallpaper source">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59Z" Width="14" Height="14"/>
+                            <TextBlock Text="Save" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</ContentPage>

@@ -77,6 +77,8 @@ public partial class MainWindow : Window
         viewModel.ThrowIfNull();
         // The ViewModel decides whether an egg fires; the window owns how it is drawn.
         viewModel.EasterEggTriggered += show => Dispatcher.UIThread.Post(() => EggOverlay.Play(show));
+        // A source row's edit button asks the window to open the source dialog for that row.
+        viewModel.EditSourceRequested += item => _ = OpenEditDialog(item);
         DataContext = viewModel;
         // Use the tunnel phase so Shift+Click can be intercepted before the button's own handler fires
         UpdateButton.AddHandler(InputElement.PointerPressedEvent, OnUpdateButtonPointerPressed, RoutingStrategies.Tunnel);
@@ -185,57 +187,39 @@ public partial class MainWindow : Window
             await vm.LoadAsync();
     }
 
+    // Opens the source dialog with an empty form. The form saves the source itself; the
+    // window then shows the new row selected.
     private async void AddSource_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var dialog = new WallpaperSourceDialog();
-        var saved = await dialog.ShowDialog<bool>(this);
-        if (saved && dialog.Result is not null && DataContext is WallpaperConfigViewModel vm)
-        {
-            vm.Sources.Add(dialog.Result);
-            vm.SelectedSource = dialog.Result;
-        }
+        if (DataContext is not WallpaperConfigViewModel vm)
+            return;
+        var form = vm.CreateSourceForm(null);
+        await ShowSourceDialogAsync(vm, form);
     }
 
-    private async void EditSource_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        await OpenEditDialog();
-    }
-
+    // Double-tapping a row edits it, as the row's edit button does.
     private async void SourceList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        await OpenEditDialog();
+        if (DataContext is WallpaperConfigViewModel { SelectedSource: { } selected })
+            await OpenEditDialog(selected);
     }
 
-    // Opens the source edit dialog for the currently selected source.
-    // Replaces the item at its original index rather than appending to preserve list order.
-    private async Task OpenEditDialog()
+    // Opens the source dialog filled with the row's source. The form replaces the source in
+    // its place when saved.
+    private async Task OpenEditDialog(SourceItem item)
     {
-        if (DataContext is not WallpaperConfigViewModel vm || vm.SelectedSource is null)
+        if (DataContext is not WallpaperConfigViewModel vm)
             return;
-
-        var dialog = new WallpaperSourceDialog(vm.SelectedSource);
-        var saved = await dialog.ShowDialog<bool>(this);
-        if (saved && dialog.Result is not null)
-        {
-            var index = vm.Sources.IndexOf(vm.SelectedSource);
-            if (index < 0)
-            {
-                // Source was removed while the dialog was open - just append the result
-                vm.Sources.Add(dialog.Result);
-            }
-            else
-            {
-                vm.Sources.RemoveAt(index);
-                vm.Sources.Insert(index, dialog.Result);
-            }
-            vm.SelectedSource = dialog.Result;
-        }
+        var form = vm.CreateSourceForm(item);
+        await ShowSourceDialogAsync(vm, form);
     }
 
-    private void DeleteSourceRow_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async Task ShowSourceDialogAsync(WallpaperConfigViewModel vm, SourceFormViewModel form)
     {
-        if (sender is Button { DataContext: WallpaperSource source } && DataContext is WallpaperConfigViewModel vm)
-            vm.Sources.Remove(source);
+        var dialog = new WallpaperSourceDialog(form);
+        var saved = await dialog.ShowDialog<bool>(this);
+        if (saved)
+            await vm.SourceSavedAsync(form);
     }
 
     // Intercepts the checkbox when the user attempts to turn minimize-to-tray OFF.

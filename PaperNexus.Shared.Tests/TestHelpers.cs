@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using PaperNexus.Core;
 using PaperNexus.ViewModels;
 using SkiaSharp;
@@ -143,12 +144,26 @@ internal static class TestHelpers
     // they were when the view model looked them up from a running app that tests never had.
     // Its picture library uses a real switcher with a no-op wallpaper applier, so deleting the
     // current wallpaper sets the next one without touching the machine's wallpaper.
-    internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store)
+    internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store, IWallpaperSources? sources = null, IDownloadWallpapers? downloader = null)
     {
         var library = CreateLibrary(store);
+        var wallpaperSources = sources ?? CreateWallpaperSources(store);
         var viewModel = WithoutSynchronizationContext(
-            () => new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders, library));
+            () => new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders, library, wallpaperSources, downloadWallpapers: downloader));
         return viewModel;
+    }
+
+    // The sources service on the given store. Its feed reader answers through handler when one
+    // is given (a test feed at an https address); without one it would use the network, which
+    // only tests that never read a feed may do.
+    internal static WallpaperSources CreateWallpaperSources(ISettingsStore store, HttpMessageHandler? handler = null)
+    {
+        var logger = NullLogger<HttpWallpaperSourceService>.Instance;
+        var feedReader = handler is null
+            ? new HttpWallpaperSourceService(logger)
+            : new HttpWallpaperSourceService(logger, handler);
+        var sources = new WallpaperSources(store, feedReader);
+        return sources;
     }
 
     // Builds a view model with no synchronization context, so it applies the library's change

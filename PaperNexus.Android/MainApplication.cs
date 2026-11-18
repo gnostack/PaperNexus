@@ -54,6 +54,7 @@ public class MainApplication : AvaloniaAndroidApplication<App>
                 services.AddSingleton<CurrentWallpaperViewModel>();
                 services.AddSingleton<GalleryViewModel>();
                 services.AddSingleton<FavoritesViewModel>();
+                services.AddSingleton<SourcesViewModel>();
                 services.AddSingleton<MainScreenState>();
                 services.AddTransient<MainView>();
                 // The shared services, then this host's implementations of the interfaces they

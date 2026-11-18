@@ -140,3 +140,41 @@ dotnet run --project PaperNexus -c Release -- --debug
 
 Confirm the wallpaper actually changed by reading the desktop's own state rather than the
 app's log - `gsettings get org.gnome.desktop.background picture-uri` on GNOME.
+
+### A scratch build beside an installed copy
+
+To run a build without touching the installed app or its files, build it in a separate clone (with
+an `origin` remote) and launch it with a throwaway home: set `HOME` to an empty folder, unset
+`XDG_DATA_HOME` and `XDG_CONFIG_HOME`, and point `XDG_RUNTIME_DIR` at another empty folder so its
+single-instance socket does not hand the launch over to a running copy. Keep
+`DBUS_SESSION_BUS_ADDRESS` on the real session bus so GNOME and accessibility still answer.
+`settings.json`, the downloads, the autostart entry and the launcher then all land under the
+throwaway home; a wallpaper switch still changes the real GNOME keys, so record them first (or
+turn the slideshow off in the throwaway `settings.json`).
+
+### Screenshots and driving the window
+
+GNOME refuses screenshots over D-Bus, but the app's windows are X11 clients of Xwayland and can be
+captured one window at a time from Python, with nothing installed beyond the system's GTK and
+AT-SPI bindings:
+
+- Run Python with `GDK_BACKEND=x11` (and the session variables above), so GDK opens the X display
+  rather than the Wayland one.
+- Find the window through Xlib (`ctypes` on `libX11`): read the root window's `_NET_CLIENT_LIST`,
+  and for each window its `_NET_WM_PID` (to pick the app's process) and `_NET_WM_NAME` (to pick
+  the settings window, "Paper Nexus", or a dialog such as "Wallpaper Source").
+- Capture it with `GdkX11.X11Window.foreign_new_for_display(display, xid)` and
+  `Gdk.pixbuf_get_from_window(window, 0, 0, width, height)`, then `savev(path, "png", [], [])`.
+  `Gdk.property_get` cannot be called from Python, hence the Xlib lookup.
+
+Drive the window through AT-SPI (`gi.require_version('Atspi', '2.0')`): find the application whose
+`get_process_id()` is the app's, walk its children, and
+
+- press a button with `get_action_iface().do_action(0)`; a button's tooltip is its accessible
+  description, and a checkbox's label its name;
+- type into a text box with `Atspi.EditableText.set_text_contents(node.get_editable_text_iface(), text)`;
+- read a status or refusal line from the labels' names.
+
+Two limits: pointer clicks sent through XTest do not reach the window under GNOME on Wayland, and
+rows a list adds after the window opened are missing from the accessibility tree (Avalonia
+12.1.1), so act on rows that were there when the window opened.

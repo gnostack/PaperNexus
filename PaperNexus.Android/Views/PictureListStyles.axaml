@@ -1,5 +1,5 @@
-<!-- The look shared by the Gallery and Favorites cards and their confirmation line, after the
-     desktop's gallery card (docs/ui-style-guide.md). -->
+<!-- The look shared by the Gallery and Favorites cards, after the desktop's gallery card
+     (docs/ui-style-guide.md). The confirmation line's look is StatusLineStyles.axaml. -->
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
@@ -38,19 +38,5 @@
     </Style>
     <Style Selector="PathIcon.ban.active">
         <Setter Property="Foreground" Value="#F97316"/>
-    </Style>
-
-    <!-- The line that confirms a tap: white while working, green when it worked, red when it
-         failed (the desktop status bar's colors). -->
-    <Style Selector="TextBlock.status">
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="TextWrapping" Value="Wrap"/>
-    </Style>
-    <Style Selector="TextBlock.status.success">
-        <Setter Property="Foreground" Value="#4ADE80"/>
-    </Style>
-    <Style Selector="TextBlock.status.error">
-        <Setter Property="Foreground" Value="#F87171"/>
     </Style>
 </Styles>

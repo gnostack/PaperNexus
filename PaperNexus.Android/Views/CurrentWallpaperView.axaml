@@ -12,6 +12,7 @@
 
     <UserControl.Styles>
         <StyleInclude Source="/Views/PictureListStyles.axaml"/>
+        <StyleInclude Source="/Views/StatusLineStyles.axaml"/>
         <!-- The delete icon keeps its color when disabled, so the whole button dims instead,
              as the desktop dims a disabled button. -->
         <Style Selector="Button.delete:disabled">
@@ -102,13 +103,13 @@
             </StackPanel>
 
             <!-- Confirms a heart or a delete for three seconds: green when it worked, red when not -->
-            <TextBlock Text="{Binding StatusMessage}"
+            <TextBlock Text="{Binding Status.Message}"
                        Classes="status"
-                       Classes.success="{Binding IsStatusSuccess}"
-                       Classes.error="{Binding IsStatusError}"
+                       Classes.success="{Binding Status.IsSuccess}"
+                       Classes.error="{Binding Status.IsError}"
                        TextAlignment="Center"
                        Margin="16,12,16,0"
-                       IsVisible="{Binding HasStatus}"/>
+                       IsVisible="{Binding Status.IsShown}"/>
 
             <TextBlock Text="{Binding ErrorMessage}"
                        Foreground="#F87171"

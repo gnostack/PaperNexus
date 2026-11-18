@@ -106,7 +106,7 @@
                             </StackPanel>
                         </TabItem.Header>
                         <DockPanel HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,4,Auto,4,Auto" Margin="0,6,0,6">
+                            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,4,Auto" Margin="0,6,0,6">
                                 <Button Grid.Column="0"
                                         Command="{Binding DownloadNowCommand}"
                                         ToolTip.Tip="Download wallpapers from all enabled sources now"
@@ -121,14 +121,6 @@
                                     <PathIcon Data="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"
                                               Width="12" Height="12"/>
                                 </Button>
-                                <Button Grid.Column="4"
-                                        Click="EditSource_Click"
-                                        IsEnabled="{Binding SelectedSource, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                        ToolTip.Tip="Edit selected wallpaper source"
-                                        Padding="8,4">
-                                    <PathIcon Data="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z"
-                                              Width="12" Height="12"/>
-                                </Button>
                             </Grid>
                             <ListBox ItemsSource="{Binding Sources}"
                                      SelectedItem="{Binding SelectedSource}"
@@ -138,7 +130,7 @@
                                      DoubleTapped="SourceList_DoubleTapped">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid ColumnDefinitions="Auto,8,*,4,Auto" Margin="2,4">
+                                        <Grid ColumnDefinitions="Auto,8,*,4,Auto,4,Auto" Margin="2,4">
                                             <CheckBox Grid.Column="0"
                                                       IsChecked="{Binding IsEnabled, Mode=TwoWay}"
                                                       VerticalAlignment="Top"
@@ -156,7 +148,14 @@
                                                            FontFamily="Consolas,Courier New,monospace"/>
                                             </StackPanel>
                                             <Button Grid.Column="4"
-                                                    Click="DeleteSourceRow_Click"
+                                                    Command="{Binding EditCommand}"
+                                                    ToolTip.Tip="Edit this wallpaper source"
+                                                    Padding="4,2" VerticalAlignment="Center">
+                                                <PathIcon Data="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z"
+                                                          Width="10" Height="10"/>
+                                            </Button>
+                                            <Button Grid.Column="6"
+                                                    Command="{Binding DeleteCommand}"
                                                     ToolTip.Tip="Delete this source"
                                                     Padding="4,2" VerticalAlignment="Center">
                                                 <PathIcon Data="M9 3H15L16 4H20V6H4V4H8L9 3ZM5 7H19L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 7Z"

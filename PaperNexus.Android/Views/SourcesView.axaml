@@ -1,0 +1,135 @@
+<!-- The Sources tab (issue #203, step 4): Add and Download now across the top, then one row per
+     wallpaper source with its name, an on/off switch, and its edit and delete buttons on the row.
+     The switch and delete save at once; every tap shows the confirmation line over the bottom of
+     the list. Add and edit open the full-screen form (SourceFormPage), which MainView shows. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PaperNexus.ViewModels"
+             x:Class="PaperNexus.Views.SourcesView"
+             x:DataType="vm:SourcesViewModel">
+
+    <UserControl.Styles>
+        <StyleInclude Source="/Views/StatusLineStyles.axaml"/>
+
+        <!-- The two buttons above the list: half the width each, a 48 dp touch target, an icon
+             beside the label. -->
+        <Style Selector="Button.top">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.top PathIcon">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+        </Style>
+
+        <!-- A row: the desktop's card colors, full width, 8 dp apart. -->
+        <Style Selector="Border.sourceRow">
+            <Setter Property="Background" Value="#222222"/>
+            <Setter Property="BorderBrush" Value="#383838"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Padding" Value="12,4,4,4"/>
+            <Setter Property="MinHeight" Value="64"/>
+        </Style>
+
+        <!-- The row's edit and delete: 48 dp touch targets, dimmed while the row works. -->
+        <Style Selector="Button.rowAction">
+            <Setter Property="Width" Value="48"/>
+            <Setter Property="Height" Value="48"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.rowAction PathIcon">
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+        </Style>
+        <Style Selector="Button.rowAction:disabled, ToggleSwitch:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,8,*" Margin="8,8,8,8">
+            <Button Classes="top"
+                    Command="{Binding AddCommand}"
+                    ToolTip.Tip="Add a new wallpaper source">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PathIcon Data="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"/>
+                    <TextBlock Text="Add" VerticalAlignment="Center" FontSize="16"/>
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Classes="top"
+                    Command="{Binding DownloadNowCommand}"
+                    ToolTip.Tip="Download wallpapers from all enabled sources now">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PathIcon Data="M5 20H19V18H5V20ZM19 9H15V3H9V9H5L12 16L19 9Z"/>
+                    <TextBlock Text="Download now" VerticalAlignment="Center" FontSize="16"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <Panel Grid.Row="1">
+            <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Items}" Margin="8,0,8,72">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SourceItem">
+                            <Border Classes="sourceRow">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                                    <TextBlock Text="{Binding Name}"
+                                               FontSize="16"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <ToggleSwitch Grid.Column="1"
+                                                  IsChecked="{Binding IsEnabled}"
+                                                  IsEnabled="{Binding CanAct}"
+                                                  OnContent="" OffContent=""
+                                                  MinWidth="0"
+                                                  Margin="8,0,4,0"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip.Tip="Turn this source on or off"/>
+                                    <Button Grid.Column="2" Classes="rowAction"
+                                            Command="{Binding EditCommand}"
+                                            IsEnabled="{Binding CanAct}"
+                                            ToolTip.Tip="Edit this wallpaper source">
+                                        <!-- The desktop's edit icon -->
+                                        <PathIcon Data="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z"/>
+                                    </Button>
+                                    <Button Grid.Column="3" Classes="rowAction"
+                                            Command="{Binding DeleteCommand}"
+                                            IsEnabled="{Binding CanAct}"
+                                            ToolTip.Tip="Delete this source">
+                                        <!-- The desktop's delete icon, in the delete color -->
+                                        <PathIcon Data="M9 3H15L16 4H20V6H4V4H8L9 3ZM5 7H19L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 7Z"
+                                                  Foreground="#E06C75"/>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <TextBlock Text="{Binding EmptyText}"
+                       FontSize="16" Opacity="0.7"
+                       TextWrapping="Wrap" TextAlignment="Center"
+                       Margin="32"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding IsEmpty}"/>
+
+            <!-- The confirmation line, over the bottom of the list, above the tabs -->
+            <Border Background="#1E1E1E" Padding="16,12"
+                    VerticalAlignment="Bottom"
+                    IsVisible="{Binding Status.IsShown}">
+                <TextBlock Classes="status"
+                           Classes.success="{Binding Status.IsSuccess}"
+                           Classes.error="{Binding Status.IsError}"
+                           Text="{Binding Status.Message}"/>
+            </Border>
+        </Panel>
+    </Grid>
+</UserControl>

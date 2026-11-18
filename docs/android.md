@@ -12,13 +12,15 @@ project and its logic and view models in the shared project.
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
 | `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. |
 | `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
-| `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity. |
-| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery and Favorites to list their pictures the first time their tab is chosen. Sources and Settings show only their names until their parts of step 4. |
+| `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar, inside a `PageNavigationHost`. |
+| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"). Settings shows only its name until its part of step 4. |
 | `Views/MainScreenState.cs` | The selected tab, kept for the process's lifetime. |
-| `Views/ListPlace.cs` | Records a list's scroll place in its view model and returns to it when the list reaches the screen again. |
+| `Views/ListPlace.cs` | Records a list's scroll place in its view model (`IScrollPlace`) and returns to it when the list reaches the screen again. |
 | `Views/CurrentWallpaperView.axaml(.cs)` | The Current tab: the current wallpaper's picture full width, its title, the heart, Next, Random and delete, the confirmation line, and the delete question. |
 | `Views/GalleryView.axaml(.cs)`, `Views/FavoritesView.axaml(.cs)` | The Gallery and Favorites tabs (see "Gallery and Favorites"). |
-| `Views/PictureListStyles.axaml` | The card, picture-button, ban-icon and confirmation-line styles both lists and the Current tab share. |
+| `Views/SourcesView.axaml(.cs)`, `Views/SourceFormPage.axaml(.cs)` | The Sources tab and its full-screen add or edit form (see "Sources"). |
+| `Views/PictureListStyles.axaml` | The card, picture-button and ban-icon styles both picture lists and the Current tab share. |
+| `Views/StatusLineStyles.axaml` | The confirmation line's look (white, green, red) for every tab, which each tab's `StatusLine` drives. |
 | `Views/PictureFrame.cs` | Holds a card's picture in a 16:9 box as wide as the card, so every card has the same height. |
 | `Views/CardThumbnails.cs` | Loads a card's thumbnail at the screen's pixel width when the list builds the card, and releases it when the list clears or reuses the card (through the shared `CardThumbnailHolder`) or the tab leaves the screen. |
 | `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
@@ -40,7 +42,13 @@ Decisions that are easy to undo by accident:
 - **`PageNavigationHost` wraps `MainView`.** Android 15 and later always draw an app edge to edge,
   under the status bar and the navigation bar. `PageNavigationHost` passes the system bars' insets
   to the page, and `TabbedPage` then keeps its tab bar above the navigation bar. Without it the
-  back, home and recents buttons sit on top of the tabs.
+  back, home and recents buttons sit on top of the tabs. It also passes Android's back button and
+  back gesture to the page tree.
+- **A `NavigationPage` with no bar sits between the host and `MainView`.** It is what shows the
+  Sources tab's form over the tabs as a modal page (`NavigationPage.SetHasNavigationBar(mainView,
+  false)` keeps its own title bar away). Measured on the emulator after adding it: the tab bar
+  still sits above the navigation bar, the status bar inset is unchanged, and a wallpaper change
+  still does not recreate the activity.
 - **The tab colors are overridden** in `MainView.axaml`. With Fluent's defaults the selected tab is
   the plain accent color, which is darker on the #2B2B2B background than the unselected grey. The
   selected tab uses `SystemAccentColorLight1` and the others `SystemBaseMediumLowColor`.
@@ -142,12 +150,73 @@ Measured on the Android 16 emulator (issue #203, step 4):
   that is wide enough; PNG has no scaled decode in Skia's codec and decodes whole); on its own
   that lowered the Debug peak from 523 to 486 MB.
 
+## Sources
+
+The rules for sources (listing, adding, editing, deleting, turning on and off, the checks a
+source must pass, and testing a feed) are `IWallpaperSources`
+(`PaperNexus.Shared/WallpaperSources.cs`), which the desktop's settings window and source dialog
+use too. Download now is `IDownloadWallpapers.DownloadAllAsync`, which reports how many enabled
+sources it tried and how many failed (`DownloadOutcome`); `DownloadSentence` turns that into the
+sentence both devices show. The phone's `SourcesViewModel` lists the rows (`SourceItem`, shared
+with the desktop window) and holds the open form (`SourceFormViewModel`, shared with the desktop
+dialog).
+
+- **The tab:** "Add" and "Download now" across the top; one row per source with its name, an
+  on/off switch, and edit and delete buttons (48 dp) on the row. With no sources: "No sources
+  yet. Tap Add to create one."
+- **Every tap shows a line** over the bottom of the list for three seconds, the Gallery's strip:
+  "Settings saved." (green) after a save, a switch or a delete; "Error saving settings: …" (red);
+  "Downloading wallpapers..." (white) while Download now runs, then "Download complete.", "Download
+  failed for N of M sources.", "Download failed: check your connection." or "No enabled sources to
+  download from." Download now is dimmed while it runs. Delete asks nothing, as on the desktop.
+- **The switch saves at once** (the desktop's checkbox saved with the window's settings save, half
+  a second later); a failed save puts it back.
+- **The form** covers the whole screen: the title and the Enabled switch, then Name, URL, Image URL
+  JPath, Title JPath and Download Schedule (Cron) with the desktop dialog's labels, placeholders
+  and hints, then Cancel, Test and Save at the bottom with the red refusal or the green test result
+  just above them. A refusal keeps the form open with what was typed. Test shows the desktop's
+  text: how many pictures the feed lists, then each picture's title and address.
+- **Back** with the form open closes the form without saving, as Cancel does; the first back
+  closes the keyboard if it is open. Back on the tabs leaves the app, as before.
+- **Names are unique**, compared ignoring case after trimming ("A source named … already exists.").
+  An older `settings.json` that already holds two sources with one name loads and lists both. A
+  source is known by its `SourceKey` (its name and which of the same-named sources it is), so the
+  switch, edit and delete of each row act on exactly that row's source. Either twin can be edited
+  keeping its own name; renaming one to another source's name is refused; nothing is renamed by
+  itself.
+
+Measured on the Android 16 emulator (1080x2400, the on-screen keyboard shown):
+
+- The app is drawn edge to edge and Android does not make the window shorter for the keyboard.
+  `SourceFormPage` lifts its content by the part of the keyboard above the navigation bar
+  (`InputPane.OccludedRect` less the page's safe area padding), so the bottom buttons sit on the
+  keyboard's top edge and the focused field, with its hint, is scrolled into view, the lowest
+  (the schedule) included.
+- The keyboard is taller on fields that show a suggestion strip (Name, URL) than on the others.
+  Its height changing while it stays open raises no `InputPane.StateChanged`, only
+  `InsetsManager.SafeAreaChanged`, so the page follows both.
+- The keyboard's Next key moves to the next field; the schedule shows Done.
+
+### Text input options in Avalonia 12.1.1
+
+Measured with `adb shell dumpsys input_method` (the focused field's `inputType`), so they need
+not be measured again until Avalonia changes:
+
+- `TextInputOptions.ContentType="Url"` reaches Android as `inputType=0x10`: the URI variation
+  without the text class. The keyboard shows its ordinary layout, not the web-address one.
+- `TextInputOptions.ShowSuggestions="False"` on that same URL field is not passed on: no
+  no-suggestions flag, and the keyboard shows its suggestion strip.
+- The two JPath fields and the schedule (`ShowSuggestions="False"`, `AutoCapitalization="False"`)
+  reach Android as `inputType=0x80081`: text class, no-suggestions flag, and the password
+  variation (`0x80`). The text stays visible in the field, but the keyboard treats it as a
+  password field (no suggestion strip, nothing learned).
+
 ## Keeping the screen
 
 Whatever the person is looking at survives Android destroying and recreating the activity
 (font size, language, display size):
 
-- The view models of the Current, Gallery and Favorites tabs and `MainScreenState` (the
+- The view models of the Current, Gallery, Favorites and Sources tabs and `MainScreenState` (the
   selected tab) are container singletons, created on the screen's thread when the first view
   asks for them. Each activity gets a new `MainView`, which binds to them when it reaches the
   screen and sets the tabs' `DataContext` to null when it leaves, so a dead view holds no
@@ -158,6 +227,11 @@ Whatever the person is looking at survives Android destroying and recreating the
   (`ListPlace`; rows whose titles wrap to two lines can put it a fraction of a row off).
 - Thumbnails are still released when a tab leaves the screen, and loaded again for the cards in
   view when it returns.
+- An open add or edit form is the sources view model's `Form`, so a recreated screen opens it
+  again with what was typed, the refusal line and the test result (a test still running finishes
+  into it). Measured with a font scale change: the form, the typed schedule and the test result
+  were all back. The keyboard focus and the form's scroll place are not kept: the new screen opens
+  the form at its top with the keyboard closed.
 
 A wallpaper change does not recreate the activity at all. On Android 12 and later every new
 wallpaper makes the system rebuild its wallpaper-based color overlays, which is an asset paths
@@ -312,7 +386,9 @@ There is no Android test project: a `net10.0` test project cannot reference a
 tested there: the canvas math (`WallpaperCanvas.ForScreen`), fitting and rendering for a
 canvas (`WallpaperFittingTests`), the switcher with a canvas or a refusal
 (`SwitchWallpaperDeviceTests`), the Current tab's states (`CurrentWallpaperViewModelTests`),
-the picture library (`WallpaperLibraryTests`) and the Gallery and Favorites tabs
-(`PictureListViewModelTests`).
+the picture library (`WallpaperLibraryTests`), the Gallery and Favorites tabs
+(`PictureListViewModelTests`), the source rules (`WallpaperSourcesTests`), the add or edit form
+(`SourceFormViewModelTests`), the Sources tab (`SourcesViewModelTests`) and Download now's
+sentences (`DownloadOutcomeTests`).
 The Android classes only pass Android's numbers and calls through; they are verified on the
 emulator.

@@ -80,7 +80,7 @@ public class PictureListViewModelTests : IDisposable
         Assert.Equal("B", gallery.Items[0].DisplayName);
         Assert.True(gallery.Items[2].IsBanned);
         Assert.False(gallery.IsEmpty);
-        Assert.False(gallery.HasStatus);
+        Assert.False(gallery.Status.IsShown);
     }
 
     // Before the first download the folder does not exist yet; the tab just has nothing.
@@ -94,7 +94,7 @@ public class PictureListViewModelTests : IDisposable
 
         Assert.True(gallery.IsEmpty);
         Assert.Equal("No wallpapers yet.", gallery.EmptyText);
-        Assert.False(gallery.HasStatus);
+        Assert.False(gallery.Status.IsShown);
     }
 
     [Fact]
@@ -108,13 +108,13 @@ public class PictureListViewModelTests : IDisposable
         await card.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.True(card.IsFavorite);
         Assert.Equal("Remove from favorites", card.FavoriteToolTip);
-        Assert.Equal("Added to favorites.", gallery.StatusMessage);
-        Assert.True(gallery.IsStatusSuccess);
+        Assert.Equal("Added to favorites.", gallery.Status.Message);
+        Assert.True(gallery.Status.IsSuccess);
         Assert.Equal([a], (await _store.LoadAsync()).FavoriteWallpapers);
 
         await card.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.False(card.IsFavorite);
-        Assert.Equal("Removed from favorites.", gallery.StatusMessage);
+        Assert.Equal("Removed from favorites.", gallery.Status.Message);
         Assert.Empty((await _store.LoadAsync()).FavoriteWallpapers);
     }
 
@@ -128,12 +128,12 @@ public class PictureListViewModelTests : IDisposable
 
         await card.ToggleBanCommand.ExecuteAsync(null);
         Assert.True(card.IsBanned);
-        Assert.Equal("Banned from rotation.", gallery.StatusMessage);
+        Assert.Equal("Banned from rotation.", gallery.Status.Message);
         Assert.Equal([a], (await _store.LoadAsync()).BannedWallpapers);
 
         await card.ToggleBanCommand.ExecuteAsync(null);
         Assert.False(card.IsBanned);
-        Assert.Equal("Back in rotation.", gallery.StatusMessage);
+        Assert.Equal("Back in rotation.", gallery.Status.Message);
         Assert.Empty((await _store.LoadAsync()).BannedWallpapers);
     }
 
@@ -148,7 +148,7 @@ public class PictureListViewModelTests : IDisposable
 
         Assert.DoesNotContain(gallery.Items, i => i.FilePath == a);
         Assert.False(File.Exists(a));
-        Assert.Equal("Wallpaper deleted.", gallery.StatusMessage);
+        Assert.Equal("Wallpaper deleted.", gallery.Status.Message);
         Assert.Equal(b, (await _store.LoadAsync()).CurrentWallpaperPath);
     }
 
@@ -162,7 +162,7 @@ public class PictureListViewModelTests : IDisposable
         await gallery.Items.Single(i => i.FilePath == b).DeleteCommand.ExecuteAsync(null);
 
         // Slideshow order is alphabetical in these settings, so A comes first
-        Assert.Equal("Deleted and switched to: A", gallery.StatusMessage);
+        Assert.Equal("Deleted and switched to: A", gallery.Status.Message);
         Assert.Equal(a, (await _store.LoadAsync()).CurrentWallpaperPath);
         Assert.Equal(2, gallery.Items.Count);
     }
@@ -182,14 +182,14 @@ public class PictureListViewModelTests : IDisposable
         Assert.True(card.IsBusy);
         Assert.False(card.CanAct);
         Assert.False(card.CanSetAsCurrent);
-        Assert.Equal("Switching wallpaper...", gallery.StatusMessage);
-        Assert.False(gallery.IsStatusSuccess);
+        Assert.Equal("Switching wallpaper...", gallery.Status.Message);
+        Assert.False(gallery.Status.IsSuccess);
 
         _switcher.Gate.SetResult();
         await running;
 
         Assert.False(card.IsBusy);
-        Assert.Equal("Switched to: A", gallery.StatusMessage);
+        Assert.Equal("Switched to: A", gallery.Status.Message);
         Assert.Equal(a, (await _store.LoadAsync()).CurrentWallpaperPath);
     }
 
@@ -204,7 +204,7 @@ public class PictureListViewModelTests : IDisposable
 
         await gallery.Items.Single(i => i.FilePath == a).SetAsCurrentCommand.ExecuteAsync(null);
 
-        Assert.Equal("Switched to: A", gallery.StatusMessage);
+        Assert.Equal("Switched to: A", gallery.Status.Message);
         Assert.Equal(a, (await _store.LoadAsync()).CurrentWallpaperPath);
     }
 
@@ -218,8 +218,8 @@ public class PictureListViewModelTests : IDisposable
 
         await gallery.Items.Single(i => i.FilePath == a).SetAsCurrentCommand.ExecuteAsync(null);
 
-        Assert.Equal("Wallpaper file not found.", gallery.StatusMessage);
-        Assert.True(gallery.IsStatusError);
+        Assert.Equal("Wallpaper file not found.", gallery.Status.Message);
+        Assert.True(gallery.Status.IsError);
     }
 
     [Fact]
@@ -231,12 +231,12 @@ public class PictureListViewModelTests : IDisposable
         var card = gallery.Items.Single(i => i.FilePath == a);
 
         await card.ToggleFavoriteCommand.ExecuteAsync(null);
-        Assert.Equal("Error updating favorites: The disk is full.", gallery.StatusMessage);
-        Assert.True(gallery.IsStatusError);
+        Assert.Equal("Error updating favorites: The disk is full.", gallery.Status.Message);
+        Assert.True(gallery.Status.IsError);
         Assert.False(card.IsFavorite);
 
         await card.ToggleBanCommand.ExecuteAsync(null);
-        Assert.Equal("Error updating ban list: The disk is full.", gallery.StatusMessage);
+        Assert.Equal("Error updating ban list: The disk is full.", gallery.Status.Message);
         Assert.False(card.IsBanned);
     }
 
@@ -300,7 +300,7 @@ public class PictureListViewModelTests : IDisposable
         await favorites.Items[0].ToggleFavoriteCommand.ExecuteAsync(null);
 
         Assert.Equal([b], favorites.Items.Select(i => i.FilePath));
-        Assert.Equal("Removed from favorites.", favorites.StatusMessage);
+        Assert.Equal("Removed from favorites.", favorites.Status.Message);
         Assert.Equal([b], (await _store.LoadAsync()).FavoriteWallpapers);
     }
 
@@ -349,7 +349,7 @@ public class PictureListViewModelTests : IDisposable
         await gallery.EnsureLoadedAsync();
 
         Assert.Equal(cards, gallery.Items);
-        Assert.Equal("Added to favorites.", gallery.StatusMessage);
+        Assert.Equal("Added to favorites.", gallery.Status.Message);
         Assert.Equal(1234, gallery.ScrollOffset);
     }
 
@@ -362,9 +362,9 @@ public class PictureListViewModelTests : IDisposable
         await gallery.EnsureLoadedAsync();
 
         await gallery.Items.Single(i => i.FilePath == a).ToggleBanCommand.ExecuteAsync(null);
-        Assert.True(gallery.HasStatus);
+        Assert.True(gallery.Status.IsShown);
 
-        await WaitUntil(() => !gallery.HasStatus);
+        await WaitUntil(() => !gallery.Status.IsShown);
     }
 
     // A closed tab stops following the library.
@@ -453,7 +453,7 @@ public class PictureListViewModelTests : IDisposable
     {
         public event Action? WallpapersDownloaded;
 
-        public Task DownloadAllAsync() => Task.CompletedTask;
+        public Task<DownloadOutcome> DownloadAllAsync() => Task.FromResult(new DownloadOutcome(0, 0));
 
         public void Finish() => WallpapersDownloaded?.Invoke();
     }

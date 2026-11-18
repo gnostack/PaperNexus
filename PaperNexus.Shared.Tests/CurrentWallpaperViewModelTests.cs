@@ -221,13 +221,13 @@ public class CurrentWallpaperViewModelTests : IDisposable
         await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsFavorite);
         Assert.Equal("Remove from favorites", viewModel.FavoriteToolTip);
-        Assert.Equal("Added to favorites.", viewModel.StatusMessage);
-        Assert.True(viewModel.IsStatusSuccess);
+        Assert.Equal("Added to favorites.", viewModel.Status.Message);
+        Assert.True(viewModel.Status.IsSuccess);
         Assert.Contains(current, (await _store.LoadAsync()).FavoriteWallpapers);
 
         await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.False(viewModel.IsFavorite);
-        Assert.Equal("Removed from favorites.", viewModel.StatusMessage);
+        Assert.Equal("Removed from favorites.", viewModel.Status.Message);
         Assert.DoesNotContain(current, (await _store.LoadAsync()).FavoriteWallpapers);
     }
 
@@ -249,7 +249,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
 
         Assert.Equal(1, _switcher.Switches);
         Assert.Equal(shown, viewModel.PicturePath);
-        Assert.Equal("Added to favorites.", viewModel.StatusMessage);
+        Assert.Equal("Added to favorites.", viewModel.Status.Message);
     }
 
     // Delete removes the picture (and its favorite) and sets the next one, saying which.
@@ -269,7 +269,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
         Assert.False(File.Exists(one));
         Assert.Equal(two, viewModel.PicturePath);
         Assert.Equal("Two", viewModel.Title);
-        Assert.Equal("Deleted and switched to: Two", viewModel.StatusMessage);
+        Assert.Equal("Deleted and switched to: Two", viewModel.Status.Message);
         Assert.Empty((await _store.LoadAsync()).FavoriteWallpapers);
         Assert.True(viewModel.CanDelete);
         Assert.True(viewModel.CanSwitch);
@@ -287,7 +287,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
 
         await viewModel.DeleteCommand.ExecuteAsync(null);
 
-        Assert.Equal("Wallpaper deleted. No more wallpapers.", viewModel.StatusMessage);
+        Assert.Equal("Wallpaper deleted. No more wallpapers.", viewModel.Status.Message);
         Assert.Equal(1, _downloader.Downloads);
         Assert.Equal(CurrentWallpaperState.Showing, viewModel.State);
         Assert.Equal(Path.Combine(_wallpaperDir, "Fresh - f.png"), viewModel.PicturePath);
@@ -409,15 +409,16 @@ public class CurrentWallpaperViewModelTests : IDisposable
         // This stand-in never reports a finished run.
         public event Action? WallpapersDownloaded { add { } remove { } }
 
-        public async Task DownloadAllAsync()
+        public async Task<DownloadOutcome> DownloadAllAsync()
         {
             Downloads++;
             if (Gate is not null)
                 await Gate.Task;
             if (Fails)
-                return;
+                return new DownloadOutcome(1, 1);
             foreach (var name in PicturesToAdd)
                 TestHelpers.CreateSmallPng(Path.Combine(_folder, name));
+            return new DownloadOutcome(1, 0);
         }
     }
 }

@@ -8,8 +8,15 @@ public interface IDownloadWallpapers
     // the retention pass may have deleted old ones. Raised on a background thread.
     public event Action? WallpapersDownloaded;
 
-    public Task DownloadAllAsync();
+    // Downloads every enabled source now, whatever its schedule, and says how many sources it
+    // tried and how many of them failed. A source fails when its feed cannot be read; a single
+    // picture that fails to download is logged and does not fail its source.
+    public Task<DownloadOutcome> DownloadAllAsync();
 }
+
+// What a download run did: how many enabled sources it tried, and how many of those failed.
+// Tried is 0 when no source is enabled (or no download folder is set).
+public sealed record DownloadOutcome(int SourcesTried, int SourcesFailed);
 
 internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IAddHostedSingleton<IDownloadWallpapers>
 {
@@ -73,7 +80,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         return earliest;
     }
 
-    public Task DownloadAllAsync() => DownloadFromSourcesAsync(_ => true);
+    public Task<DownloadOutcome> DownloadAllAsync() => DownloadFromSourcesAsync(_ => true);
 
     // Scheduled execution: only downloads from sources whose cron interval has elapsed
     // since the last successful download, skipping recently-updated sources.
@@ -89,22 +96,23 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
 
     // Core download loop: iterates enabled sources that pass the caller-supplied filter,
     // then triggers retention cleanup and persists the updated LastDownloadUtc timestamps.
-    // Cleanup and save are skipped entirely if no sources were actually downloaded.
-    private async Task DownloadFromSourcesAsync(Func<WallpaperSource, bool> filter)
+    // Cleanup and save are skipped entirely if no sources were actually downloaded. Returns
+    // how many sources were tried and how many failed, for "Download now" to report.
+    private async Task<DownloadOutcome> DownloadFromSourcesAsync(Func<WallpaperSource, bool> filter)
     {
         using (await _runLock.EnterAsync())
         {
-            await DownloadFromSourcesLockedAsync(filter);
+            return await DownloadFromSourcesLockedAsync(filter);
         }
     }
 
-    private async Task DownloadFromSourcesLockedAsync(Func<WallpaperSource, bool> filter)
+    private async Task<DownloadOutcome> DownloadFromSourcesLockedAsync(Func<WallpaperSource, bool> filter)
     {
         var settings = await _settingsStore.LoadAsync();
         if (!settings.IsConfigured)
         {
             Logger.LogInformation("Wallpapers folder not configured - skipping.");
-            return;
+            return new DownloadOutcome(0, 0);
         }
 
         Directory.CreateDirectory(settings.Download.Folder);
@@ -112,8 +120,11 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         RemovePartialDownloads(settings.Download.Folder);
 
         var downloadedSources = new List<WallpaperSource>();
+        var tried = 0;
+        var failed = 0;
         foreach (var source in settings.Sources.Where(s => s.IsEnabled && filter(s)))
         {
+            tried++;
             try
             {
                 await DownloadSource(source, settings);
@@ -123,6 +134,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             {
                 // Log and continue so a failed source (e.g. unreachable feed URL) does not
                 // block remaining sources from running or prevent timestamps from being saved.
+                failed++;
                 Logger.LogError(ex, "Failed to download from source '{Source}' - skipping.", source.Name);
             }
         }
@@ -140,6 +152,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             });
             WallpapersDownloaded?.Invoke();
         }
+        return new DownloadOutcome(tried, failed);
     }
 
     // Copies each downloaded source's download time onto the source of the same name in the
