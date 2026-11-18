@@ -1,0 +1,29 @@
+<!-- A question over the page: the page is dimmed and a box in the middle asks, with a cancel
+     and a confirm button. The look follows the desktop's dialogs: the window color #2B2B2B, the
+     question on top, the buttons at the bottom right, and a destructive confirm in the delete
+     color #E06C75. Tapping the dimmed page cancels. Hidden until ShowAsync. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PaperNexus.Views.ConfirmationDialog"
+             IsVisible="False">
+    <Panel>
+        <Border x:Name="Backdrop" Background="#99000000"/>
+        <Border Background="#2B2B2B"
+                BorderBrush="#444" BorderThickness="1"
+                CornerRadius="8"
+                Padding="24,20"
+                Margin="32"
+                MaxWidth="360"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel Spacing="20">
+                <TextBlock x:Name="MessageText" FontSize="16" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                    <Button x:Name="CancelButton" Content="Cancel" ToolTip.Tip="Cancel" MinHeight="48" MinWidth="88"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                    <Button x:Name="ConfirmButton" Content="OK" ToolTip.Tip="Confirm" MinHeight="48" MinWidth="88"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Panel>
+</UserControl>

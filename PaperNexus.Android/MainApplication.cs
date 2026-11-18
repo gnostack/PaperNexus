@@ -48,6 +48,8 @@ public class MainApplication : AvaloniaAndroidApplication<App>
                 services.AddSingleton<HttpWallpaperSourceService>();
                 // Screens are per request: each new activity gets a fresh view and view model.
                 services.AddTransient<CurrentWallpaperViewModel>();
+                services.AddTransient<GalleryViewModel>();
+                services.AddTransient<FavoritesViewModel>();
                 services.AddTransient<MainView>();
                 // The shared services, then this host's implementations of the interfaces they
                 // need (folders, wallpaper applier). No AddInProcessSchedules: the slideshow

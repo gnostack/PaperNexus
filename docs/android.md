@@ -12,8 +12,13 @@ project and its logic and view models in the shared project.
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
 | `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. |
 | `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity. |
-| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the Current tab's `CurrentWallpaperViewModel` by constructor. The other four pages show only their names until step 4. |
-| `Views/CurrentWallpaperView.axaml(.cs)` | The Current tab: the current wallpaper's picture full width, its title, the heart, Next and Random. |
+| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel` and `FavoritesViewModel` by constructor, tells Gallery and Favorites to list their pictures the first time their tab is chosen, and disposes all three when it leaves the screen. Sources and Settings show only their names until their parts of step 4. |
+| `Views/CurrentWallpaperView.axaml(.cs)` | The Current tab: the current wallpaper's picture full width, its title, the heart, Next, Random and delete, the confirmation line, and the delete question. |
+| `Views/GalleryView.axaml(.cs)`, `Views/FavoritesView.axaml(.cs)` | The Gallery and Favorites tabs (see "Gallery and Favorites"). |
+| `Views/PictureListStyles.axaml` | The card, picture-button, ban-icon and confirmation-line styles both lists and the Current tab share. |
+| `Views/PictureFrame.cs` | Holds a card's picture in a 16:9 box as wide as the card, so every card has the same height. |
+| `Views/CardThumbnails.cs` | Loads a card's thumbnail at the screen's pixel width when the list builds the card, and releases it when the list clears the card or the tab leaves the screen. |
+| `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
 | `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
@@ -74,6 +79,58 @@ Decisions that are easy to undo by accident:
 - Each activity gets a new view and view model. A wallpaper set by an older copy of the tab
   reaches the new one through `ISwitchWallpaper.WallpaperChanged`; the old view model stops
   listening when its view leaves the screen.
+- The heart says "Added to favorites." or "Removed from favorites." in a line under the
+  buttons for three seconds (green; a failure is red, "Error updating favorites: …").
+- The delete button (the desktop's trash icon, after Random) asks "Delete this wallpaper file
+  from disk?" in the in-page dialog, with "Cancel" and "Delete". On Delete the picture leaves
+  the phone, its favorite and its ban, and the next picture in slideshow order is set: "Deleted
+  and switched to: …". After the last picture the line says "Wallpaper deleted. No more
+  wallpapers." and the tab downloads new ones, as on first open.
+- A heart set, or the current picture deleted, on another tab shows here at once (the
+  library's `Changed`).
+
+## Gallery and Favorites
+
+The rules for listing, hearting, banning and deleting pictures are `IWallpaperLibrary`
+(`PaperNexus.Shared/WallpaperLibrary.cs`), which the desktop's settings window uses too;
+setting a picture as the wallpaper is `ISwitchWallpaper.SwitchToSpecificAsync`. The phone's
+`GalleryViewModel` and `FavoritesViewModel` share `PictureListViewModel`.
+
+| Tab | Lists | Buttons on each card | Empty |
+| --- | --- | --- | --- |
+| Gallery | every downloaded picture, newest first by the file's last write time | set as current, heart, ban, delete | "No wallpapers yet." |
+| Favorites | the favorites, in the order they were hearted | set as current, remove from favorites | "No favorites yet. Tap the heart on a wallpaper to add one." |
+
+- A card is the picture in a 16:9 frame the width of the screen, its title beneath (two lines
+  at most), and its buttons on the picture's bottom corners as on the desktop's card: 48 dp
+  buttons on a dark see-through square. A banned picture is tinted red (`#AA660000`) and its
+  ban icon is orange; Favorites cards, like the desktop's, show no tint.
+- Every tap shows a line over the bottom of the list for three seconds: green when it worked,
+  red when it failed, white ("Switching wallpaper...") while a switch waits its turn. The
+  card's buttons dim while its action runs. Gallery delete asks nothing, as on the desktop.
+- A change made on any tab shows on the others at once: the library raises `Changed` after
+  every save, and each view model applies it on the screen's thread. A finished download run
+  raises `PicturesChanged`, which adds the new pictures to an open Gallery.
+- On a phone that forbids changing the wallpaper, set as current stays dimmed.
+
+Measured on the Android 16 emulator (issue #203, step 4):
+
+- `TabbedPage.SelectionChanged` is raised for the first selection (the Current tab, as the
+  view attaches) and for every tab change, so the lists load on it.
+- A tab's page leaves the visual tree when another tab is chosen, but its list keeps its
+  cards; `CardThumbnails` releases their thumbnails then and reloads the cards in view when the
+  tab returns.
+- Setting the wallpaper makes Android 12 and later rebuild the system's wallpaper-based color
+  overlays, which recreates the activity: the app reopens on the Current tab with new view
+  models, so the Gallery's place and the "Switched to: …" or "Deleted and switched to: …" line
+  are lost. The new wallpaper itself is set and shown on Current. Not yet decided: the
+  manifest's `configChanges="assetsPaths"` would keep the activity, but the .NET Android
+  manifest generator drops `ConfigChanges.AssetsPaths` from the activity attribute.
+- With 55 pictures (4K JPEGs), a Debug build used about 215 MB at rest, 236 MB with the
+  Gallery open, up to 523 MB while flinging through the whole list, and stayed near 380 MB
+  after leaving the tab (two more scroll rounds stayed between 370 and 400 MB, so this is
+  memory kept by the allocator after up to four full-size decodes at once, not a growing
+  leak). A Release build: 177 MB at rest, 466 MB peak, 335 MB after.
 
 ## Composition and lifecycle
 
@@ -216,6 +273,8 @@ There is no Android test project: a `net10.0` test project cannot reference a
 `net10.0-android` project. The logic the phone relies on lives in `PaperNexus.Shared` and is
 tested there: the canvas math (`WallpaperCanvas.ForScreen`), fitting and rendering for a
 canvas (`WallpaperFittingTests`), the switcher with a canvas or a refusal
-(`SwitchWallpaperDeviceTests`) and the Current tab's states (`CurrentWallpaperViewModelTests`).
+(`SwitchWallpaperDeviceTests`), the Current tab's states (`CurrentWallpaperViewModelTests`),
+the picture library (`WallpaperLibraryTests`) and the Gallery and Favorites tabs
+(`PictureListViewModelTests`).
 The Android classes only pass Android's numbers and calls through; they are verified on the
 emulator.

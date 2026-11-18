@@ -1,13 +1,25 @@
-<!-- The Current tab (issue #203, step 3): the current wallpaper full width, its title beneath it,
-     and the heart, Next and Random buttons. While there is no picture, a placeholder in the
-     picture's place says why: downloading, or the download failed with a Try again button. A red
-     line under the buttons says when the wallpaper cannot be changed. -->
+<!-- The Current tab (issue #203, steps 3 and 4): the current wallpaper full width, its title
+     beneath it, and the heart, Next, Random and delete buttons. While there is no picture, a
+     placeholder in the picture's place says why: downloading, or the download failed with a Try
+     again button. A short line under the buttons confirms a heart or a delete; a red line says
+     when the wallpaper cannot be changed. Delete asks first, in a box over the page. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:PaperNexus.ViewModels"
+             xmlns:views="using:PaperNexus.Views"
              x:Class="PaperNexus.Views.CurrentWallpaperView"
              x:DataType="vm:CurrentWallpaperViewModel">
 
+    <UserControl.Styles>
+        <StyleInclude Source="/Views/PictureListStyles.axaml"/>
+        <!-- The delete icon keeps its color when disabled, so the whole button dims instead,
+             as the desktop dims a disabled button. -->
+        <Style Selector="Button.delete:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
     <ScrollViewer>
         <StackPanel>
 
@@ -77,7 +89,26 @@
                         <TextBlock Text="Random" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
+                <!-- The desktop's delete-current-wallpaper button -->
+                <Button Classes="delete"
+                        Click="OnDeleteClicked"
+                        IsEnabled="{Binding CanDelete}"
+                        ToolTip.Tip="Delete current wallpaper"
+                        MinWidth="48" MinHeight="48">
+                    <PathIcon Data="M9 3H15L16 4H20V6H4V4H8L9 3ZM5 7H19L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 7ZM10 10V19H12V10H10ZM14 10V19H16V10H14Z"
+                              Width="24" Height="24"
+                              Foreground="#E06C75"/>
+                </Button>
             </StackPanel>
+
+            <!-- Confirms a heart or a delete for three seconds: green when it worked, red when not -->
+            <TextBlock Text="{Binding StatusMessage}"
+                       Classes="status"
+                       Classes.success="{Binding IsStatusSuccess}"
+                       Classes.error="{Binding IsStatusError}"
+                       TextAlignment="Center"
+                       Margin="16,12,16,0"
+                       IsVisible="{Binding HasStatus}"/>
 
             <TextBlock Text="{Binding ErrorMessage}"
                        Foreground="#F87171"
@@ -87,4 +118,7 @@
                        IsVisible="{Binding HasError}"/>
         </StackPanel>
     </ScrollViewer>
+
+    <views:ConfirmationDialog x:Name="Confirmation"/>
+    </Panel>
 </UserControl>

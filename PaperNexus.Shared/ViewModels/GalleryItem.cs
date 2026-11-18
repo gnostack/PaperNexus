@@ -10,10 +10,29 @@ public partial class GalleryItem : ObservableObject
     private Bitmap? _thumbnail;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FavoriteToolTip))]
     private bool _isFavorite;
 
     [ObservableProperty]
     private bool _isBanned;
+
+    // True while one of this card's actions runs. The phone dims the card's buttons
+    // meanwhile; the desktop's cards do not show it.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAct))]
+    [NotifyPropertyChangedFor(nameof(CanSetAsCurrent))]
+    private bool _isBusy;
+
+    // False on a device that forbids changing the wallpaper; the set-as-current button then
+    // stays dimmed. Set when the card is created.
+    public bool AllowsSetAsCurrent { get; init; } = true;
+
+    public bool CanAct => !IsBusy;
+
+    public bool CanSetAsCurrent => AllowsSetAsCurrent && !IsBusy;
+
+    // What the heart does when tapped, as its label says it.
+    public string FavoriteToolTip => IsFavorite ? "Remove from favorites" : "Add to favorites";
 
     public string FilePath { get; }
     public string DisplayName { get; }
@@ -35,7 +54,7 @@ public partial class GalleryItem : ObservableObject
         Func<GalleryItem, Task> delete)
     {
         FilePath = path;
-        DisplayName = GetDisplayName(path);
+        DisplayName = WallpaperDisplayName.FromPath(path);
         _isFavorite = isFavorite;
         _isBanned = isBanned;
         _setAsCurrent = setAsCurrent;
@@ -45,22 +64,37 @@ public partial class GalleryItem : ObservableObject
     }
 
     [RelayCommand]
-    private Task SetAsCurrent() => _setAsCurrent(this);
+    private Task SetAsCurrent() => RunAsync(_setAsCurrent);
 
     [RelayCommand]
-    private Task ToggleFavorite() => _toggleFavorite(this);
+    private Task ToggleFavorite() => RunAsync(_toggleFavorite);
 
     [RelayCommand]
-    private Task ToggleBan() => _toggleBan(this);
+    private Task ToggleBan() => RunAsync(_toggleBan);
 
     [RelayCommand]
-    private Task Delete() => _delete(this);
+    private Task Delete() => RunAsync(_delete);
+
+    // Marks the card busy while the action runs, so the phone dims its buttons.
+    private async Task RunAsync(Func<GalleryItem, Task> action)
+    {
+        IsBusy = true;
+        try
+        {
+            await action(this);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     private CancellationTokenSource? _loadCts;
 
-    // Starts an async thumbnail load for this item. Cancels and disposes any previous
+    // Starts an async thumbnail load for this item, pixelWidth pixels wide (the desktop's
+    // 600 unless the screen asks for its own width). Cancels and disposes any previous
     // in-flight load first so the old CancellationTokenSource does not leak.
-    public async Task LoadAsync()
+    public async Task LoadAsync(int pixelWidth = ImageResizing.ThumbnailWidth)
     {
         // Swap in a fresh CTS and dispose the old one to avoid a handle leak.
         var oldCts = _loadCts;
@@ -69,7 +103,7 @@ public partial class GalleryItem : ObservableObject
         var ct = _loadCts.Token;
         oldCts?.Dispose();
 
-        var bmp = await LoadThumbnailAsync(FilePath);
+        var bmp = await LoadThumbnailAsync(FilePath, pixelWidth);
         if (!ct.IsCancellationRequested)
             Thumbnail = bmp;
         else
@@ -90,10 +124,10 @@ public partial class GalleryItem : ObservableObject
         bmp?.Dispose();
     }
 
-    // Decodes the image at path, scales it to 600 px wide (height proportional), and
+    // Decodes the image at path, scales it to pixelWidth (height proportional), and
     // returns an Avalonia Bitmap. The semaphore limits concurrent decodes to 4 to
     // avoid exhausting memory when the gallery is large. Returns null on any error.
-    internal static async Task<Bitmap?> LoadThumbnailAsync(string path)
+    internal static async Task<Bitmap?> LoadThumbnailAsync(string path, int pixelWidth = ImageResizing.ThumbnailWidth)
     {
         try
         {
@@ -102,7 +136,7 @@ public partial class GalleryItem : ObservableObject
             {
                 // Decoding is synchronous and CPU-bound; keep it off the UI thread that
                 // populates the gallery.
-                var png = await Task.Run(() => ImageResizing.CreateThumbnailPng(path));
+                var png = await Task.Run(() => ImageResizing.CreatePngOfWidth(path, pixelWidth));
                 using var ms = new MemoryStream(png);
                 return new Bitmap(ms);
             }
@@ -118,11 +152,4 @@ public partial class GalleryItem : ObservableObject
     }
 
     private static readonly SemaphoreSlim _thumbnailSemaphore = new(4, 4);
-
-    private static string GetDisplayName(string path)
-    {
-        var nameWithoutExt = Path.GetFileNameWithoutExtension(path);
-        var lastSep = nameWithoutExt.LastIndexOf(" - ", StringComparison.Ordinal);
-        return lastSep > 0 ? nameWithoutExt[..lastSep] : nameWithoutExt;
-    }
 }

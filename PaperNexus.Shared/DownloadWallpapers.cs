@@ -4,6 +4,10 @@ namespace PaperNexus;
 
 public interface IDownloadWallpapers
 {
+    // Raised after a download run saved its results: new pictures may be in the folder, and
+    // the retention pass may have deleted old ones. Raised on a background thread.
+    public event Action? WallpapersDownloaded;
+
     public Task DownloadAllAsync();
 }
 
@@ -33,6 +37,8 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // pool because disposed clients leave sockets in TIME_WAIT for several minutes.
     // The service is a singleton, so this client lives for the process lifetime.
     private readonly HttpClient _imageClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+
+    public event Action? WallpapersDownloaded;
 
     public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService, ISettingsStore settingsStore, JobTimerStore timerStore)
         : base(logger, timerStore)
@@ -132,6 +138,7 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
                 RecordDownloadTimes(latest.Sources, downloadedSources);
                 CleanupOldImages(latest);
             });
+            WallpapersDownloaded?.Invoke();
         }
     }
 

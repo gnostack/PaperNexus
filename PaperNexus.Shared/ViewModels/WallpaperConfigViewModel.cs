@@ -62,6 +62,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
     private readonly IAppInfo _appInfo;
     private readonly IShellOpener _shellOpener;
     private readonly IAppFolders _appFolders;
+    private readonly IWallpaperLibrary _library;
+    private readonly SynchronizationContext? _windowContext;
 
     public static readonly IReadOnlyList<FillStyleOption> FillStyleOptions = new[]
     {
@@ -311,12 +313,14 @@ public partial class WallpaperConfigViewModel : ObservableObject
     // opener, and whichever background services the host registers. A service the host
     // does not have stays null and its command reports it as unavailable; a host with no
     // run-at-sign-in setting registers no IStartupRegistration. The WallpaperChanged event is
-    // subscribed here so the preview updates automatically when the slideshow switches.
+    // subscribed here so the preview updates automatically when the slideshow switches, and
+    // the library's Changed event so the cards follow hearts, bans and deletes made anywhere.
     public WallpaperConfigViewModel(
         ISettingsStore settingsStore,
         IAppInfo appInfo,
         IShellOpener shellOpener,
         IAppFolders appFolders,
+        IWallpaperLibrary library,
         ISwitchWallpaper? switchWallpaper = null,
         IDownloadWallpapers? downloadWallpapers = null,
         ICheckForUpdates? checkForUpdates = null,
@@ -326,6 +330,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _appInfo = appInfo.ThrowIfNull();
         _shellOpener = shellOpener.ThrowIfNull();
         _appFolders = appFolders.ThrowIfNull();
+        _library = library.ThrowIfNull();
+        _windowContext = SynchronizationContext.Current;
         _switchWallpaper = switchWallpaper;
         _downloadWallpapers = downloadWallpapers;
         _checkForUpdates = checkForUpdates;
@@ -347,6 +353,61 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
         if (_switchWallpaper is not null)
             _switchWallpaper.WallpaperChanged += OnWallpaperChanged;
+        _library.Changed += OnLibraryChanged;
+    }
+
+    // A heart, ban or delete saved by any screen (this window's own commands included, whose
+    // effect is already shown, so applying it again changes nothing). Raised on a background
+    // thread; applied on the window's thread. A finished download does not reload the
+    // gallery: the window reloads it when its tab is chosen or Refresh is pressed, as before.
+    private void OnLibraryChanged(LibraryChange change)
+    {
+        if (_windowContext is null)
+        {
+            ApplyLibraryChange(change);
+            return;
+        }
+
+        _windowContext.Post(_ => ApplyLibraryChange(change), null);
+    }
+
+    private void ApplyLibraryChange(LibraryChange change)
+    {
+        var path = change.Path;
+        if (path is null)
+            return;
+        var galleryItem = GalleryItems.FirstOrDefault(g => g.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase));
+        var isCurrent = CurrentWallpaperPath.Equals(path, StringComparison.OrdinalIgnoreCase);
+        switch (change.Kind)
+        {
+            case LibraryChangeKind.Favorited:
+                AddFavoriteItem(path);
+                if (galleryItem is not null)
+                    galleryItem.IsFavorite = true;
+                if (isCurrent)
+                    IsCurrentWallpaperFavorited = true;
+                break;
+            case LibraryChangeKind.Unfavorited:
+                RemoveFavoriteItem(path);
+                if (galleryItem is not null)
+                    galleryItem.IsFavorite = false;
+                if (isCurrent)
+                    IsCurrentWallpaperFavorited = false;
+                break;
+            case LibraryChangeKind.Banned:
+            case LibraryChangeKind.Unbanned:
+                if (galleryItem is not null)
+                    galleryItem.IsBanned = change.Kind == LibraryChangeKind.Banned;
+                break;
+            case LibraryChangeKind.Deleted:
+                RemoveFavoriteItem(path);
+                if (galleryItem is not null)
+                {
+                    GalleryItems.Remove(galleryItem);
+                    galleryItem.DisposeThumbnail();
+                }
+                break;
+        }
     }
 
     // Called from a background thread when the wallpaper changes; marshals all UI
@@ -551,12 +612,13 @@ public partial class WallpaperConfigViewModel : ObservableObject
             CurrentWallpaperPath = path;
             CurrentWallpaperName = string.IsNullOrEmpty(path) ? "(none)" : GetDisplayName(path);
             RefreshPreviewImage();
+            var favorites = await _library.ListFavoritesAsync();
             IsCurrentWallpaperFavorited = !string.IsNullOrEmpty(path)
-                && settings.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
+                && favorites.Any(f => f.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
             // Dispose old thumbnails before replacing the cards to release bitmap memory
             foreach (var item in FavoriteWallpapers)
                 item.DisposeThumbnail();
-            var favoriteItems = settings.FavoriteWallpapers.Select(CreateFavoriteItem);
+            var favoriteItems = favorites.Select(f => CreateFavoriteItem(f.Path));
             FavoriteWallpapers = new ObservableCollection<GalleryItem>(favoriteItems);
         }
         finally
@@ -667,8 +729,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
         }
     }
 
-    // Deletes the current wallpaper file from disk, then automatically advances to the
-    // next available wallpaper so the desktop is never left showing a missing file.
+    // Deletes the current wallpaper file from disk (and from favorites and bans, the one
+    // delete rule), then automatically advances to the next available wallpaper so the
+    // desktop is never left showing a missing file. The window has already asked.
     [RelayCommand]
     private async Task DeleteCurrentWallpaper()
     {
@@ -678,19 +741,20 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
         try
         {
-            if (File.Exists(path))
-                File.Delete(path);
+            var outcome = await Task.Run(() => _library.DeleteAsync(path));
+            RemoveFavoriteItem(path);
+            RemoveGalleryItem(path);
 
             CurrentWallpaperPath = string.Empty;
             CurrentWallpaperName = "(none)";
 
-            if (_switchWallpaper is null)
+            if (!outcome.WasCurrent)
             {
                 await ShowTransientStatusAsync("✓ Wallpaper deleted.");
                 return;
             }
 
-            var next = await Task.Run(_switchWallpaper.SwitchToNextAsync);
+            var next = outcome.SwitchedTo;
             if (next is null)
             {
                 await ShowTransientStatusAsync("✓ Wallpaper deleted. No more wallpapers in folder.");
@@ -709,8 +773,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
         }
     }
 
-    // Toggles the current wallpaper in/out of the favorites list and keeps
-    // the FavoriteWallpapers observable collection in sync with the persisted settings.
+    // Toggles the current wallpaper in/out of the favorites list, as its heart shows it, and
+    // keeps the FavoriteWallpapers observable collection in step.
     [RelayCommand]
     private async Task ToggleFavorite()
     {
@@ -720,20 +784,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
         try
         {
-            // Toggled from the latest saved list, inside the update, so nothing saved
-            // elsewhere meanwhile is overwritten.
-            var wasFavorite = false;
-            var favoriteCount = 0;
-            await _settingsStore.UpdateAsync(latest =>
-            {
-                wasFavorite = latest.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
-                if (wasFavorite)
-                    latest.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
-                else
-                    latest.FavoriteWallpapers.Add(path);
-                favoriteCount = latest.FavoriteWallpapers.Count;
-            });
-            if (wasFavorite)
+            var makeFavorite = !IsCurrentWallpaperFavorited;
+            var favoriteCount = await _library.SetFavoriteAsync(path, makeFavorite);
+            if (!makeFavorite)
             {
                 IsCurrentWallpaperFavorited = false;
                 RemoveFavoriteItem(path);
@@ -791,14 +844,13 @@ public partial class WallpaperConfigViewModel : ObservableObject
     }
 
     // Removes a favorite from its own card on the Favorites tab: drops the path from the
-    // persisted settings, then the card, and clears the heart when it was the active wallpaper.
+    // favorites, then the card, and clears the heart when it was the active wallpaper.
     private async Task RemoveFavoriteItemAsync(GalleryItem item)
     {
         var path = item.FilePath;
         try
         {
-            await _settingsStore.UpdateAsync(latest =>
-                latest.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase)));
+            await _library.SetFavoriteAsync(path, false);
             RemoveFavoriteItem(path);
             if (CurrentWallpaperPath.Equals(path, StringComparison.OrdinalIgnoreCase))
                 IsCurrentWallpaperFavorited = false;
@@ -808,6 +860,16 @@ public partial class WallpaperConfigViewModel : ObservableObject
         {
             await ShowTransientStatusAsync($"✗ Error removing favorite: {ex.Message}");
         }
+    }
+
+    // Removes the gallery card for a deleted path and frees its thumbnail.
+    private void RemoveGalleryItem(string path)
+    {
+        var toRemove = GalleryItems.FirstOrDefault(g => g.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (toRemove is null)
+            return;
+        GalleryItems.Remove(toRemove);
+        toRemove.DisposeThumbnail();
     }
 
     // Reloads the preview thumbnail from the processed current.png/current.jpg
@@ -851,8 +913,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 IsCurrentWallpaperFavorited = false;
                 return;
             }
-            var settings = await _settingsStore.LoadAsync();
-            IsCurrentWallpaperFavorited = settings.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
+            var picture = await _library.GetPictureAsync(path);
+            IsCurrentWallpaperFavorited = picture.IsFavorite;
         }
         catch
         {
@@ -1066,6 +1128,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         if (_switchWallpaper is not null)
             _switchWallpaper.WallpaperChanged -= OnWallpaperChanged;
+        _library.Changed -= OnLibraryChanged;
 
         // Cancel any pending status-clear or gallery-load operations, then hand out a fresh
         // source so an in-flight SaveSettingsAsync can still raise a status message. The old
@@ -1142,57 +1205,45 @@ public partial class WallpaperConfigViewModel : ObservableObject
         }
     }
 
-    // Rebuilds the gallery from the wallpapers folder. Cancels any in-progress gallery
-    // load (e.g. from a previous folder change) before starting a new one. GalleryItem
-    // objects are created synchronously; thumbnails are loaded asynchronously in the background.
+    // Rebuilds the gallery from the wallpapers folder, newest first. GalleryItem objects are
+    // created synchronously; thumbnails are loaded asynchronously in the background.
     [RelayCommand]
     private async Task LoadGallery()
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            var folder = settings.Download.Folder;
-            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            var listing = await _library.ListGalleryAsync();
+            if (!listing.FolderFound)
             {
                 await ShowTransientStatusAsync("✗ Wallpapers folder not configured or not found.");
                 return;
             }
-
-            var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg" };
-            // Sort newest-first so recently downloaded wallpapers appear at the top
-            var files = Directory.EnumerateFiles(folder)
-                .Where(f => extensions.Contains(Path.GetExtension(f)))
-                .OrderByDescending(f => File.GetLastWriteTime(f))
-                .ToList();
-
-            var favorites = new HashSet<string>(settings.FavoriteWallpapers, StringComparer.OrdinalIgnoreCase);
-            var banned = new HashSet<string>(settings.BannedWallpapers, StringComparer.OrdinalIgnoreCase);
 
             // Dispose old thumbnails before clearing to release bitmap memory
             foreach (var item in GalleryItems)
                 item.DisposeThumbnail();
             GalleryItems.Clear();
 
-            foreach (var file in files)
+            foreach (var picture in listing.Pictures)
             {
                 GalleryItems.Add(new GalleryItem(
-                    file,
-                    favorites.Contains(file),
-                    banned.Contains(file),
+                    picture.Path,
+                    picture.IsFavorite,
+                    picture.IsBanned,
                     GallerySetAsCurrent,
                     GalleryToggleFavorite,
                     GalleryToggleBan,
                     GalleryDelete));
             }
 
-            await ShowTransientStatusAsync($"✓ {files.Count} image{(files.Count == 1 ? "" : "s")} loaded.");
+            var count = listing.Pictures.Count;
+            await ShowTransientStatusAsync($"✓ {count} image{(count == 1 ? "" : "s")} loaded.");
         }
         catch (Exception ex)
         {
             await ShowTransientStatusAsync($"✗ Error loading gallery: {ex.Message}");
         }
     }
-
 
     private async Task GallerySetAsCurrent(GalleryItem item)
     {
@@ -1225,43 +1276,31 @@ public partial class WallpaperConfigViewModel : ObservableObject
         await ShowTransientStatusAsync($"✓ Switched to: {CurrentWallpaperName}");
     }
 
-    // Toggles a gallery item's favorite state and mirrors the change in both the persisted
-    // settings and the FavoriteWallpapers observable collection. Also updates
-    // IsCurrentWallpaperFavorited if the toggled item happens to be the active wallpaper.
+    // Toggles a gallery item's favorite state, as its heart shows it, and mirrors the change in
+    // the FavoriteWallpapers observable collection. Also updates IsCurrentWallpaperFavorited
+    // if the toggled item happens to be the active wallpaper.
     private async Task GalleryToggleFavorite(GalleryItem item)
     {
         try
         {
-            // The card's own heart decides the direction, as it always has; the update writes
-            // that one change onto the latest saved list.
-            var removing = item.IsFavorite;
-            var favoriteCount = 0;
-            await _settingsStore.UpdateAsync(latest =>
+            var makeFavorite = !item.IsFavorite;
+            var favoriteCount = await _library.SetFavoriteAsync(item.FilePath, makeFavorite);
+            item.IsFavorite = makeFavorite;
+            var isCurrent = CurrentWallpaperPath.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase);
+            if (!makeFavorite)
             {
-                if (removing)
-                    latest.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-                else
-                    latest.FavoriteWallpapers.Add(item.FilePath);
-                favoriteCount = latest.FavoriteWallpapers.Count;
-            });
-            if (removing)
-            {
-                item.IsFavorite = false;
                 RemoveFavoriteItem(item.FilePath);
-                if (CurrentWallpaperPath.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase))
+                if (isCurrent)
                     IsCurrentWallpaperFavorited = false;
+                return;
             }
-            else
-            {
-                item.IsFavorite = true;
-                AddFavoriteItem(item.FilePath);
-                if (CurrentWallpaperPath.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase))
-                    IsCurrentWallpaperFavorited = true;
 
-                var milestone = EasterEggShows.Favorite(favoriteCount);
-                if (milestone is not null)
-                    EasterEggTriggered?.Invoke(milestone);
-            }
+            AddFavoriteItem(item.FilePath);
+            if (isCurrent)
+                IsCurrentWallpaperFavorited = true;
+            var milestone = EasterEggShows.Favorite(favoriteCount);
+            if (milestone is not null)
+                EasterEggTriggered?.Invoke(milestone);
         }
         catch (Exception ex)
         {
@@ -1273,15 +1312,9 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var unbanning = item.IsBanned;
-            await _settingsStore.UpdateAsync(latest =>
-            {
-                if (unbanning)
-                    latest.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-                else
-                    latest.BannedWallpapers.Add(item.FilePath);
-            });
-            item.IsBanned = !unbanning;
+            var ban = !item.IsBanned;
+            await _library.SetBannedAsync(item.FilePath, ban);
+            item.IsBanned = ban;
         }
         catch (Exception ex)
         {
@@ -1289,58 +1322,41 @@ public partial class WallpaperConfigViewModel : ObservableObject
         }
     }
 
-    // Deletes a wallpaper from disk, removes it from the favorites/ban lists and the
-    // gallery collection. If the deleted file was the active wallpaper, advances to the
+    // Deletes a wallpaper from disk, from the favorites/ban lists and from the gallery
+    // collection. If the deleted file was the active wallpaper, the library advances to the
     // next available image so the desktop is never left showing a file that no longer exists.
     private async Task GalleryDelete(GalleryItem item)
     {
         try
         {
-            if (File.Exists(item.FilePath))
-                File.Delete(item.FilePath);
-
-            // Remove the path from both special lists so stale references don't persist in settings
-            await _settingsStore.UpdateAsync(latest =>
-            {
-                latest.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-                latest.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-            });
-
+            var outcome = await Task.Run(() => _library.DeleteAsync(item.FilePath));
             RemoveFavoriteItem(item.FilePath);
 
-            var wasActive = CurrentWallpaperPath.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase);
-            if (wasActive)
+            if (outcome.WasCurrent)
             {
                 // The deleted file can no longer be a favorite - clear the heart indicator so
                 // the UI does not show an empty-path wallpaper as favorited.
                 IsCurrentWallpaperFavorited = false;
 
-                // Advance to the next wallpaper so the desktop does not remain on a deleted file.
-                // Mirror the same advance-or-clear logic used by DeleteCurrentWallpaper.
-                if (_switchWallpaper is not null)
+                var next = outcome.SwitchedTo;
+                if (next is not null)
                 {
-                    var next = await Task.Run(_switchWallpaper.SwitchToNextAsync);
-                    if (next is not null)
-                    {
-                        CurrentWallpaperPath = next;
-                        CurrentWallpaperName = GetDisplayName(next);
-                        RefreshPreviewImage();
-                        RefreshFavoriteState();
-                        item.DisposeThumbnail();
-                        GalleryItems.Remove(item);
-                        await ShowTransientStatusAsync($"✓ Deleted and switched to: {CurrentWallpaperName}");
-                        return;
-                    }
+                    CurrentWallpaperPath = next;
+                    CurrentWallpaperName = GetDisplayName(next);
+                    RefreshPreviewImage();
+                    RefreshFavoriteState();
+                    RemoveGalleryItem(item.FilePath);
+                    await ShowTransientStatusAsync($"✓ Deleted and switched to: {CurrentWallpaperName}");
+                    return;
                 }
 
-                // No switcher available or no remaining wallpapers - clear the display
+                // No remaining wallpapers - clear the display
                 CurrentWallpaperPath = string.Empty;
                 CurrentWallpaperName = "(none)";
                 RefreshPreviewImage();
             }
 
-            item.DisposeThumbnail();
-            GalleryItems.Remove(item);
+            RemoveGalleryItem(item.FilePath);
             await ShowTransientStatusAsync("✓ Wallpaper deleted.");
         }
         catch (Exception ex)

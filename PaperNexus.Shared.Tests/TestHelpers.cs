@@ -121,10 +121,41 @@ internal static class TestHelpers
     // A settings view model wired to the given store and to do-nothing host services, so no
     // test opens a browser or file manager. The background services stay unregistered, as
     // they were when the view model looked them up from a running app that tests never had.
+    // Its picture library uses a real switcher with a no-op wallpaper applier, so deleting the
+    // current wallpaper sets the next one without touching the machine's wallpaper.
     internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store)
     {
-        var viewModel = new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders);
+        var library = CreateLibrary(store);
+        var viewModel = WithoutSynchronizationContext(
+            () => new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders, library));
         return viewModel;
+    }
+
+    // Builds a view model with no synchronization context, so it applies the library's change
+    // notices inline, in order with the command that caused them. xunit runs tests under a
+    // context that posts to the thread pool, where a notice and the command would race; on a
+    // screen both run on the one UI thread.
+    internal static T WithoutSynchronizationContext<T>(Func<T> create)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            return create();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    // A picture library on the given store, with a real switcher that changes nothing on the
+    // machine (a no-op wallpaper applier, working files in BaseDir).
+    internal static WallpaperLibrary CreateLibrary(ISettingsStore store, ISwitchWallpaper? switcher = null)
+    {
+        switcher ??= new SwitchWallpaper(Microsoft.Extensions.Logging.Abstractions.NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, store, AppFolders);
+        var library = new WallpaperLibrary(store, switcher);
+        return library;
     }
 
     // Removes the temporary directory a test store was rooted in.
