@@ -63,6 +63,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
     private readonly IShellOpener _shellOpener;
     private readonly IAppFolders _appFolders;
     private readonly IWallpaperLibrary _library;
+    private readonly IWallpaperSources _wallpaperSources;
     private readonly SynchronizationContext? _windowContext;
 
     public static readonly IReadOnlyList<FillStyleOption> FillStyleOptions = new[]
@@ -279,11 +280,12 @@ public partial class WallpaperConfigViewModel : ObservableObject
     [ObservableProperty]
     private string _currentWallpaperName;
 
-    [ObservableProperty]
-    private ObservableCollection<WallpaperSource> _sources = [];
+    // One row per wallpaper source. Every change to a source is saved at once through
+    // IWallpaperSources, never by the window's settings save.
+    public ObservableCollection<SourceItem> Sources { get; } = [];
 
     [ObservableProperty]
-    private WallpaperSource? _selectedSource;
+    private SourceItem? _selectedSource;
 
     [ObservableProperty]
     private Avalonia.Media.Imaging.Bitmap? _previewImage;
@@ -314,13 +316,15 @@ public partial class WallpaperConfigViewModel : ObservableObject
     // does not have stays null and its command reports it as unavailable; a host with no
     // run-at-sign-in setting registers no IStartupRegistration. The WallpaperChanged event is
     // subscribed here so the preview updates automatically when the slideshow switches, and
-    // the library's Changed event so the cards follow hearts, bans and deletes made anywhere.
+    // the library's Changed event so the cards follow hearts, bans and deletes made anywhere,
+    // and the sources' Changed event so the source rows show every saved change.
     public WallpaperConfigViewModel(
         ISettingsStore settingsStore,
         IAppInfo appInfo,
         IShellOpener shellOpener,
         IAppFolders appFolders,
         IWallpaperLibrary library,
+        IWallpaperSources wallpaperSources,
         ISwitchWallpaper? switchWallpaper = null,
         IDownloadWallpapers? downloadWallpapers = null,
         ICheckForUpdates? checkForUpdates = null,
@@ -331,6 +335,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _shellOpener = shellOpener.ThrowIfNull();
         _appFolders = appFolders.ThrowIfNull();
         _library = library.ThrowIfNull();
+        _wallpaperSources = wallpaperSources.ThrowIfNull();
         _windowContext = SynchronizationContext.Current;
         _switchWallpaper = switchWallpaper;
         _downloadWallpapers = downloadWallpapers;
@@ -349,11 +354,11 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _selectedFillStyle = FillStyleOptions[0];
         _selectedAnnotationPosition = AnnotationPositionOptions[0];
         _selectedSlideshowOrder = SlideshowOrderOptions.First(o => o.Order == SlideshowOrder.NewestFirst);
-        _sources.CollectionChanged += OnSourcesCollectionChanged;
 
         if (_switchWallpaper is not null)
             _switchWallpaper.WallpaperChanged += OnWallpaperChanged;
         _library.Changed += OnLibraryChanged;
+        _wallpaperSources.Changed += OnWallpaperSourcesChanged;
     }
 
     // A heart, ban or delete saved by any screen (this window's own commands included, whose
@@ -423,41 +428,93 @@ public partial class WallpaperConfigViewModel : ObservableObject
         });
     }
 
-    // Unhook property-change listeners from the old collection before replacing it,
-    // so the old sources don't continue triggering saves after they are discarded.
-    partial void OnSourcesChanging(ObservableCollection<WallpaperSource> value)
+    // A source saved by this window (or anywhere else in the process). Raised on a background
+    // thread; applied on the window's thread.
+    private void OnWallpaperSourcesChanged()
     {
-        _sources.CollectionChanged -= OnSourcesCollectionChanged;
-        foreach (var src in _sources)
-            src.PropertyChanged -= OnSourcePropertyChanged;
+        if (_windowContext is null)
+        {
+            _ = ReloadSourcesAsync();
+            return;
+        }
+
+        _windowContext.Post(_ => _ = ReloadSourcesAsync(), null);
     }
 
-    // Hook property-change listeners onto the new collection and all its initial items.
-    partial void OnSourcesChanged(ObservableCollection<WallpaperSource> value)
+    // Brings the rows up to the saved list, keeping the selected row when it is still there.
+    // Listing reads the settings store, which answers defaults rather than failing. Only the
+    // listing started last is shown, so an older one finishing late cannot undo a newer change.
+    private async Task ReloadSourcesAsync()
     {
-        value.CollectionChanged += OnSourcesCollectionChanged;
-        foreach (var src in value)
-            src.PropertyChanged += OnSourcePropertyChanged;
+        var listing = Interlocked.Increment(ref _sourceListing);
+        var sources = await _wallpaperSources.ListAsync();
+        if (listing == Volatile.Read(ref _sourceListing))
+            SourceItem.Reconcile(Sources, sources, CreateSourceItem);
     }
 
-    // Maintains per-item property listeners when items are added or removed from the sources list,
-    // so toggling IsEnabled on a source triggers an auto-save.
-    private void OnSourcesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    // Counts the source listings started, so only the newest is shown.
+    private int _sourceListing;
+
+    // Raised when a row's edit button is pressed; the window opens the source dialog, which
+    // only a window can own.
+    public event Action<SourceItem>? EditSourceRequested;
+
+    private SourceItem CreateSourceItem(SourceFields fields)
     {
-        if (e.OldItems is not null)
-            foreach (WallpaperSource src in e.OldItems)
-                src.PropertyChanged -= OnSourcePropertyChanged;
-
-        if (e.NewItems is not null)
-            foreach (WallpaperSource src in e.NewItems)
-                src.PropertyChanged += OnSourcePropertyChanged;
-
-        TriggerSave();
+        var item = new SourceItem(fields, RequestEditSource, DeleteSourceAsync, SetSourceEnabledAsync);
+        return item;
     }
 
-    private void OnSourcePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void RequestEditSource(SourceItem item) => EditSourceRequested?.Invoke(item);
+
+    // A form for a new source, or one filled with the row's source, for the source dialog.
+    public SourceFormViewModel CreateSourceForm(SourceItem? editing)
     {
-        TriggerSave();
+        var form = editing is null
+            ? new SourceFormViewModel(_wallpaperSources)
+            : new SourceFormViewModel(_wallpaperSources, editing.Fields);
+        return form;
+    }
+
+    // The dialog saved its source: the rows are brought up to date, the saved source is
+    // selected, and the status bar confirms it. The confirmations are not awaited, so a row is
+    // not held busy while its sentence shows.
+    public async Task SourceSavedAsync(SourceFormViewModel form)
+    {
+        await ReloadSourcesAsync();
+        SelectedSource = Sources.FirstOrDefault(s => string.Equals(s.Name, form.SavedName, StringComparison.OrdinalIgnoreCase));
+        _ = ShowTransientStatusAsync("✓ Settings saved.");
+    }
+
+    // The row's delete button deletes at once, without asking.
+    private async Task DeleteSourceAsync(SourceItem item)
+    {
+        try
+        {
+            await _wallpaperSources.DeleteAsync(item.Name);
+            Sources.Remove(item);
+            _ = ShowTransientStatusAsync("✓ Settings saved.");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"✗ Error saving settings: {ex.Message}";
+        }
+    }
+
+    // The row's checkbox saves at once; a failed save puts it back.
+    private async Task SetSourceEnabledAsync(SourceItem item, bool isEnabled)
+    {
+        try
+        {
+            await _wallpaperSources.SetEnabledAsync(item.Name, isEnabled);
+            item.Apply(item.Fields with { IsEnabled = isEnabled });
+            _ = ShowTransientStatusAsync("✓ Settings saved.");
+        }
+        catch (Exception ex)
+        {
+            item.Apply(item.Fields);
+            StatusMessage = $"✗ Error saving settings: {ex.Message}";
+        }
     }
 
     // Derives the status bar text colour from the message prefix:
@@ -606,7 +663,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
             FavoritePriorityEnabled = settings.Slideshow.FavoritePriorityEnabled;
             FavoritePriorityWeight = settings.Slideshow.FavoritePriorityWeight > 0 ? settings.Slideshow.FavoritePriorityWeight : 3;
 
-            Sources = new ObservableCollection<WallpaperSource>(settings.Sources);
+            await ReloadSourcesAsync();
 
             var path = settings.CurrentWallpaperPath;
             CurrentWallpaperPath = path;
@@ -639,21 +696,21 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
         try
         {
-            StatusMessage = "Downloading wallpapers...";
-            await Task.Run(_downloadWallpapers.DownloadAllAsync);
-            await ShowTransientStatusAsync("✓ Download complete.");
+            StatusMessage = DownloadSentence.RunningText;
+            var outcome = await Task.Run(_downloadWallpapers.DownloadAllAsync);
+            var (text, tone) = DownloadSentence.For(outcome);
+            var mark = tone switch
+            {
+                StatusTone.Success => "✓ ",
+                StatusTone.Error => "✗ ",
+                _ => string.Empty,
+            };
+            await ShowTransientStatusAsync(mark + text);
         }
         catch (Exception ex)
         {
-            await ShowTransientStatusAsync($"✗ Download failed: {ex.Message}");
+            await ShowTransientStatusAsync("✗ " + DownloadSentence.ErrorText(ex));
         }
-    }
-
-    [RelayCommand]
-    private void DeleteSource()
-    {
-        if (SelectedSource is not null)
-            Sources.Remove(SelectedSource);
     }
 
     [RelayCommand]
@@ -1019,12 +1076,11 @@ public partial class WallpaperConfigViewModel : ObservableObject
     // mode the raw expression is validated before anything is written.
     //
     // The window owns: the download folder, resolution and retention; every slideshow field;
-    // the annotation; run at startup, automatic updates, debug mode and minimize to tray; and
-    // the list of sources (names, addresses, paths, schedules, enabled). It must NOT overwrite
-    // what other writers own, so it never assigns them: the current wallpaper (the switcher),
-    // favorites and bans (their own commands, the downloader's retention pass), the found
-    // easter eggs, the window geometry, and each source's last download time (the downloader),
-    // where the later of the saved time and the window's copy is kept.
+    // the annotation; and run at startup, automatic updates, debug mode and minimize to tray. It
+    // must NOT overwrite what other writers own, so it never assigns them: the current
+    // wallpaper (the switcher), favorites and bans (their own commands, the downloader's
+    // retention pass), the found easter eggs, the window geometry, and the wallpaper sources
+    // (IWallpaperSources, and each source's last download time, the downloader).
     private async Task SaveSettingsAsync()
     {
         try
@@ -1067,7 +1123,6 @@ public partial class WallpaperConfigViewModel : ObservableObject
             var minimizeToTray = MinimizeToTray;
             var favoritePriorityEnabled = FavoritePriorityEnabled;
             var favoritePriorityWeight = FavoritePriorityWeight;
-            var vmSources = Sources.ToList();
 
             await _settingsStore.UpdateAsync(latest =>
             {
@@ -1094,23 +1149,6 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 latest.MinimizeToTray = minimizeToTray;
                 latest.Slideshow.FavoritePriorityEnabled = favoritePriorityEnabled;
                 latest.Slideshow.FavoritePriorityWeight = favoritePriorityWeight;
-                // Preserve LastDownloadUtc from the latest settings for each source so that
-                // background download timestamps (written by DownloadWallpapers while the settings
-                // window is open) are not silently overwritten with the ViewModel's stale copies.
-                // Always keep the later of the two timestamps: the persisted value wins if a download
-                // completed after the window loaded; the ViewModel value wins if it is somehow newer.
-                // Match on source name; unmatched sources (new/renamed) keep no timestamp.
-                var persistedTimestamps = latest.Sources
-                    .Where(s => s.LastDownloadUtc.HasValue)
-                    .ToDictionary(s => s.Name, s => s.LastDownloadUtc!.Value, StringComparer.OrdinalIgnoreCase);
-                foreach (var src in vmSources)
-                {
-                    if (persistedTimestamps.TryGetValue(src.Name, out var persistedTs))
-                        src.LastDownloadUtc = src.LastDownloadUtc.HasValue
-                            ? (DateTimeOffset?)src.LastDownloadUtc.Value.Max(persistedTs)
-                            : persistedTs;
-                }
-                latest.Sources = vmSources;
             });
             await ShowTransientStatusAsync("✓ Settings saved.");
         }
@@ -1129,6 +1167,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         if (_switchWallpaper is not null)
             _switchWallpaper.WallpaperChanged -= OnWallpaperChanged;
         _library.Changed -= OnLibraryChanged;
+        _wallpaperSources.Changed -= OnWallpaperSourcesChanged;
 
         // Cancel any pending status-clear or gallery-load operations, then hand out a fresh
         // source so an in-flight SaveSettingsAsync can still raise a status message. The old
@@ -1163,10 +1202,6 @@ public partial class WallpaperConfigViewModel : ObservableObject
         foreach (var item in FavoriteWallpapers)
             item.DisposeThumbnail();
         FavoriteWallpapers.Clear();
-
-        foreach (var src in Sources)
-            src.PropertyChanged -= OnSourcePropertyChanged;
-        Sources.CollectionChanged -= OnSourcesCollectionChanged;
     }
 
     // Displays a status message for durationMs milliseconds, then clears it.

@@ -3,15 +3,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace PaperNexus.ViewModels;
 
-// What the phone's confirmation line looks like: white while something runs, green when an
-// action worked, red when it failed.
-public enum StatusTone
-{
-    Neutral,
-    Success,
-    Error,
-}
-
 // The part the phone's Gallery and Favorites tabs share: one card per picture, the short line
 // that confirms each tap, setting a picture as the wallpaper, and following changes made on
 // any other screen. Each tab says which pictures it lists, which buttons a card has, and what
@@ -25,33 +16,19 @@ public enum StatusTone
 // and recreates its screen (a new font size, language or display size), and the new screen's
 // view attaches to this same view model, so the cards, the confirmation line and the place in
 // the list are still there. It never holds a view.
-public abstract partial class PictureListViewModel : ObservableObject, IDisposable
+public abstract partial class PictureListViewModel : ObservableObject, IScrollPlace, IDisposable
 {
     public const string SwitchingText = "Switching wallpaper...";
     public const string FileNotFoundText = "Wallpaper file not found.";
 
-    // How long a confirmation stays, as on the desktop.
-    internal const int StatusDurationMs = 3000;
-
     private readonly ISwitchWallpaper _switchWallpaper;
     private readonly IWallpaperApplier _wallpaperApplier;
     private readonly SynchronizationContext? _screenContext;
-    private CancellationTokenSource _statusCts = new();
-    private readonly object _statusLock = new();
     private bool _isDisposed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     private bool _isLoaded;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasStatus))]
-    private string? _statusMessage;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsStatusSuccess))]
-    [NotifyPropertyChangedFor(nameof(IsStatusError))]
-    private StatusTone _statusTone;
 
     protected PictureListViewModel(
         IWallpaperLibrary library,
@@ -79,11 +56,8 @@ public abstract partial class PictureListViewModel : ObservableObject, IDisposab
 
     public bool IsEmpty => IsLoaded && Items.Count == 0;
 
-    public bool HasStatus => StatusMessage is not null;
-
-    public bool IsStatusSuccess => StatusTone == StatusTone.Success;
-
-    public bool IsStatusError => StatusTone == StatusTone.Error;
+    // The line that confirms each tap.
+    public StatusLine Status { get; } = new();
 
     // How far down the list was scrolled, in the view's units, kept here so a view built for
     // a recreated screen can return to the same place.
@@ -159,32 +133,7 @@ public abstract partial class PictureListViewModel : ObservableObject, IDisposab
     }
 
     // Shows a line for three seconds, replacing any earlier one; hold keeps it until the next.
-    protected void ShowStatus(string message, StatusTone tone, bool hold = false)
-    {
-        CancellationTokenSource cts;
-        lock (_statusLock)
-        {
-            _statusCts.Cancel();
-            _statusCts.Dispose();
-            cts = new CancellationTokenSource();
-            _statusCts = cts;
-        }
-
-        StatusTone = tone;
-        StatusMessage = message;
-        if (!hold)
-            _ = ClearStatusAfterAsync(cts.Token);
-    }
-
-    private async Task ClearStatusAfterAsync(CancellationToken token)
-    {
-        try
-        {
-            await Task.Delay(StatusDurationMs, token);
-            StatusMessage = null;
-        }
-        catch (OperationCanceledException) { }
-    }
+    protected void ShowStatus(string message, StatusTone tone, bool hold = false) => Status.Show(message, tone, hold);
 
     // Finds the card for a path, or null.
     protected GalleryItem? FindItem(string? path)
@@ -265,8 +214,7 @@ public abstract partial class PictureListViewModel : ObservableObject, IDisposab
     {
         _isDisposed = true;
         Library.Changed -= OnLibraryChanged;
-        lock (_statusLock)
-            _statusCts.Cancel();
+        Status.Dispose();
         foreach (var item in Items)
             item.DisposeThumbnail();
     }

@@ -12,6 +12,7 @@
 
     <UserControl.Styles>
         <StyleInclude Source="/Views/PictureListStyles.axaml"/>
+        <StyleInclude Source="/Views/StatusLineStyles.axaml"/>
     </UserControl.Styles>
 
     <Panel>
@@ -108,11 +109,11 @@
         <!-- The confirmation line, over the bottom of the list, above the tabs -->
         <Border Background="#1E1E1E" Padding="16,12"
                 VerticalAlignment="Bottom"
-                IsVisible="{Binding HasStatus}">
+                IsVisible="{Binding Status.IsShown}">
             <TextBlock Classes="status"
-                       Classes.success="{Binding IsStatusSuccess}"
-                       Classes.error="{Binding IsStatusError}"
-                       Text="{Binding StatusMessage}"/>
+                       Classes.success="{Binding Status.IsSuccess}"
+                       Classes.error="{Binding Status.IsError}"
+                       Text="{Binding Status.Message}"/>
         </Border>
     </Panel>
 </UserControl>

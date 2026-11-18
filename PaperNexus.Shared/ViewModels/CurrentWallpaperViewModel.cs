@@ -55,8 +55,6 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     private readonly IWallpaperApplier _wallpaperApplier;
     private readonly ILogger<CurrentWallpaperViewModel> _logger;
     private readonly SynchronizationContext? _screenContext;
-    private CancellationTokenSource _statusCts = new();
-    private readonly object _statusLock = new();
 
     // True while this tab deletes its own picture, so the library's report of that delete
     // is not handled a second time.
@@ -81,16 +79,6 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(CanFavorite))]
     [NotifyPropertyChangedFor(nameof(CanDelete))]
     private string? _picturePath;
-
-    // The short line under the buttons that confirms a heart or a delete, for three seconds.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasStatus))]
-    private string? _statusMessage;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsStatusSuccess))]
-    [NotifyPropertyChangedFor(nameof(IsStatusError))]
-    private StatusTone _statusTone;
 
     [ObservableProperty]
     private string _title = string.Empty;
@@ -156,11 +144,8 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     // Delete acts on the current wallpaper, and waits while a switch or download runs.
     public bool CanDelete => CanFavorite && !IsWorking;
 
-    public bool HasStatus => StatusMessage is not null;
-
-    public bool IsStatusSuccess => StatusTone == StatusTone.Success;
-
-    public bool IsStatusError => StatusTone == StatusTone.Error;
+    // The short line under the buttons that confirms a heart or a delete, for three seconds.
+    public StatusLine Status { get; } = new();
 
     public string FavoriteToolTip => IsFavorite ? "Remove from favorites" : "Add to favorites";
 
@@ -402,31 +387,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     }
 
     // Shows a line for three seconds, replacing any earlier one.
-    private void ShowStatus(string message, StatusTone tone)
-    {
-        CancellationTokenSource cts;
-        lock (_statusLock)
-        {
-            _statusCts.Cancel();
-            _statusCts.Dispose();
-            cts = new CancellationTokenSource();
-            _statusCts = cts;
-        }
-
-        StatusTone = tone;
-        StatusMessage = message;
-        _ = ClearStatusAfterAsync(cts.Token);
-    }
-
-    private async Task ClearStatusAfterAsync(CancellationToken token)
-    {
-        try
-        {
-            await Task.Delay(PictureListViewModel.StatusDurationMs, token);
-            StatusMessage = null;
-        }
-        catch (OperationCanceledException) { }
-    }
+    private void ShowStatus(string message, StatusTone tone) => Status.Show(message, tone);
 
     // A wallpaper set anywhere in the app (another copy of this tab, after Android recreated
     // the screen) is shown here too. Raised on a background thread.
@@ -506,7 +467,6 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     {
         _switchWallpaper.WallpaperChanged -= OnWallpaperChanged;
         _library.Changed -= OnLibraryChanged;
-        lock (_statusLock)
-            _statusCts.Cancel();
+        Status.Dispose();
     }
 }

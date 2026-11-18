@@ -1,10 +1,12 @@
 <Window xmlns="https://github.com/avaloniaui"
        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
        xmlns:v="using:PaperNexus.Views"
+       xmlns:vm="using:PaperNexus.ViewModels"
        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="420"
        x:Class="PaperNexus.Views.WallpaperSourceDialog"
+       x:DataType="vm:SourceFormViewModel"
        Title="Wallpaper Source"
        Icon="avares://PaperNexus/Assets/logo.png"
        Width="440"
@@ -15,71 +17,71 @@
 
     <StackPanel Margin="20" Spacing="14">
         <Grid ColumnDefinitions="*,Auto">
-            <TextBlock x:Name="DialogTitle" Text="Add Wallpaper Source" FontWeight="SemiBold" FontSize="16"
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16"
                        VerticalAlignment="Center"/>
-            <CheckBox x:Name="EnabledBox" Grid.Column="1" Content="Enabled" IsChecked="True"/>
+            <CheckBox Grid.Column="1" Content="Enabled" IsChecked="{Binding IsEnabled}"/>
         </Grid>
 
         <StackPanel Spacing="4">
             <TextBlock Text="Name" FontSize="12" Opacity="0.8"/>
-            <TextBox x:Name="NameBox" PlaceholderText="e.g. Bing Daily"/>
+            <TextBox Text="{Binding Name}" PlaceholderText="e.g. Bing Daily"/>
         </StackPanel>
 
         <StackPanel Spacing="4">
             <TextBlock Text="Type" FontSize="12" Opacity="0.8"/>
-            <v:NonScrollableComboBox x:Name="TypeBox" HorizontalAlignment="Stretch">
+            <v:NonScrollableComboBox SelectedIndex="0" HorizontalAlignment="Stretch">
                 <ComboBoxItem Content="HTTP JSON" Tag="HttpJson"/>
             </v:NonScrollableComboBox>
         </StackPanel>
 
         <StackPanel Spacing="4">
             <TextBlock Text="URL" FontSize="12" Opacity="0.8"/>
-            <TextBox x:Name="UrlBox" PlaceholderText="https://example.com/feed.json"/>
+            <TextBox Text="{Binding Url}" PlaceholderText="https://example.com/feed.json"/>
         </StackPanel>
 
         <StackPanel Spacing="4">
             <TextBlock Text="Image URL JPath" FontSize="12" Opacity="0.8"/>
-            <TextBox x:Name="ImageUrlJPathBox" PlaceholderText="e.g. $[*].imageUrl"/>
+            <TextBox Text="{Binding ImageUrlJPath}" PlaceholderText="e.g. $[*].imageUrl"/>
             <TextBlock Text="JPath expression to locate image URLs in the JSON response"
                        FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
         </StackPanel>
 
         <StackPanel Spacing="4">
             <TextBlock Text="Title JPath" FontSize="12" Opacity="0.8"/>
-            <TextBox x:Name="TitleJPathBox" PlaceholderText="e.g. $[*].title"/>
+            <TextBox Text="{Binding TitleJPath}" PlaceholderText="e.g. $[*].title"/>
             <TextBlock Text="JPath expression to locate image titles in the JSON response"
                        FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
         </StackPanel>
 
         <StackPanel Spacing="4">
             <TextBlock Text="Download Schedule (Cron)" FontSize="12" Opacity="0.8"/>
-            <TextBox x:Name="CronBox" PlaceholderText="e.g. 0 * * * * (every hour)"/>
+            <TextBox Text="{Binding CronExpression}" PlaceholderText="e.g. 0 * * * * (every hour)"/>
             <TextBlock Text="5-field cron: min hour day month weekday"
                        FontSize="11" Opacity="0.5"/>
         </StackPanel>
 
-        <TextBlock x:Name="ErrorText" FontSize="12" Foreground="#F87171"
-                   TextWrapping="Wrap" IsVisible="False"/>
-        <TextBox x:Name="TestResultText" FontSize="12" Foreground="#86EFAC"
+        <TextBlock Text="{Binding ErrorText}" FontSize="12" Foreground="#F87171"
+                   TextWrapping="Wrap" IsVisible="{Binding HasError}"/>
+        <TextBox Text="{Binding TestResultText, Mode=OneWay}" FontSize="12" Foreground="#86EFAC"
                  IsReadOnly="True" AcceptsReturn="True"
                  TextWrapping="Wrap" MaxHeight="160"
                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                 IsVisible="False"/>
+                 IsVisible="{Binding HasTestResult}"/>
 
         <Grid ColumnDefinitions="*,8,Auto,8,Auto" Margin="0,6,0,0">
-            <Button Grid.Column="0" Content="Cancel" Click="Cancel_Click"
+            <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}"
                     ToolTip.Tip="Close without saving"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-            <Button Grid.Column="2" Click="Test_Click"
+            <Button Grid.Column="2" Command="{Binding TestCommand}"
                     ToolTip.Tip="Test the source configuration"
                     HorizontalAlignment="Stretch" Padding="16,6">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <PathIcon Data="M8 5v14l11-7z"
                               Width="12" Height="12"/>
-                    <TextBlock x:Name="TestButtonText" Text="Test" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding TestButtonText}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
-            <Button Grid.Column="4" Click="Save_Click"
+            <Button Grid.Column="4" Command="{Binding SaveCommand}"
                     ToolTip.Tip="Save wallpaper source"
                     HorizontalAlignment="Stretch" Padding="24,6">
                 <StackPanel Orientation="Horizontal" Spacing="4">

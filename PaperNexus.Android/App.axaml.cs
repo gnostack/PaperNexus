@@ -21,13 +21,19 @@ public partial class App : Avalonia.Application
         // Each activity asks the factory for its view, built from the services MainApplication
         // created for the process. PageNavigationHost passes the system bars' insets to the
         // page, so the bottom tabs sit above Android's navigation bar instead of being drawn
-        // underneath it (Android 15 and later always draw apps edge to edge).
+        // underneath it (Android 15 and later always draw apps edge to edge), and passes
+        // Android's back button to it. The NavigationPage around the tabs has no bar of its
+        // own; it is what shows the Sources tab's form over the tabs as a modal page.
         if (ApplicationLifetime is IActivityApplicationLifetime activity)
         {
             var application = (MainApplication)global::Android.App.Application.Context;
-            activity.MainViewFactory = () => new PageNavigationHost
+            activity.MainViewFactory = () =>
             {
-                Page = application.Services.GetRequiredService<MainView>(),
+                var mainView = application.Services.GetRequiredService<MainView>();
+                NavigationPage.SetHasNavigationBar(mainView, false);
+                var navigation = new NavigationPage { Content = mainView };
+                var host = new PageNavigationHost { Page = navigation };
+                return host;
             };
         }
 

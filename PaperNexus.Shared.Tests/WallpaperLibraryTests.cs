@@ -252,7 +252,7 @@ public class WallpaperLibraryTests : IDisposable
     {
         public event Action? WallpapersDownloaded;
 
-        public Task DownloadAllAsync() => Task.CompletedTask;
+        public Task<DownloadOutcome> DownloadAllAsync() => Task.FromResult(new DownloadOutcome(0, 0));
 
         public void Finish() => WallpapersDownloaded?.Invoke();
     }
