@@ -3,12 +3,9 @@ namespace PaperNexus.Core;
 // Records which easter eggs have been triggered, so the checklist can show progress.
 // Every trigger routes through here rather than writing settings itself, which keeps the
 // discovery bookkeeping in one place and out of the views. It is a container singleton
-// holding the settings store, so the gate below is shared by every egg in the process.
+// holding the settings store, whose update lock serialises every egg in the process.
 public sealed class EasterEggProgress : IAddSingleton<EasterEggProgress>
 {
-    // Serialises concurrent records: two eggs firing close together would otherwise both
-    // load settings, each add only their own id, and the second save would drop the first.
-    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ISettingsStore _settingsStore;
 
     public EasterEggProgress(ISettingsStore settingsStore)
@@ -17,32 +14,30 @@ public sealed class EasterEggProgress : IAddSingleton<EasterEggProgress>
     }
 
     // Returns true when this is the first time the egg has been found, so the caller can
-    // celebrate a new discovery differently from a repeat.
+    // celebrate a new discovery differently from a repeat. The store's update adds the id to
+    // the latest list under its lock, so two eggs found together both keep their tick, and
+    // nothing else saved at the same moment is lost.
     public async Task<bool> RecordAsync(string eggId)
     {
         if (string.IsNullOrWhiteSpace(eggId))
             return false;
 
-        await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
-            if (settings.DiscoveredEasterEggs.Contains(eggId, StringComparer.OrdinalIgnoreCase))
-                return false;
-
-            settings.DiscoveredEasterEggs.Add(eggId);
-            await _settingsStore.SaveAsync(settings).ConfigureAwait(false);
-            return true;
+            var isNew = false;
+            await _settingsStore.UpdateAsync(latest =>
+            {
+                isNew = !latest.DiscoveredEasterEggs.Contains(eggId, StringComparer.OrdinalIgnoreCase);
+                if (isNew)
+                    latest.DiscoveredEasterEggs.Add(eggId);
+            }).ConfigureAwait(false);
+            return isNew;
         }
         catch (Exception)
         {
             // Losing a checklist tick is not worth interrupting the animation the user is
             // currently watching.
             return false;
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 

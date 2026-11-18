@@ -720,23 +720,31 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            if (settings.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase))
+            // Toggled from the latest saved list, inside the update, so nothing saved
+            // elsewhere meanwhile is overwritten.
+            var wasFavorite = false;
+            var favoriteCount = 0;
+            await _settingsStore.UpdateAsync(latest =>
             {
-                settings.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
+                wasFavorite = latest.FavoriteWallpapers.Contains(path, StringComparer.OrdinalIgnoreCase);
+                if (wasFavorite)
+                    latest.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
+                else
+                    latest.FavoriteWallpapers.Add(path);
+                favoriteCount = latest.FavoriteWallpapers.Count;
+            });
+            if (wasFavorite)
+            {
                 IsCurrentWallpaperFavorited = false;
-                await _settingsStore.SaveAsync(settings);
                 RemoveFavoriteItem(path);
                 await ShowTransientStatusAsync("✓ Removed from favorites.");
             }
             else
             {
-                settings.FavoriteWallpapers.Add(path);
                 IsCurrentWallpaperFavorited = true;
-                await _settingsStore.SaveAsync(settings);
                 AddFavoriteItem(path);
                 // Round numbers of favorites play an overlay instead of the usual confirmation.
-                var milestone = EasterEggShows.Favorite(settings.FavoriteWallpapers.Count);
+                var milestone = EasterEggShows.Favorite(favoriteCount);
                 if (milestone is not null)
                     EasterEggTriggered?.Invoke(milestone);
                 else
@@ -789,9 +797,8 @@ public partial class WallpaperConfigViewModel : ObservableObject
         var path = item.FilePath;
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            settings.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase));
-            await _settingsStore.SaveAsync(settings);
+            await _settingsStore.UpdateAsync(latest =>
+                latest.FavoriteWallpapers.RemoveAll(f => f.Equals(path, StringComparison.OrdinalIgnoreCase)));
             RemoveFavoriteItem(path);
             if (CurrentWallpaperPath.Equals(path, StringComparison.OrdinalIgnoreCase))
                 IsCurrentWallpaperFavorited = false;
@@ -945,18 +952,21 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _shellOpener.Open(homepage);
     }
 
-    // Maps all ViewModel properties back onto a WallpaperNexusSettings instance and persists it.
-    // For interval-based schedule modes the cron expression is synthesised from the numeric value;
-    // for manual cron mode the raw expression is validated before saving.
+    // Writes the settings this window edits onto the latest saved settings. For interval-based
+    // schedule modes the cron expression is synthesised from the numeric value; for manual cron
+    // mode the raw expression is validated before anything is written.
+    //
+    // The window owns: the download folder, resolution and retention; every slideshow field;
+    // the annotation; run at startup, automatic updates, debug mode and minimize to tray; and
+    // the list of sources (names, addresses, paths, schedules, enabled). It must NOT overwrite
+    // what other writers own, so it never assigns them: the current wallpaper (the switcher),
+    // favorites and bans (their own commands, the downloader's retention pass), the found
+    // easter eggs, the window geometry, and each source's last download time (the downloader),
+    // where the later of the saved time and the window's copy is kept.
     private async Task SaveSettingsAsync()
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            settings.Download.Folder = Folder;
-            settings.Slideshow.ScheduleMode = SlideshowScheduleMode;
-            settings.Slideshow.Interval = SlideshowInterval ?? _selectedIntervalType?.Minimum ?? 1;
-            settings.Slideshow.IntervalType = _selectedIntervalType?.Type ?? IntervalType.Minutes;
             var cronExpression = BuildSlideshowCronExpression();
             // Only validate the expression when the user typed it directly - synthesised expressions are always valid
             if (SlideshowScheduleMode == SlideshowScheduleMode.CronExpression)
@@ -971,44 +981,75 @@ public partial class WallpaperConfigViewModel : ObservableObject
                     return;
                 }
             }
-            settings.Slideshow.CronExpression = cronExpression;
-            settings.Download.ResolutionWidth = SelectedResolution.Width;
-            settings.Download.ResolutionHeight = SelectedResolution.Height;
-            settings.Download.RetentionDays = RetentionDays ?? 365;
-            settings.Slideshow.FillStyle = SelectedFillStyle.Style;
-            settings.Slideshow.Order = SelectedSlideshowOrder.Order;
-            settings.Slideshow.Enabled = SlideshowEnabled;
-            settings.AnnotateWallpaper = AnnotateWallpaper;
-            settings.Annotation.FontFamily = AnnotationFontFamily;
-            settings.Annotation.FontSize = AnnotationFontSize;
-            settings.Annotation.Color = AnnotationColor;
-            settings.Annotation.OutlineEnabled = AnnotationOutlineEnabled;
-            settings.Annotation.Position = SelectedAnnotationPosition.Position;
-            settings.RunOnStartup = RunOnStartup;
-            settings.AutoUpdatesEnabled = AutoUpdatesEnabled;
-            settings.DebugMode = DebugMode;
-            settings.MinimizeToTray = MinimizeToTray;
-            settings.Slideshow.FavoritePriorityEnabled = FavoritePriorityEnabled;
-            settings.Slideshow.FavoritePriorityWeight = FavoritePriorityWeight;
-            // Preserve LastDownloadUtc from the freshly-loaded settings for each source so that
-            // background download timestamps (written by DownloadWallpapers while the settings
-            // window is open) are not silently overwritten with the ViewModel's stale copies.
-            // Always keep the later of the two timestamps: the persisted value wins if a download
-            // completed after LoadAsync ran; the ViewModel value wins if it is somehow newer.
-            // Match on source name; unmatched sources (new/renamed) keep no timestamp.
-            var persistedTimestamps = settings.Sources
-                .Where(s => s.LastDownloadUtc.HasValue)
-                .ToDictionary(s => s.Name, s => s.LastDownloadUtc!.Value, StringComparer.OrdinalIgnoreCase);
+
+            // Read every value from the window here, on its own thread; the update below may
+            // run on another one.
+            var folder = Folder;
+            var scheduleMode = SlideshowScheduleMode;
+            var interval = SlideshowInterval ?? _selectedIntervalType?.Minimum ?? 1;
+            var intervalType = _selectedIntervalType?.Type ?? IntervalType.Minutes;
+            var resolution = SelectedResolution;
+            var retentionDays = RetentionDays ?? 365;
+            var fillStyle = SelectedFillStyle.Style;
+            var order = SelectedSlideshowOrder.Order;
+            var slideshowEnabled = SlideshowEnabled;
+            var annotateWallpaper = AnnotateWallpaper;
+            var fontFamily = AnnotationFontFamily;
+            var fontSize = AnnotationFontSize;
+            var color = AnnotationColor;
+            var outlineEnabled = AnnotationOutlineEnabled;
+            var position = SelectedAnnotationPosition.Position;
+            var runOnStartup = RunOnStartup;
+            var autoUpdatesEnabled = AutoUpdatesEnabled;
+            var debugMode = DebugMode;
+            var minimizeToTray = MinimizeToTray;
+            var favoritePriorityEnabled = FavoritePriorityEnabled;
+            var favoritePriorityWeight = FavoritePriorityWeight;
             var vmSources = Sources.ToList();
-            foreach (var src in vmSources)
+
+            await _settingsStore.UpdateAsync(latest =>
             {
-                if (persistedTimestamps.TryGetValue(src.Name, out var persistedTs))
-                    src.LastDownloadUtc = src.LastDownloadUtc.HasValue
-                        ? (DateTimeOffset?)src.LastDownloadUtc.Value.Max(persistedTs)
-                        : persistedTs;
-            }
-            settings.Sources = vmSources;
-            await _settingsStore.SaveAsync(settings);
+                latest.Download.Folder = folder;
+                latest.Slideshow.ScheduleMode = scheduleMode;
+                latest.Slideshow.Interval = interval;
+                latest.Slideshow.IntervalType = intervalType;
+                latest.Slideshow.CronExpression = cronExpression;
+                latest.Download.ResolutionWidth = resolution.Width;
+                latest.Download.ResolutionHeight = resolution.Height;
+                latest.Download.RetentionDays = retentionDays;
+                latest.Slideshow.FillStyle = fillStyle;
+                latest.Slideshow.Order = order;
+                latest.Slideshow.Enabled = slideshowEnabled;
+                latest.AnnotateWallpaper = annotateWallpaper;
+                latest.Annotation.FontFamily = fontFamily;
+                latest.Annotation.FontSize = fontSize;
+                latest.Annotation.Color = color;
+                latest.Annotation.OutlineEnabled = outlineEnabled;
+                latest.Annotation.Position = position;
+                latest.RunOnStartup = runOnStartup;
+                latest.AutoUpdatesEnabled = autoUpdatesEnabled;
+                latest.DebugMode = debugMode;
+                latest.MinimizeToTray = minimizeToTray;
+                latest.Slideshow.FavoritePriorityEnabled = favoritePriorityEnabled;
+                latest.Slideshow.FavoritePriorityWeight = favoritePriorityWeight;
+                // Preserve LastDownloadUtc from the latest settings for each source so that
+                // background download timestamps (written by DownloadWallpapers while the settings
+                // window is open) are not silently overwritten with the ViewModel's stale copies.
+                // Always keep the later of the two timestamps: the persisted value wins if a download
+                // completed after the window loaded; the ViewModel value wins if it is somehow newer.
+                // Match on source name; unmatched sources (new/renamed) keep no timestamp.
+                var persistedTimestamps = latest.Sources
+                    .Where(s => s.LastDownloadUtc.HasValue)
+                    .ToDictionary(s => s.Name, s => s.LastDownloadUtc!.Value, StringComparer.OrdinalIgnoreCase);
+                foreach (var src in vmSources)
+                {
+                    if (persistedTimestamps.TryGetValue(src.Name, out var persistedTs))
+                        src.LastDownloadUtc = src.LastDownloadUtc.HasValue
+                            ? (DateTimeOffset?)src.LastDownloadUtc.Value.Max(persistedTs)
+                            : persistedTs;
+                }
+                latest.Sources = vmSources;
+            });
             await ShowTransientStatusAsync("✓ Settings saved.");
         }
         catch (Exception ex)
@@ -1191,10 +1232,20 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            if (item.IsFavorite)
+            // The card's own heart decides the direction, as it always has; the update writes
+            // that one change onto the latest saved list.
+            var removing = item.IsFavorite;
+            var favoriteCount = 0;
+            await _settingsStore.UpdateAsync(latest =>
             {
-                settings.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
+                if (removing)
+                    latest.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
+                else
+                    latest.FavoriteWallpapers.Add(item.FilePath);
+                favoriteCount = latest.FavoriteWallpapers.Count;
+            });
+            if (removing)
+            {
                 item.IsFavorite = false;
                 RemoveFavoriteItem(item.FilePath);
                 if (CurrentWallpaperPath.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase))
@@ -1202,17 +1253,15 @@ public partial class WallpaperConfigViewModel : ObservableObject
             }
             else
             {
-                settings.FavoriteWallpapers.Add(item.FilePath);
                 item.IsFavorite = true;
                 AddFavoriteItem(item.FilePath);
                 if (CurrentWallpaperPath.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase))
                     IsCurrentWallpaperFavorited = true;
 
-                var milestone = EasterEggShows.Favorite(settings.FavoriteWallpapers.Count);
+                var milestone = EasterEggShows.Favorite(favoriteCount);
                 if (milestone is not null)
                     EasterEggTriggered?.Invoke(milestone);
             }
-            await _settingsStore.SaveAsync(settings);
         }
         catch (Exception ex)
         {
@@ -1224,18 +1273,15 @@ public partial class WallpaperConfigViewModel : ObservableObject
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync();
-            if (item.IsBanned)
+            var unbanning = item.IsBanned;
+            await _settingsStore.UpdateAsync(latest =>
             {
-                settings.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-                item.IsBanned = false;
-            }
-            else
-            {
-                settings.BannedWallpapers.Add(item.FilePath);
-                item.IsBanned = true;
-            }
-            await _settingsStore.SaveAsync(settings);
+                if (unbanning)
+                    latest.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
+                else
+                    latest.BannedWallpapers.Add(item.FilePath);
+            });
+            item.IsBanned = !unbanning;
         }
         catch (Exception ex)
         {
@@ -1254,10 +1300,11 @@ public partial class WallpaperConfigViewModel : ObservableObject
                 File.Delete(item.FilePath);
 
             // Remove the path from both special lists so stale references don't persist in settings
-            var settings = await _settingsStore.LoadAsync();
-            settings.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-            settings.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
-            await _settingsStore.SaveAsync(settings);
+            await _settingsStore.UpdateAsync(latest =>
+            {
+                latest.FavoriteWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
+                latest.BannedWallpapers.RemoveAll(f => f.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase));
+            });
 
             RemoveFavoriteItem(item.FilePath);
 

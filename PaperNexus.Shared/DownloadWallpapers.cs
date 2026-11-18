@@ -105,13 +105,13 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
         // No other run is writing now, so any partial file is left over from a stopped process
         RemovePartialDownloads(settings.Download.Folder);
 
-        var downloaded = false;
+        var downloadedSources = new List<WallpaperSource>();
         foreach (var source in settings.Sources.Where(s => s.IsEnabled && filter(s)))
         {
             try
             {
                 await DownloadSource(source, settings);
-                downloaded = true;
+                downloadedSources.Add(source);
             }
             catch (Exception ex)
             {
@@ -120,10 +120,32 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
                 Logger.LogError(ex, "Failed to download from source '{Source}' - skipping.", source.Name);
             }
         }
-        if (downloaded)
+        if (downloadedSources.Count > 0)
         {
-            await CleanupOldImages(settings);
-            await _settingsStore.SaveAsync(settings);
+            // The settings above were read before the downloads, which can take minutes, and
+            // anything saved meanwhile (a favorite, a ban, a new current wallpaper, an edited
+            // source) must stay. So the run writes only what it owns onto the latest
+            // settings: each downloaded source's time, and the retention pass, which decides
+            // what to delete from the latest favorites and current wallpaper.
+            await _settingsStore.UpdateAsync(latest =>
+            {
+                RecordDownloadTimes(latest.Sources, downloadedSources);
+                CleanupOldImages(latest);
+            });
+        }
+    }
+
+    // Copies each downloaded source's download time onto the source of the same name in the
+    // latest settings, matched as the settings window matches them. A source renamed or
+    // removed while the run downloaded keeps no time.
+    private static void RecordDownloadTimes(List<WallpaperSource> latestSources, List<WallpaperSource> downloadedSources)
+    {
+        foreach (var latestSource in latestSources)
+        {
+            var downloaded = downloadedSources.FirstOrDefault(
+                d => d.Name.Equals(latestSource.Name, StringComparison.OrdinalIgnoreCase));
+            if (downloaded is not null)
+                latestSource.LastDownloadUtc = downloaded.LastDownloadUtc;
         }
     }
 
@@ -299,9 +321,9 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
     // stale paths from FavoriteWallpapers and BannedWallpapers. Favorited files and the
     // currently active wallpaper (CurrentWallpaperPath) are excluded from the age-based
     // deletion but their paths are still pruned if the file no longer exists (e.g.
-    // manually deleted outside the app). The caller is responsible for saving settings
-    // after this method returns.
-    internal async Task CleanupOldImages(WallpaperNexusSettings settings)
+    // manually deleted outside the app). The caller saves the settings: the download run
+    // calls this inside its settings update, so it decides from the latest favorites.
+    internal void CleanupOldImages(WallpaperNexusSettings settings)
     {
         // Guard against the folder being deleted between the Directory.CreateDirectory
         // call in DownloadFromSourcesAsync and this cleanup step. If the folder is gone,
@@ -364,7 +386,5 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
             Logger.LogInformation(
                 "Retention cleanup: {Deleted} file(s) deleted, {Stale} stale list entries pruned.",
                 deleted.Count, staleCount);
-
-        await Task.CompletedTask; // preserve async signature for future I/O operations
     }
 }

@@ -66,10 +66,11 @@ public class SettingsLocationTests : IDisposable
         var timestampBefore = existedBefore ? File.GetLastWriteTimeUtc(realPath) : DateTime.MinValue;
         var contentBefore = existedBefore ? await File.ReadAllBytesAsync(realPath) : [];
 
-        var settings = await _store.LoadAsync();
-        settings.RunOnStartup = !settings.RunOnStartup;
-        settings.DiscoveredEasterEggs.Add("konami");
-        await _store.SaveAsync(settings);
+        await _store.UpdateAsync(latest =>
+        {
+            latest.RunOnStartup = !latest.RunOnStartup;
+            latest.DiscoveredEasterEggs.Add("konami");
+        });
         var reloaded = await _store.LoadAsync();
 
         Assert.NotEqual(realPath, _store.FilePath);

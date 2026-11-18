@@ -277,9 +277,10 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         }
         _logger.LogInformation("Switching wallpaper to: {Path}", next);
 
-        // Persist the original source path (not the processed current.* path) so ordering is stable across restarts
-        settings.CurrentWallpaperPath = next;
-        await _settingsStore.SaveAsync(settings).ConfigureAwait(false);
+        // Persist the original source path (not the processed current.* path) so ordering is stable across restarts.
+        // Only the current wallpaper is written: the settings read at the start of the switch
+        // are seconds old by now, and anything saved meanwhile (a favorite, a ban) must stay.
+        await _settingsStore.UpdateAsync(latest => latest.CurrentWallpaperPath = next).ConfigureAwait(false);
         WallpaperChanged?.Invoke(next);
         return next;
     }

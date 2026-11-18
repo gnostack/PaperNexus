@@ -53,7 +53,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: current);
         var settings = await _store.LoadAsync();
         settings.FavoriteWallpapers.Add(current);
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
         using var viewModel = CreateViewModel();
 
         await viewModel.LoadAsync();
@@ -283,8 +283,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
             var next = pictures[(index + 1) % pictures.Count];
             if (Refuses)
                 throw new WallpaperRefusedException(next);
-            settings.CurrentWallpaperPath = next;
-            await _store.SaveAsync(settings);
+            await _store.UpdateAsync(latest => latest.CurrentWallpaperPath = next);
             WallpaperChanged?.Invoke(next);
             return next;
         }

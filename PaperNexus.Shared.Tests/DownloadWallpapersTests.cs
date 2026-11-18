@@ -157,7 +157,7 @@ public class DownloadWallpapersTests : IDisposable
         await File.WriteAllBytesAsync(partial, [0x89, 0x50]);
         var picture = Path.Combine(_downloadDir, "Kept - picture.png");
         TestHelpers.CreateSmallPng(picture);
-        await _store.SaveAsync(new WallpaperNexusSettings { Download = new DownloadSettings { Folder = _downloadDir }, Sources = [] });
+        await _store.WriteAsync(new WallpaperNexusSettings { Download = new DownloadSettings { Folder = _downloadDir }, Sources = [] });
         var source = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
         var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, source, _store, TestHelpers.UnusedTimerStore());
 
@@ -325,7 +325,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act
-        await sut.CleanupOldImages(settings);
+        sut.CleanupOldImages(settings);
 
         // Assert: file is deleted and the stale banned entry is removed
         Assert.False(File.Exists(expiredPath), "Expired file should be deleted");
@@ -354,7 +354,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act
-        await sut.CleanupOldImages(settings);
+        sut.CleanupOldImages(settings);
 
         // Assert: favorited file preserved on disk
         Assert.True(File.Exists(favoritePath), "Favorited file should survive retention cleanup");
@@ -381,7 +381,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act
-        await sut.CleanupOldImages(settings);
+        sut.CleanupOldImages(settings);
 
         // Assert: recent file is kept
         Assert.True(File.Exists(recentPath), "Recently downloaded file should not be deleted");
@@ -536,7 +536,7 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
 
         var loaded = await _store.LoadAsync();
 
@@ -575,7 +575,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act
-        await sut.CleanupOldImages(settings);
+        sut.CleanupOldImages(settings);
 
         // Assert: current wallpaper is preserved despite being past the retention cutoff
         Assert.True(File.Exists(currentPath), "Current wallpaper should not be deleted by retention cleanup");
@@ -604,7 +604,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act
-        await sut.CleanupOldImages(settings);
+        sut.CleanupOldImages(settings);
 
         // Assert: current wallpaper survives, non-current expired file is deleted
         Assert.True(File.Exists(currentPath), "Current wallpaper should be preserved");
@@ -632,7 +632,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act: should not throw DirectoryNotFoundException
-        var ex = await Record.ExceptionAsync(() => sut.CleanupOldImages(settings));
+        var ex = Record.Exception(() => sut.CleanupOldImages(settings));
 
         Assert.Null(ex);
         // Stale paths pointing to non-existent files must be pruned from both lists
@@ -661,7 +661,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act: should not throw NullReferenceException
-        var ex = await Record.ExceptionAsync(() => sut.CleanupOldImages(settings));
+        var ex = Record.Exception(() => sut.CleanupOldImages(settings));
 
         // Assert: cleanup completed and the expired file was deleted
         Assert.Null(ex);
@@ -690,7 +690,7 @@ public class DownloadWallpapersTests : IDisposable
         };
 
         // Act: should not throw despite the invalid CurrentWallpaperPath
-        var ex = await Record.ExceptionAsync(() => sut.CleanupOldImages(settings));
+        var ex = Record.Exception(() => sut.CleanupOldImages(settings));
 
         // Assert: cleanup completed without throwing and expired file was still deleted
         Assert.Null(ex);
@@ -715,7 +715,7 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
 
         var loaded = await _store.LoadAsync();
 
@@ -746,7 +746,7 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
 
         var loaded = await _store.LoadAsync();
         var src = loaded.Sources.First(s => s.Name == "Recent Source");
@@ -774,7 +774,7 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
 
         var loaded = await _store.LoadAsync();
 
@@ -796,7 +796,7 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
 
         var loaded = await _store.LoadAsync();
 
@@ -820,7 +820,7 @@ public class DownloadWallpapersTests : IDisposable
             RunOnStartup = false,
             AutoUpdatesEnabled = false,
         };
-        await _store.SaveAsync(settings);
+        await _store.WriteAsync(settings);
 
         var loaded = await _store.LoadAsync();
 
