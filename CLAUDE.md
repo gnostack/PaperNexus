@@ -6,7 +6,7 @@
 
 - `PaperNexus.Shared` - class library (`net10.0`) with everything both devices use: settings model and store, wallpaper sources and downloads, wallpaper switching, the imaging layer, the view models, easter eggs, logging, DI helpers. No `Avalonia.Desktop` and no Windows/Linux-only API, so the Android host references it unchanged.
 - `PaperNexus` - the desktop host (Windows/Linux exe): `Program`, the tray `App`, every window and dialog, install, auto-update, single instance, startup registration and the platform layer. The project, assembly and exe keep the name `PaperNexus`, because the release asset names, `WM_CLASS` and `StartupWMClass` depend on it.
-- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); Gallery and Favorites list the pictures and Current deletes one (step 4, part 1); Sources adds, edits, tests, turns on and off and deletes wallpaper sources and downloads now (step 4, part 2); Settings shows only its name until step 4's last part. Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
+- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); Gallery and Favorites list the pictures and Current deletes one (step 4, part 1); Sources adds, edits, tests, turns on and off and deletes wallpaper sources and downloads now (step 4, part 2); Settings shows the download, slideshow and debug settings groups (step 4, part 3; About and Secrets follow). Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
 - `PaperNexus.Shared.Tests` covers `PaperNexus.Shared`; `PaperNexus.Tests` covers the desktop host. Each references only the project it covers.
 
 ## Quick Reference
@@ -91,6 +91,7 @@ PaperNexus/
 │   │   ├── SourcesViewModel.cs         # The phone's Sources tab: rows, Download now, the open form
 │   │   ├── SourceFormViewModel.cs      # The add/edit source form (desktop dialog and phone page)
 │   │   ├── SourceItem.cs               # One source row (both apps)
+│   │   ├── SettingsViewModel.cs        # The phone's Settings tab: the shared groups, the open picker, the line
 │   │   ├── DownloadSentence.cs         # What Download now says, from DownloadOutcome (both apps)
 │   │   ├── StatusLine.cs               # The phone tabs' three-second confirmation line
 │   │   ├── IScrollPlace.cs             # A list view model that keeps its scroll place
@@ -153,13 +154,16 @@ PaperNexus/
     │   ├── FavoritesView.axaml(.cs)    # The Favorites tab
     │   ├── SourcesView.axaml(.cs)      # The Sources tab
     │   ├── SourceFormPage.axaml(.cs)   # Full-screen add/edit source form (modal page); keeps above the keyboard
+    │   ├── SettingsView.axaml(.cs)     # The Settings tab
+    │   ├── ChoiceDialog.axaml(.cs)     # In-page list to choose one value from (the Settings pickers)
+    │   ├── KeyboardLift.cs             # Keeps the keyboard off the field being typed (form and Settings)
     │   ├── PictureListStyles.axaml     # Card and picture-button styles
     │   ├── StatusLineStyles.axaml      # Confirmation-line styles (every tab)
     │   ├── PictureFrame.cs             # 16:9 picture box so every card has the same height
     │   ├── CardThumbnails.cs           # Load/release card thumbnails at the screen's pixel width
     │   ├── MainScreenState.cs          # Selected tab, kept for the process's lifetime
     │   ├── ListPlace.cs                # Keeps a list's scroll place in its view model
-    │   └── ConfirmationDialog.axaml(.cs) # Reusable in-page question (dimmed page, centered box)
+    │   └── ConfirmationDialog.axaml(.cs) # Reusable in-page question (dimmed page, centered box, optional title)
     └── Resources/
         ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window)
         └── mipmap-anydpi-v26/icon.xml  # Adaptive launcher icon around the linked logo

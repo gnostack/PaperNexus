@@ -38,8 +38,9 @@ public sealed partial class StatusLine : ObservableObject, IDisposable
 
     public bool IsError => Tone == StatusTone.Error;
 
-    // Shows a line for three seconds, replacing any earlier one; hold keeps it until the next.
-    public void Show(string message, StatusTone tone, bool hold = false)
+    // Shows a line for three seconds (or durationMs), replacing any earlier one; hold keeps it
+    // until the next.
+    public void Show(string message, StatusTone tone, bool hold = false, int durationMs = DurationMs)
     {
         CancellationTokenSource cts;
         lock (_lock)
@@ -53,14 +54,14 @@ public sealed partial class StatusLine : ObservableObject, IDisposable
         Tone = tone;
         Message = message;
         if (!hold)
-            _ = ClearAfterAsync(cts.Token);
+            _ = ClearAfterAsync(durationMs, cts.Token);
     }
 
-    private async Task ClearAfterAsync(CancellationToken token)
+    private async Task ClearAfterAsync(int durationMs, CancellationToken token)
     {
         try
         {
-            await Task.Delay(DurationMs, token);
+            await Task.Delay(durationMs, token);
             Message = null;
         }
         catch (OperationCanceledException) { }

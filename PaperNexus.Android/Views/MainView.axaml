@@ -1,7 +1,7 @@
 <!-- The phone's main screen: five tabs along the bottom (issue #203, decision 9). TabbedPage places
      its tabs at the bottom on Android and draws each page's Icon above its Header. Current shows the
      current wallpaper (step 3), Gallery and Favorites the pictures and Sources the wallpaper
-     sources (step 4); Settings shows only its own name until its content arrives. -->
+     sources, and Settings the download, slideshow and general settings (step 4). -->
 <TabbedPage xmlns="https://github.com/avaloniaui"
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
             xmlns:views="using:PaperNexus.Views"
@@ -56,11 +56,11 @@
         <views:SourcesView x:Name="Sources"/>
     </ContentPage>
 
-    <ContentPage Header="Settings">
+    <ContentPage x:Name="SettingsPage" Header="Settings">
         <ContentPage.Icon>
             <!-- Material Design icon "settings" (Google, Apache License 2.0), https://github.com/google/material-design-icons -->
             <PathIcon Data="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
         </ContentPage.Icon>
-        <TextBlock Text="Settings" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <views:SettingsView x:Name="Settings"/>
     </ContentPage>
 </TabbedPage>

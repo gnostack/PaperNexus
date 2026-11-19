@@ -1,5 +1,5 @@
-<!-- A question over the page: the page is dimmed and a box in the middle asks, with a cancel
-     and a confirm button. The look follows the desktop's dialogs: the window color #2B2B2B, the
+<!-- A question over the page: the page is dimmed and a box in the middle asks, with an
+     optional title line (the desktop dialog's window title), and a cancel and a confirm button. The look follows the desktop's dialogs: the window color #2B2B2B, the
      question on top, the buttons at the bottom right, and a destructive confirm in the delete
      color #E06C75. Tapping the dimmed page cancels. Hidden until ShowAsync. -->
 <UserControl xmlns="https://github.com/avaloniaui"
@@ -16,7 +16,10 @@
                 MaxWidth="360"
                 HorizontalAlignment="Center" VerticalAlignment="Center">
             <StackPanel Spacing="20">
-                <TextBlock x:Name="MessageText" FontSize="16" TextWrapping="Wrap"/>
+                <StackPanel Spacing="12">
+                    <TextBlock x:Name="TitleText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" IsVisible="False"/>
+                    <TextBlock x:Name="MessageText" FontSize="16" TextWrapping="Wrap"/>
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
                     <Button x:Name="CancelButton" Content="Cancel" ToolTip.Tip="Cancel" MinHeight="48" MinWidth="88"
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>

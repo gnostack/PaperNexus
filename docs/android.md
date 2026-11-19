@@ -13,17 +13,20 @@ project and its logic and view models in the shared project.
 | `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. |
 | `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
 | `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar, inside a `PageNavigationHost`. |
-| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"). Settings shows only its name until its part of step 4. |
+| `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"), receives the `SettingsViewModel` and reads the settings the first time the Settings tab is chosen (see "Settings"), and passes Android's back to the Settings tab. |
 | `Views/MainScreenState.cs` | The selected tab, kept for the process's lifetime. |
 | `Views/ListPlace.cs` | Records a list's scroll place in its view model (`IScrollPlace`) and returns to it when the list reaches the screen again. |
 | `Views/CurrentWallpaperView.axaml(.cs)` | The Current tab: the current wallpaper's picture full width, its title, the heart, Next, Random and delete, the confirmation line, and the delete question. |
 | `Views/GalleryView.axaml(.cs)`, `Views/FavoritesView.axaml(.cs)` | The Gallery and Favorites tabs (see "Gallery and Favorites"). |
 | `Views/SourcesView.axaml(.cs)`, `Views/SourceFormPage.axaml(.cs)` | The Sources tab and its full-screen add or edit form (see "Sources"). |
+| `Views/SettingsView.axaml(.cs)` | The Settings tab (see "Settings"). |
+| `Views/ChoiceDialog.axaml(.cs)` | The in-page list to choose one value from: the page dimmed, a box with a title, one row per choice (its label and the line that explains it) with the chosen one marked, and Cancel. A tap on the dimmed page cancels. The Settings tab's pickers use it. |
+| `Views/KeyboardLift.cs` | Keeps the keyboard off what is being typed: lifts a page's content by the part of the keyboard above the navigation bar and scrolls the focused field (with its hint) into view. The Sources form and the Settings tab use it (see "Sources"). |
 | `Views/PictureListStyles.axaml` | The card, picture-button and ban-icon styles both picture lists and the Current tab share. |
 | `Views/StatusLineStyles.axaml` | The confirmation line's look (white, green, red) for every tab, which each tab's `StatusLine` drives. |
 | `Views/PictureFrame.cs` | Holds a card's picture in a 16:9 box as wide as the card, so every card has the same height. |
 | `Views/CardThumbnails.cs` | Loads a card's thumbnail at the screen's pixel width when the list builds the card, and releases it when the list clears or reuses the card (through the shared `CardThumbnailHolder`) or the tab leaves the screen. |
-| `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
+| `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle with an optional title line, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
 | `Platform/AndroidAppInfo.cs` | `IAppInfo` for the phone: the version label is "v" and the major number of the package's version name. No workflow sets the version yet, so every build is 1.0.0 and shows "v1" (step 7 sets it). |
@@ -193,7 +196,7 @@ dialog).
 Measured on the Android 16 emulator (1080x2400, the on-screen keyboard shown):
 
 - The app is drawn edge to edge and Android does not make the window shorter for the keyboard.
-  `SourceFormPage` lifts its content by the part of the keyboard above the navigation bar
+  `SourceFormPage` (through `KeyboardLift`) lifts its content by the part of the keyboard above the navigation bar
   (`InputPane.OccludedRect` less the page's safe area padding), so the bottom buttons sit on the
   keyboard's top edge and the focused field, with its hint, is scrolled into view, the lowest
   (the schedule) included.
@@ -215,6 +218,45 @@ not be measured again until Avalonia changes:
   reach Android as `inputType=0x80081`: text class, no-suggestions flag, and the password
   variation (`0x80`). The text stays visible in the field, but the keyboard treats it as a
   password field (no suggestion strip, nothing learned).
+- `TextInputOptions.ContentType="Number"` reaches Android as `inputType=0x2` (the number keypad);
+  `"Digits"` reaches it as `0x3`, the phone keypad. The Settings tab's number boxes use Number.
+- The emulator reports a hardware keyboard, so Android shows no on-screen keyboard until
+  `adb shell settings put secure show_ime_with_hard_keyboard 1`; set it back to `0` afterwards.
+
+## Settings
+
+The Settings tab is the desktop window's settings groups, shared from `PaperNexus.Shared`
+(`DownloadSettingsViewModel`, `SlideshowSettingsViewModel`, `DebugSettingsViewModel`), in the
+other tabs' dark boxes. `SettingsViewModel` holds the three groups, the open picker and the
+confirmation line. Each group writes only its own fields, half a second after the last change,
+through `ISettingsStore.UpdateAsync`; the tab never writes the desktop-only settings (start at
+login, minimize to tray, automatic updates, the folder) or the title fields.
+
+- **Download Settings:** Saved Resolution (a picker with the desktop's eight choices and their
+  lines) and Retention Period (days), a number box with the number keypad.
+- **Slideshow Settings:** the Enabled switch in the heading; Schedule (Interval or Cron
+  expression); the interval number and its unit (a picker) or the cron box, with the schedule's
+  description ("Every 2 hours") under it; Order; Prioritize Favorites and, while it is on, the
+  weight; Fill Style with the phone's five choices. A cron expression that does not parse shows
+  "Invalid cron expression." in red and is not saved; the slideshow's other settings still are.
+- **General Settings:** Debug mode, "Write more detail to the log" (the desktop's hint without
+  the title part). Turning it on asks the desktop's seventeen questions with their titles
+  ("Confirmation 5 of 17") and No and Yes; the switch stays off until the last Yes, and a No
+  shows "Debug mode cancelled. You only made it through N of 17 confirmations." Turning it off
+  takes effect at once. The switch is set from the group's value in code, as on the desktop: a
+  two-way binding left it showing on after a No. While debug mode is on, the red Factory Reset
+  button shows below it and asks the desktop's two questions.
+- **Pickers** open a `ChoiceDialog` with the current value marked; a choice sets it and closes
+  the box; Cancel, a tap outside it or Android's back closes it without a change.
+- **The confirmation line** ("Settings saved.", green; errors red) sits over the bottom of the
+  list for three seconds; a focused number box is kept above it and above the keyboard.
+- **Debug entries** reach `no_backup/logs/app.log` from the moment debug mode is turned on; a
+  wallpaper change then writes one with the rendered size, the canvas, the fill style and the
+  title.
+
+Measured on the emulator: dragging a `ToggleSwitch` knob in this tab (Prioritize Favorites,
+Debug mode) leaves the knob halfway with the value unchanged; the switch never sees the touch
+end. A tap sets it right again, and tapping works.
 
 ## Keeping the screen
 
@@ -232,6 +274,10 @@ Whatever the person is looking at survives Android destroying and recreating the
   (`ListPlace`; rows whose titles wrap to two lines can put it a fraction of a row off).
 - Thumbnails are still released when a tab leaves the screen, and loaded again for the cards in
   view when it returns.
+- The Settings tab's view model and its three groups are container singletons too, so a recreated
+  screen shows the same scroll place, an open picker and an open debug or Factory Reset question
+  (the group's `PendingQuestion`). Measured with a font scale change: the middle of the list, the
+  open Order picker and question 5 of 17 were all back.
 - An open add or edit form is the sources view model's `Form`, so a recreated screen opens it
   again with what was typed, the refusal line and the test result (a test still running finishes
   into it). Measured with a font scale change: the form, the typed schedule and the test result
@@ -245,7 +291,9 @@ configuration change; the activity declares `configChanges="...|assetsPaths"` in
 `ConfigChanges.AssetsPaths` from the `[Activity]` attribute, hence the hand-written entry). So
 set as current and delete stay on their tab and show their line. Measured on the emulator
 (Debug and Release): the activity object is the same before and after a wallpaper change, and
-a font scale change still creates a new one. The tab accent color, which Avalonia takes from
+a font scale change still creates a new one. The system's event log shows each new activity
+object: `adb logcat -b events -d | grep wm_on_create_called` (the activity record number in
+`dumpsys activity` stays the same when the activity is recreated, so it does not tell). The tab accent color, which Avalonia takes from
 the system's wallpaper-based accent, still follows each new wallpaper without the rebuild.
 Rotation and dark/light mode changes still keep the activity, as before.
 
@@ -260,7 +308,8 @@ Rotation and dark/light mode changes still keep the activity, as before.
   follow each source's schedule while Android keeps the process.
 - The logger reads its level from a `LogLevelSwitch` that `MainApplication` creates and registers:
   debug entries while the debug mode setting is on, from the moment it changes (`DebugLogLevel`
-  applies the stored setting when the host starts).
+  applies the stored setting when the host starts). The Settings tab's Debug mode switch changes
+  it.
 - The log is `no_backup/logs/app.log` (`Assembly.GetEntryAssembly()` is null on Android, so
   the logger's fallback name is used). Read it with
   `adb shell run-as com.gnostack.papernexus cat no_backup/logs/app.log` (Debug builds only).
@@ -317,8 +366,9 @@ and keeps the downloaded pictures in `no_backup/Wallpapers/`. It then starts the
 as a new task that replaces the current one (`Intent.makeRestartActivityTask`) and ends the process
 (`Process.killProcess`), so nothing the old process held in memory survives.
 
-Measured on the Android 16 emulator, Debug and Release (a temporary trigger, since removed): the
-old process died, a new process started for the activity Android was asked to show, and the Current
+The Settings tab's Factory Reset button (shown while debug mode is on) starts it after the two
+questions. Measured on the Android 16 emulator, Debug and Release (first with a temporary
+trigger, then from the button): the old process died, a new process started for the activity Android was asked to show, and the Current
 tab appeared about a second later. The settings were back to their defaults (no favorites, both
 default sources), the pictures were kept, and with the network off the tab set the next existing
 picture without downloading, as on first open with pictures.
@@ -405,10 +455,12 @@ until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 2
   `true`). To see it: `adb shell locksettings set-disabled false`, then
   `adb shell input keyevent KEYCODE_SLEEP` and `KEYCODE_WAKEUP`; set it back to `true`
   afterwards.
-- Change a setting the phone has no screen for yet by editing it in place on a Debug build:
+- Change a setting the phone has no screen for by editing it in place on a Debug build:
   `adb shell "run-as com.gnostack.papernexus sed -i 's/\"FillStyle\": \"[A-Za-z]*\"/\"FillStyle\": \"Fit\"/' files/settings.json"`.
   The app reads the file on every change, so the next tap uses it.
 - No network: `adb shell svc wifi disable` and `adb shell svc data disable` (`enable` to undo).
+- Font size (recreates the activity): `adb shell settings put system font_scale 1.15`, and `1.0`
+  to undo.
 - Shut the emulator down when finished: `adb emu kill`.
 
 The app drawer on a 5-column launcher shortens the label to "PaperNe..."; the label itself is
@@ -423,7 +475,8 @@ canvas (`WallpaperFittingTests`), the switcher with a canvas or a refusal
 (`SwitchWallpaperDeviceTests`), the Current tab's states (`CurrentWallpaperViewModelTests`),
 the picture library (`WallpaperLibraryTests`), the Gallery and Favorites tabs
 (`PictureListViewModelTests`), the source rules (`WallpaperSourcesTests`), the add or edit form
-(`SourceFormViewModelTests`), the Sources tab (`SourcesViewModelTests`) and Download now's
-sentences (`DownloadOutcomeTests`).
+(`SourceFormViewModelTests`), the Sources tab (`SourcesViewModelTests`), Download now's
+sentences (`DownloadOutcomeTests`) and the Settings tab (`SettingsViewModelTests`, with the
+shared groups' own tests).
 The Android classes only pass Android's numbers and calls through; they are verified on the
 emulator.

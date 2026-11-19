@@ -59,6 +59,11 @@ public class MainApplication : AvaloniaAndroidApplication<App>
                 services.AddSingleton<GalleryViewModel>();
                 services.AddSingleton<FavoritesViewModel>();
                 services.AddSingleton<SourcesViewModel>();
+                // The Settings tab's groups are the desktop window's, held for the process here
+                services.AddSingleton<DownloadSettingsViewModel>();
+                services.AddSingleton<SlideshowSettingsViewModel>();
+                services.AddSingleton<DebugSettingsViewModel>();
+                services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<MainScreenState>();
                 services.AddTransient<MainView>();
                 // The shared services, then this host's implementations of the interfaces they

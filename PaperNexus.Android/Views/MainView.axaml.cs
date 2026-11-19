@@ -19,6 +19,7 @@ public partial class MainView : TabbedPage
     private readonly GalleryViewModel _gallery;
     private readonly FavoritesViewModel _favorites;
     private readonly SourcesViewModel _sources;
+    private readonly SettingsViewModel _settings;
     private readonly MainScreenState _state;
     private bool _isOnScreen;
 
@@ -31,14 +32,23 @@ public partial class MainView : TabbedPage
         GalleryViewModel gallery,
         FavoritesViewModel favorites,
         SourcesViewModel sources,
+        SettingsViewModel settings,
         MainScreenState state)
     {
         _currentWallpaper = currentWallpaper;
         _gallery = gallery;
         _favorites = favorites;
         _sources = sources;
+        _settings = settings;
         _state = state;
         InitializeComponent();
+        // Android's back reaches the selected tab's page: on Settings it closes an open list or
+        // answers an open question with No before it can leave the app.
+        SettingsPage.PageNavigationSystemBackButtonPressed += (_, e) =>
+        {
+            if (Settings.HandleBack())
+                e.Handled = true;
+        };
         AttachedToVisualTree += OnAttached;
         DetachedFromVisualTree += OnDetached;
     }
@@ -51,6 +61,7 @@ public partial class MainView : TabbedPage
         Gallery.DataContext = _gallery;
         Favorites.DataContext = _favorites;
         Sources.DataContext = _sources;
+        Settings.DataContext = _settings;
         SelectedIndex = _state.SelectedTabIndex;
         _isOnScreen = true;
         LoadSelectedTab();
@@ -73,6 +84,8 @@ public partial class MainView : TabbedPage
         Gallery.DataContext = null;
         Favorites.DataContext = null;
         Sources.DataContext = null;
+        _settings.Flush();
+        Settings.DataContext = null;
         _sources.PropertyChanged -= OnSourcesPropertyChanged;
         if (_navigation is not null)
             _navigation.ModalPopped -= OnModalPopped;
@@ -102,6 +115,8 @@ public partial class MainView : TabbedPage
             _ = _favorites.EnsureLoadedAsync();
         else if (ReferenceEquals(SelectedPage, SourcesPage))
             _ = _sources.EnsureLoadedAsync();
+        else if (ReferenceEquals(SelectedPage, SettingsPage))
+            _ = _settings.EnsureLoadedAsync();
     }
 
     // Add or a row's edit opened a form, or the form finished.
