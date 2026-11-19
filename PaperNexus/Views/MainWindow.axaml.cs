@@ -39,9 +39,6 @@ public class BanColorConverter : IValueConverter
 
 public partial class MainWindow : Window
 {
-    private int _versionClickCount;
-    private DateTime _lastVersionClick = DateTime.MinValue;
-
     private static readonly string[] WallpaperCompliments =
     [
         "🎨 Excellent taste in wallpapers!",
@@ -55,19 +52,26 @@ public partial class MainWindow : Window
 
     private readonly KonamiSequence _konami = new();
     private readonly ISettingsStore _settingsStore;
+    private readonly EasterEggRequests _easterEggs;
+    private readonly DebugSettingsViewModel _debug;
+    private readonly DesktopSettingsViewModel _desktopSettings;
     private readonly Func<EasterEggListDialog> _createSecretsDialog;
 
     // Created per request from the container, which hands in the settings store, a fresh
-    // view model, the egg recorder and a factory for the Secrets dialog. There is
-    // deliberately no parameterless constructor: a window built without these would have no
-    // store, and the store is the only way into settings.json.
+    // view model and desktop settings group, the egg recorder and request channel, and a
+    // factory for the Secrets dialog.
+    // There is deliberately no parameterless constructor: a window built without these would
+    // have no store, and the store is the only way into settings.json.
     public MainWindow(
         ISettingsStore settingsStore,
         WallpaperConfigViewModel viewModel,
+        DesktopSettingsViewModel desktopSettings,
         EasterEggProgress easterEggProgress,
+        EasterEggRequests easterEggs,
         Func<EasterEggListDialog> createSecretsDialog)
     {
         _settingsStore = settingsStore.ThrowIfNull();
+        _easterEggs = easterEggs.ThrowIfNull();
         _createSecretsDialog = createSecretsDialog.ThrowIfNull();
         InitializeComponent();
         // Avalonia builds the overlay from markup, so it cannot take constructor arguments;
@@ -75,10 +79,23 @@ public partial class MainWindow : Window
         // discovery is recorded.
         EggOverlay.UseProgress(easterEggProgress.ThrowIfNull());
         viewModel.ThrowIfNull();
-        // The ViewModel decides whether an egg fires; the window owns how it is drawn.
-        viewModel.EasterEggTriggered += show => Dispatcher.UIThread.Post(() => EggOverlay.Play(show));
+        // The view models decide whether an egg fires; the window owns how it is drawn. The
+        // request channel outlives the window, so the window lets go of it when it closes.
+        _easterEggs.Requested += OnEasterEggRequested;
         // A source row's edit button asks the window to open the source dialog for that row.
         viewModel.EditSourceRequested += item => _ = OpenEditDialog(item);
+        // Debug mode and Factory Reset ask their questions through the group; the window
+        // shows each in a Yes/No dialog.
+        _debug = viewModel.Debug;
+        _debug.PropertyChanged += OnDebugPropertyChanged;
+        // The desktop-only settings are the desktop's own group: the view model loads, saves
+        // and reports it with the shared groups, and its controls are bound to it directly.
+        _desktopSettings = desktopSettings.ThrowIfNull();
+        viewModel.AddHostGroup(_desktopSettings);
+        FolderSettings.DataContext = _desktopSettings;
+        RunOnStartupSettings.DataContext = _desktopSettings;
+        MinimizeToTraySettings.DataContext = _desktopSettings;
+        AutoUpdateSettings.DataContext = _desktopSettings;
         DataContext = viewModel;
         // Use the tunnel phase so Shift+Click can be intercepted before the button's own handler fires
         UpdateButton.AddHandler(InputElement.PointerPressedEvent, OnUpdateButtonPointerPressed, RoutingStrategies.Tunnel);
@@ -110,21 +127,18 @@ public partial class MainWindow : Window
         await vm.ShowTransientStatusAsync(msg, 4000);
     }
 
-    // Easter egg: clicking the version label 5 times within 3 seconds shows a hidden message.
-    // The click counter resets if more than 3 seconds elapses between clicks.
-    private async void OnVersionLabelPointerPressed(object? sender, PointerPressedEventArgs e)
+    // Plays an egg a view model asked for, on the window's thread.
+    private void OnEasterEggRequested(EasterEggShow show)
     {
-        var now = DateTime.UtcNow;
-        if ((now - _lastVersionClick).TotalSeconds > 3)
-            _versionClickCount = 0;
-        _lastVersionClick = now;
-        _versionClickCount++;
+        Dispatcher.UIThread.Post(() => EggOverlay.Play(show));
+    }
 
-        if (_versionClickCount >= 5)
-        {
-            _versionClickCount = 0;
-            EggOverlay.Play(EasterEggShows.Version());
-        }
+    // Easter egg: clicking the version label 5 times, each within 3 seconds of the last,
+    // plays the version egg (AboutViewModel counts the clicks).
+    private void OnVersionLabelPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is WallpaperConfigViewModel vm)
+            vm.About.TapVersion();
     }
 
     // Opens the secrets checklist. Discovery state is read when the dialog opens rather
@@ -167,7 +181,7 @@ public partial class MainWindow : Window
         if (!_konami.Advance(e.Key.ToString()))
             return;
 
-        EggOverlay.Play(EasterEggShows.Konami());
+        _easterEggs.Request(EasterEggShows.Konami());
     }
 
     // Restores the saved window position and size from settings, then triggers the ViewModel
@@ -227,7 +241,7 @@ public partial class MainWindow : Window
     // if the user explicitly confirms, preventing accidental loss of background operation.
     private async void MinimizeToTray_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not WallpaperConfigViewModel vm)
+        if (DataContext is not WallpaperConfigViewModel)
             return;
 
         // Only intercept when toggling OFF (now unchecked)
@@ -236,7 +250,7 @@ public partial class MainWindow : Window
 
         // Revert and confirm
         MinimizeToTrayCheckBox.IsChecked = true;
-        vm.MinimizeToTray = true;
+        _desktopSettings.MinimizeToTray = true;
 
         var confirmed = await ShowYesNoDialog(
             "Disable Minimize to Tray",
@@ -245,7 +259,7 @@ public partial class MainWindow : Window
         if (confirmed)
         {
             MinimizeToTrayCheckBox.IsChecked = false;
-            vm.MinimizeToTray = false;
+            _desktopSettings.MinimizeToTray = false;
         }
     }
 
@@ -302,8 +316,8 @@ public partial class MainWindow : Window
                 Title = "Select Wallpapers Folder",
                 AllowMultiple = false,
             });
-            if (result.Count > 0 && DataContext is WallpaperConfigViewModel vm)
-                vm.Folder = result[0].Path.LocalPath;
+            if (result.Count > 0)
+                _desktopSettings.Folder = result[0].Path.LocalPath;
         }
         catch (Exception ex)
         {
@@ -330,111 +344,42 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
-    private static readonly string[] DebugConfirmations =
-    [
-        "Are you sure you want to enable debug mode?",
-        "Are you really sure?",
-        "Debug mode is for developers. Are you a developer?",
-        "Do you pinky promise you know what you're doing?",
-        "Have you consulted your system administrator?",
-        "Have you backed up your wallpapers? (You should.)",
-        "On a scale of 1 to 10, is your certainty at least 7?",
-        "Did you eat breakfast today? Mental clarity is important for decisions like this.",
-        "Have you considered that your wallpapers might judge you for this?",
-        "If a tree falls in a forest and no one hears it, should debug mode still be enabled?",
-        "The last person who enabled debug mode was never seen again. Continue?",
-        "We've notified your emergency contacts. Proceed anyway?",
-        "This action may void your wallpaper warranty. Accept?",
-        "NASA has been consulted and they recommend against it. Override NASA?",
-        "The prophecy foretold of one who would enable debug mode. Is it you, The Chosen One?",
-        "Final answer? No take-backs. This is legally binding in 47 countries.",
-        "Okay fine. But we warned you. SEVENTEEN TIMES. Enable debug mode?",
-    ];
-
-    // Requires the user to click through all 17 increasingly absurd confirmation dialogs
-    // before debug mode is enabled. If they cancel at any point the checkbox is left unchecked.
-    private async void DebugMode_Click(object? sender, RoutedEventArgs e)
+    // The egg request channel lives as long as the process, so a closed window stops
+    // listening to it, and to its debug group.
+    protected override void OnClosed(EventArgs e)
     {
-        if (DataContext is not WallpaperConfigViewModel vm)
-            return;
-
-        // Only intercept when toggling ON
-        if (!DebugModeCheckBox.IsChecked.GetValueOrDefault())
-            return;
-
-        // Revert the check immediately - we'll set it if all 17 pass
-        DebugModeCheckBox.IsChecked = false;
-        vm.DebugMode = false;
-
-        for (var i = 0; i < DebugConfirmations.Length; i++)
-        {
-            var confirmed = await ShowYesNoDialog(
-                $"Confirmation {i + 1} of {DebugConfirmations.Length}",
-                DebugConfirmations[i]);
-
-            if (!confirmed)
-            {
-                await vm.ShowTransientStatusAsync(
-                    $"Debug mode cancelled. You only made it through {i} of {DebugConfirmations.Length} confirmations.", 5000);
-                return;
-            }
-        }
-
-        DebugModeCheckBox.IsChecked = true;
-        vm.DebugMode = true;
-        await vm.ShowTransientStatusAsync("Debug mode enabled. You absolute legend.", 5000);
+        _easterEggs.Requested -= OnEasterEggRequested;
+        _debug.PropertyChanged -= OnDebugPropertyChanged;
+        base.OnClosed(e);
     }
 
-    // Performs a factory reset after two confirmation dialogs: deletes all application data
-    // files in the install directory (settings, logs, timers, current.* wallpaper), then
-    // relaunches the exe so the app starts fresh. The user's wallpapers folder is untouched.
-    private async void FactoryReset_Click(object? sender, RoutedEventArgs e)
+    // The debug mode box shows the group's value and only asks to change it: turning it off
+    // takes effect at once, turning it on starts the seventeen questions, and the box shows
+    // on only once the last one is answered yes.
+    private void DebugMode_Click(object? sender, RoutedEventArgs e)
     {
-        var confirmed = await ShowYesNoDialog(
-            "Factory Reset",
-            "This will delete ALL application data (settings, logs, timers) and restart.\n\nYour downloaded wallpapers folder will NOT be deleted.\n\nAre you sure?");
+        var turnOn = DebugModeCheckBox.IsChecked.GetValueOrDefault();
+        DebugModeCheckBox.SetCurrentValue(CheckBox.IsCheckedProperty, _debug.DebugMode);
+        _debug.RequestDebugMode(turnOn);
+    }
 
-        if (!confirmed)
+    // Asks the two Factory Reset questions, through the debug group.
+    private void FactoryReset_Click(object? sender, RoutedEventArgs e)
+    {
+        _debug.RequestFactoryReset();
+    }
+
+    // Shows each question the debug group asks in a Yes/No dialog and passes the answer back.
+    private async void OnDebugPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(DebugSettingsViewModel.PendingQuestion))
             return;
-
-        var doubleConfirmed = await ShowYesNoDialog(
-            "Factory Reset - Final Confirmation",
-            "This cannot be undone. Seriously. Last chance to back out.");
-
-        if (!doubleConfirmed)
+        var question = _debug.PendingQuestion;
+        if (question is null)
             return;
-
-        try
-        {
-            var appDir = AppContext.BaseDirectory;
-            var exePath = Environment.ProcessPath
-                ?? Path.Combine(appDir, PlatformPaths.ExecutableName);
-
-            // Delete everything in the app directory except the running exe
-            foreach (var file in Directory.GetFiles(appDir))
-            {
-                // Skip the running exe - it cannot be deleted while in use and is not "data"
-                if (PlatformPaths.PathEquals(Path.GetFullPath(file), Path.GetFullPath(exePath)))
-                    continue;
-                try { File.Delete(file); }
-                catch { /* skip locked files */ }
-            }
-
-            foreach (var dir in Directory.GetDirectories(appDir))
-            {
-                try { Directory.Delete(dir, recursive: true); }
-                catch { /* skip locked directories */ }
-            }
-
-            // Restart the application
-            ShellOpener.LaunchExecutable(exePath);
-            Environment.Exit(0);
-        }
-        catch (Exception ex)
-        {
-            if (DataContext is WallpaperConfigViewModel vm)
-                await vm.ShowTransientStatusAsync($"Factory reset failed: {ex.Message}", 5000);
-        }
+        var confirmed = await ShowYesNoDialog(question.Title, question.Message);
+        if (ReferenceEquals(_debug.PendingQuestion, question))
+            await _debug.AnswerAsync(confirmed);
     }
 
     // Generic Yes/No modal dialog built programmatically. Returns true if the user

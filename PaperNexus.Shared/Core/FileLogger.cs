@@ -8,12 +8,30 @@ using System.Threading.Tasks;
 
 namespace PaperNexus.Core;
 
+// Adds the app's log file to a host's logging.
+public static class FileLoggingExtensions
+{
+    // The provider decides which entries it writes (its LogLevelSwitch), so the logging
+    // factory's own minimum, Information unless configured, must not drop debug entries before
+    // they reach it: without this rule debug mode and --debug wrote no debug entry from any
+    // service in the container.
+    public static ILoggingBuilder AddFileLogger(this ILoggingBuilder builder, FileLoggerProvider provider)
+    {
+        builder.ThrowIfNull();
+        provider.ThrowIfNull();
+        builder.AddProvider(provider);
+        builder.AddFilter<FileLoggerProvider>(null, LogLevel.Trace);
+        return builder;
+    }
+}
+
 public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
 {
     private readonly ConcurrentQueue<string> _messages = new();
     private readonly SemaphoreSlim _messageCount = new(0);
     private readonly Task _writeTask;
-    private readonly LogLevel _minLevel;
+    // Read for every entry, so a change of level applies to the next entry written.
+    private readonly Func<LogLevel> _minLevel;
     private readonly string _logDirectory;
     // volatile ensures the writer thread always reads the latest value without the JIT caching
     // it in a register across loop iterations that do not cross a full memory-barrier boundary.
@@ -27,7 +45,21 @@ public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
     // so it takes the folder itself rather than the interface.
     public FileLoggerProvider(string logDirectory) : this(logDirectory, LogLevel.Information) { }
 
+    // A fixed least important level.
     public FileLoggerProvider(string logDirectory, LogLevel minLevel)
+        : this(logDirectory, () => minLevel)
+    {
+    }
+
+    // The level the switch holds at the moment each entry is written: the host's logger
+    // follows the debug mode setting without being created again.
+    public FileLoggerProvider(string logDirectory, LogLevelSwitch logLevels)
+        : this(logDirectory, () => logLevels.MinimumLevel)
+    {
+        logLevels.ThrowIfNull();
+    }
+
+    private FileLoggerProvider(string logDirectory, Func<LogLevel> minLevel)
     {
         _logDirectory = logDirectory.ThrowIfNull();
         _minLevel = minLevel;
@@ -114,9 +146,9 @@ public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
     {
         private readonly string _categoryName;
         private readonly FileLoggerProvider _fileLoggerProvider;
-        private readonly LogLevel _minLevel;
+        private readonly Func<LogLevel> _minLevel;
 
-        public FileLogger(string categoryName, FileLoggerProvider fileLoggerProvider, LogLevel minLevel)
+        public FileLogger(string categoryName, FileLoggerProvider fileLoggerProvider, Func<LogLevel> minLevel)
         {
             _categoryName = categoryName;
             _fileLoggerProvider = fileLoggerProvider;
@@ -132,7 +164,7 @@ public class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
             public void Dispose() { }
         }
 
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= _minLevel && logLevel != LogLevel.None;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= _minLevel() && logLevel != LogLevel.None;
 
         // Formats the log entry as "timestamp | level | category | message" and appends
         // the full exception (including stack trace) on subsequent lines when present.

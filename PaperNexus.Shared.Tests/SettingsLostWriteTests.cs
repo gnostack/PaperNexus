@@ -124,7 +124,7 @@ public class SettingsLostWriteTests : IDisposable
         });
 
         // Editing a setting saves the window's settings after a short pause
-        vm.RetentionDays = 30;
+        vm.Download.RetentionDays = 30;
         for (var i = 0; i < 100 && (await _store.LoadAsync()).Download.RetentionDays != 30; i++)
             await Task.Delay(50);
 

@@ -176,13 +176,14 @@ public class SettingsStoreTests : IDisposable
     }
 
     // The container hands out one production store, so every consumer shares it. The host
-    // supplies the settings folder; a temporary one stands in for it here.
+    // supplies the settings folder and its device rules; stand-ins take their place here.
     [Fact]
     public void Container_ResolvesOneProductionStore()
     {
         var directory = Path.GetDirectoryName(_store.FilePath);
         var services = new ServiceCollection();
         services.AddSingleton<IAppFolders>(new TestAppFolders(directory));
+        services.AddSingleton<IDeviceSettingRules>(TestSettingRules.Desktop);
         services.AddServicesFrom(typeof(SettingsStore).Assembly);
         using var provider = services.BuildServiceProvider();
 

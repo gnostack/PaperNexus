@@ -132,11 +132,12 @@ internal static class TestHelpers
     // production store, so no test can read, write or delete the real settings.json.
     // Its default download folder is a "Downloads" folder beside the settings, which no test
     // creates unless it means to.
-    internal static SettingsStore CreateSettingsStore()
+    // Its device rules are the desktop's unless a test gives others.
+    internal static SettingsStore CreateSettingsStore(IDeviceSettingRules? deviceRules = null)
     {
         var directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Settings_{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
-        return new SettingsStore(directory, Path.Combine(directory, "Downloads"));
+        return new SettingsStore(directory, Path.Combine(directory, "Downloads"), deviceRules ?? TestSettingRules.Desktop);
     }
 
     // A settings view model wired to the given store and to do-nothing host services, so no
@@ -144,13 +145,46 @@ internal static class TestHelpers
     // they were when the view model looked them up from a running app that tests never had.
     // Its picture library uses a real switcher with a no-op wallpaper applier, so deleting the
     // current wallpaper sets the next one without touching the machine's wallpaper.
-    internal static WallpaperConfigViewModel CreateViewModel(ISettingsStore store, IWallpaperSources? sources = null, IDownloadWallpapers? downloader = null)
+    internal static WallpaperConfigViewModel CreateViewModel(
+        ISettingsStore store,
+        IWallpaperSources? sources = null,
+        IDownloadWallpapers? downloader = null,
+        EasterEggRequests? easterEggs = null)
     {
         var library = CreateLibrary(store);
         var wallpaperSources = sources ?? CreateWallpaperSources(store);
+        var eggs = easterEggs ?? new EasterEggRequests();
+        var appInfo = new TestAppInfo();
+        var shellOpener = new NoOpShellOpener();
         var viewModel = WithoutSynchronizationContext(
-            () => new WallpaperConfigViewModel(store, new TestAppInfo(), new NoOpShellOpener(), AppFolders, library, wallpaperSources, downloadWallpapers: downloader));
+            () => new WallpaperConfigViewModel(
+                store,
+                appInfo,
+                shellOpener,
+                AppFolders,
+                library,
+                wallpaperSources,
+                eggs,
+                new DownloadSettingsViewModel(store),
+                new SlideshowSettingsViewModel(store, TestSettingRules.Desktop),
+                new AnnotationSettingsViewModel(store, eggs),
+                new DebugSettingsViewModel(store, appInfo, new LogLevelSwitch(false), new RecordingFactoryReset()),
+                new AboutViewModel(appInfo, shellOpener, eggs),
+                downloadWallpapers: downloader));
         return viewModel;
+    }
+
+    // Waits until the saved settings satisfy condition, for a group's save, which runs half a
+    // second after the change. Gives up after five seconds; the caller asserts afterwards.
+    internal static async Task<WallpaperNexusSettings> WaitForSavedAsync(ISettingsStore store, Func<WallpaperNexusSettings, bool> condition)
+    {
+        var settings = await store.LoadAsync();
+        for (var i = 0; i < 100 && !condition(settings); i++)
+        {
+            await Task.Delay(50);
+            settings = await store.LoadAsync();
+        }
+        return settings;
     }
 
     // The sources service on the given store. Its feed reader answers through handler when one
@@ -254,9 +288,63 @@ internal sealed class TestAppFolders : IAppFolders
 
 internal sealed class TestAppInfo : IAppInfo
 {
+    public TestAppInfo(bool startedInDebugMode = false)
+    {
+        StartedInDebugMode = startedInDebugMode;
+    }
+
     public string Version => "v0";
 
-    public bool StartedInDebugMode => false;
+    public bool StartedInDebugMode { get; }
+}
+
+// The two devices' setting rules, as their hosts give them.
+internal sealed class TestSettingRules : IDeviceSettingRules
+{
+    public static readonly TestSettingRules Desktop = new(
+        true,
+        [WallpaperFillStyle.Fill, WallpaperFillStyle.Fit, WallpaperFillStyle.Stretch, WallpaperFillStyle.Tile, WallpaperFillStyle.Center, WallpaperFillStyle.Span]);
+
+    public static readonly TestSettingRules Phone = new(
+        false,
+        [WallpaperFillStyle.Fill, WallpaperFillStyle.Fit, WallpaperFillStyle.Stretch, WallpaperFillStyle.Tile, WallpaperFillStyle.Center]);
+
+    public TestSettingRules(bool annotateWallpaperByDefault, IReadOnlyList<WallpaperFillStyle> fillStyles)
+    {
+        AnnotateWallpaperByDefault = annotateWallpaperByDefault;
+        FillStyles = fillStyles;
+    }
+
+    public bool AnnotateWallpaperByDefault { get; }
+
+    public IReadOnlyList<WallpaperFillStyle> FillStyles { get; }
+}
+
+// A factory reset that only counts its calls, or fails when told to.
+internal sealed class RecordingFactoryReset : IFactoryReset
+{
+    public int Calls { get; private set; }
+
+    public Exception? Failure { get; set; }
+
+    public Task ResetAsync()
+    {
+        Calls++;
+        if (Failure is not null)
+            throw Failure;
+        return Task.CompletedTask;
+    }
+}
+
+// A device whose Secrets list is the given eggs.
+internal sealed class TestDeviceEggs : IDeviceEasterEggs
+{
+    public TestDeviceEggs(IReadOnlyList<EasterEggDefinition> eggs)
+    {
+        Eggs = eggs;
+    }
+
+    public IReadOnlyList<EasterEggDefinition> Eggs { get; }
 }
 
 internal sealed class NoOpShellOpener : IShellOpener

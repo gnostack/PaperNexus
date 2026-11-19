@@ -16,9 +16,12 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | Shared interface | Used by | Desktop implementation | Phone implementation |
 | --- | --- | --- | --- |
 | `IAppFolders` | `SettingsStore`, `SwitchWallpaper`, `JobTimerStore`, `WallpaperConfigViewModel`; the logger's folder | `DesktopAppFolders` (`PlatformPaths.cs`): settings in the default install directory, `current.png`/`timers.json`/`logs/` beside the executable (`AppContext.BaseDirectory`), downloads in `Pictures/PaperNexus` | `AndroidAppFolders`: settings in the files folder, everything else in the no-backup folder |
-| `IAppInfo` | `WallpaperConfigViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | none yet (step 4) |
-| `IShellOpener` | `WallpaperConfigViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | none yet (step 4) |
-| `IStartupRegistration` (optional) | `WallpaperConfigViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
+| `IAppInfo` | `WallpaperConfigViewModel`, `AboutViewModel`, `DebugSettingsViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | none yet (step 4) |
+| `IShellOpener` | `WallpaperConfigViewModel`, `AboutViewModel`, `DesktopSettingsViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | none yet (step 4) |
+| `IStartupRegistration` (optional) | `DesktopSettingsViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
+| `IDeviceSettingRules` | `SettingsStore` (the title-on default), `SlideshowSettingsViewModel` (the fill styles) | `DesktopSettingRules`: title on, all six fill styles | `AndroidSettingRules`: title off, five fill styles (no Span) |
+| `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments except `--startup`, so the new copy shows its window | none yet (step 4) |
+| `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | none yet (step 4) |
 | `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
 | `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |
 

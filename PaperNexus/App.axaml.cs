@@ -52,14 +52,24 @@ public partial class App : Application
             _backgroundHost = Host.CreateDefaultBuilder()
                 .ConfigureServices(services =>
                 {
-                    var minLogLevel = Program.IsDebugMode ? LogLevel.Debug : LogLevel.Information;
+                    // The logger follows the debug mode setting through the switch Program
+                    // created, which the debug settings group and DebugLogLevel move.
                     var logDirectory = FileLoggerProvider.LogDirectoryIn(new DesktopAppFolders().DataFolder);
-                    services.AddLogging(b => b.AddProvider(new FileLoggerProvider(logDirectory, minLogLevel)));
+                    services.AddLogging(b => b.AddFileLogger(new FileLoggerProvider(logDirectory, Program.LogLevels)));
+                    services.AddSingleton(Program.LogLevels);
                     services.AddSingleton<HttpWallpaperSourceService>();
-                    // Screens are per request: each opening gets a fresh window, view model and
-                    // dialog with the settings store injected. The auto-registration below only
-                    // makes singletons, so these are listed explicitly. The dialog factory lets
-                    // the settings window open a new Secrets checklist on every click.
+                    // Screens are per request: each opening gets a fresh window, view model,
+                    // settings groups and dialog with the settings store injected. The
+                    // auto-registration below only makes singletons, so these are listed
+                    // explicitly. The dialog factory lets the settings window open a new
+                    // Secrets checklist on every click.
+                    services.AddTransient<DownloadSettingsViewModel>();
+                    services.AddTransient<SlideshowSettingsViewModel>();
+                    services.AddTransient<AnnotationSettingsViewModel>();
+                    services.AddTransient<DebugSettingsViewModel>();
+                    services.AddTransient<DesktopSettingsViewModel>();
+                    services.AddTransient<AboutViewModel>();
+                    services.AddTransient<SecretsViewModel>();
                     services.AddTransient<WallpaperConfigViewModel>();
                     services.AddTransient<MainWindow>();
                     services.AddTransient<SplashScreen>();

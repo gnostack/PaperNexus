@@ -36,7 +36,10 @@ public class MainApplication : AvaloniaAndroidApplication<App>
     public override void OnCreate()
     {
         var folders = new AndroidAppFolders();
-        _loggerProvider = new FileLoggerProvider(FileLoggerProvider.LogDirectoryIn(folders.DataFolder));
+        // The log level follows the debug mode setting (DebugLogLevel applies the stored one
+        // when the host starts); the phone has no --debug start.
+        var logLevels = new LogLevelSwitch(startedInDebugMode: false);
+        _loggerProvider = new FileLoggerProvider(FileLoggerProvider.LogDirectoryIn(folders.DataFolder), logLevels);
         LogUnhandledExceptions(_loggerProvider.CreateLogger(nameof(MainApplication)));
 
         // HostBuilder rather than Host.CreateDefaultBuilder: the phone has no configuration
@@ -44,7 +47,8 @@ public class MainApplication : AvaloniaAndroidApplication<App>
         _host = new HostBuilder()
             .ConfigureServices(services =>
             {
-                services.AddLogging(b => b.AddProvider(_loggerProvider));
+                services.AddLogging(b => b.AddFileLogger(_loggerProvider));
+                services.AddSingleton(logLevels);
                 services.AddSingleton<HttpWallpaperSourceService>();
                 // Each new activity gets a fresh view, but the tabs' view models and the selected
                 // tab live as long as the process: Android recreates the activity (a new font

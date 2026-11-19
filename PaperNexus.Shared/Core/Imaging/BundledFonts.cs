@@ -20,15 +20,31 @@ internal static class BundledFonts
     /// </summary>
     public static IReadOnlyList<string> Names { get; } = [DefaultFontFamily];
 
-    // Every font family installed on this machine, as the operating system names them.
+    // Every font family installed on this machine that draws as itself, as the operating
+    // system names them.
+    //
+    // A font manager also lists names that resolve to a different family: style-named entries
+    // ("Noto Looped Lao Bold" is "Noto Looped Lao") and short aliases ("Noto Sans OldHung" is
+    // "Noto Sans Old Hungarian"). ResolveTypeface accepts only the family that was asked for,
+    // so choosing one of those drew the title in Cinzel. They are left out; the family each one
+    // stands for is listed under its own name.
     public static IReadOnlyList<string> InstalledFamilyNames()
     {
         using var fontManager = SKFontManager.CreateDefault();
         var families = fontManager.FontFamilies
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(name => DrawsAsItself(fontManager, name))
             .ToList();
         return families;
+    }
+
+    private static bool DrawsAsItself(SKFontManager fontManager, string familyName)
+    {
+        using var typeface = fontManager.MatchFamily(familyName);
+        var drawsAsItself = typeface is not null
+            && string.Equals(typeface.FamilyName, familyName, StringComparison.OrdinalIgnoreCase);
+        return drawsAsItself;
     }
 
     // Returns a typeface for familyName that the caller owns and must dispose.
