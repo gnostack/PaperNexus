@@ -54,15 +54,18 @@ public partial class MainWindow : Window
     private readonly ISettingsStore _settingsStore;
     private readonly EasterEggRequests _easterEggs;
     private readonly DebugSettingsViewModel _debug;
+    private readonly DesktopSettingsViewModel _desktopSettings;
     private readonly Func<EasterEggListDialog> _createSecretsDialog;
 
     // Created per request from the container, which hands in the settings store, a fresh
-    // view model, the egg recorder and request channel, and a factory for the Secrets dialog.
+    // view model and desktop settings group, the egg recorder and request channel, and a
+    // factory for the Secrets dialog.
     // There is deliberately no parameterless constructor: a window built without these would
     // have no store, and the store is the only way into settings.json.
     public MainWindow(
         ISettingsStore settingsStore,
         WallpaperConfigViewModel viewModel,
+        DesktopSettingsViewModel desktopSettings,
         EasterEggProgress easterEggProgress,
         EasterEggRequests easterEggs,
         Func<EasterEggListDialog> createSecretsDialog)
@@ -85,6 +88,14 @@ public partial class MainWindow : Window
         // shows each in a Yes/No dialog.
         _debug = viewModel.Debug;
         _debug.PropertyChanged += OnDebugPropertyChanged;
+        // The desktop-only settings are the desktop's own group: the view model loads, saves
+        // and reports it with the shared groups, and its controls are bound to it directly.
+        _desktopSettings = desktopSettings.ThrowIfNull();
+        viewModel.AddHostGroup(_desktopSettings);
+        FolderSettings.DataContext = _desktopSettings;
+        RunOnStartupSettings.DataContext = _desktopSettings;
+        MinimizeToTraySettings.DataContext = _desktopSettings;
+        AutoUpdateSettings.DataContext = _desktopSettings;
         DataContext = viewModel;
         // Use the tunnel phase so Shift+Click can be intercepted before the button's own handler fires
         UpdateButton.AddHandler(InputElement.PointerPressedEvent, OnUpdateButtonPointerPressed, RoutingStrategies.Tunnel);
@@ -230,7 +241,7 @@ public partial class MainWindow : Window
     // if the user explicitly confirms, preventing accidental loss of background operation.
     private async void MinimizeToTray_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not WallpaperConfigViewModel vm)
+        if (DataContext is not WallpaperConfigViewModel)
             return;
 
         // Only intercept when toggling OFF (now unchecked)
@@ -239,7 +250,7 @@ public partial class MainWindow : Window
 
         // Revert and confirm
         MinimizeToTrayCheckBox.IsChecked = true;
-        vm.Desktop.MinimizeToTray = true;
+        _desktopSettings.MinimizeToTray = true;
 
         var confirmed = await ShowYesNoDialog(
             "Disable Minimize to Tray",
@@ -248,7 +259,7 @@ public partial class MainWindow : Window
         if (confirmed)
         {
             MinimizeToTrayCheckBox.IsChecked = false;
-            vm.Desktop.MinimizeToTray = false;
+            _desktopSettings.MinimizeToTray = false;
         }
     }
 
@@ -305,8 +316,8 @@ public partial class MainWindow : Window
                 Title = "Select Wallpapers Folder",
                 AllowMultiple = false,
             });
-            if (result.Count > 0 && DataContext is WallpaperConfigViewModel vm)
-                vm.Desktop.Folder = result[0].Path.LocalPath;
+            if (result.Count > 0)
+                _desktopSettings.Folder = result[0].Path.LocalPath;
         }
         catch (Exception ex)
         {

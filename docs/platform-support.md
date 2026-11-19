@@ -20,7 +20,7 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | `IShellOpener` | `WallpaperConfigViewModel`, `AboutViewModel`, `DesktopSettingsViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | none yet (step 4) |
 | `IStartupRegistration` (optional) | `DesktopSettingsViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
 | `IDeviceSettingRules` | `SettingsStore` (the title-on default), `SlideshowSettingsViewModel` (the fill styles) | `DesktopSettingRules`: title on, all six fill styles | `AndroidSettingRules`: title off, five fill styles (no Span) |
-| `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments | none yet (step 4) |
+| `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments except `--startup`, so the new copy shows its window | none yet (step 4) |
 | `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | none yet (step 4) |
 | `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
 | `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |

@@ -5,7 +5,8 @@ namespace PaperNexus.ViewModels;
 
 // The settings only the desktop has (issue #203, decision 8 keeps them off the phone): the
 // download folder, launching at sign-in, minimizing to the tray on close, and automatic
-// updates. Like every group it writes only these fields.
+// updates. It lives in the desktop host; the settings window adds it to its view model's
+// groups (WallpaperConfigViewModel.AddHostGroup). Like every group it writes only these fields.
 public sealed partial class DesktopSettingsViewModel : SettingsGroupViewModel
 {
     private readonly IShellOpener _shellOpener;

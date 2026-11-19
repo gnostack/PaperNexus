@@ -45,7 +45,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
 
         // Trigger a property change to arm the debounce timer (sets _hasPendingSave = true
         // while _isLoading is false, as would happen during normal use).
-        vm.Desktop.Folder = _wallpaperDir;
+        vm.Download.RetentionDays = 30;
 
         // Act: Cleanup() is called synchronously before the debounce delay elapses.
         // The pending save task is fired as fire-and-forget; it must not produce an
@@ -69,7 +69,7 @@ public class ViewModelCleanupTests : IAsyncLifetime, IDisposable
         var vm = TestHelpers.CreateViewModel(_store);
 
         // Arm a pending save and flush it via Cleanup; this leaves a fresh _statusCts in place
-        vm.Desktop.Folder = _wallpaperDir;
+        vm.Download.RetentionDays = 30;
         vm.Cleanup();
 
         // If the in-flight save calls ShowTransientStatusAsync after Cleanup, it must not throw.

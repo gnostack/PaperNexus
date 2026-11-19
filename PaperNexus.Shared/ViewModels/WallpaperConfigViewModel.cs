@@ -10,8 +10,9 @@ using PaperNexus.Core;
 namespace PaperNexus.ViewModels;
 
 // The desktop's settings window. Its settings are shown and saved by the settings groups both
-// devices share (Download, Slideshow, Annotation and Debug) and by the desktop's own group, each
-// writing only the settings it owns; About holds the version and the links. The window adds the current wallpaper, the
+// devices share (Download, Slideshow, Annotation and Debug) and by any group the host adds for
+// settings only it has (AddHostGroup), each writing only the settings it owns; About holds the
+// version and the links. The window adds the current wallpaper, the
 // sources, the gallery and favorites, and the status bar every group reports to.
 public partial class WallpaperConfigViewModel : ObservableObject
 {
@@ -87,7 +88,6 @@ public partial class WallpaperConfigViewModel : ObservableObject
         SlideshowSettingsViewModel slideshow,
         AnnotationSettingsViewModel annotation,
         DebugSettingsViewModel debug,
-        DesktopSettingsViewModel desktop,
         AboutViewModel about,
         ISwitchWallpaper? switchWallpaper = null,
         IDownloadWallpapers? downloadWallpapers = null,
@@ -104,7 +104,6 @@ public partial class WallpaperConfigViewModel : ObservableObject
         Slideshow = slideshow.ThrowIfNull();
         Annotation = annotation.ThrowIfNull();
         Debug = debug.ThrowIfNull();
-        Desktop = desktop.ThrowIfNull();
         About = about.ThrowIfNull();
         _windowContext = SynchronizationContext.Current;
         _switchWallpaper = switchWallpaper;
@@ -131,11 +130,22 @@ public partial class WallpaperConfigViewModel : ObservableObject
 
     public DebugSettingsViewModel Debug { get; }
 
-    public DesktopSettingsViewModel Desktop { get; }
-
     public AboutViewModel About { get; }
 
-    private IEnumerable<SettingsGroupViewModel> Groups => [Download, Slideshow, Annotation, Debug, Desktop];
+    // Groups for settings only the host has (the desktop's folder, run on startup, minimize to
+    // tray and automatic updates), which live in the host. The window adds them before it
+    // loads; they load, save, report and flush like the shared groups.
+    private readonly List<SettingsGroupViewModel> _hostGroups = [];
+
+    private IEnumerable<SettingsGroupViewModel> Groups => [Download, Slideshow, Annotation, Debug, .. _hostGroups];
+
+    // Adds a group for settings only the host has. Called once per group, before LoadAsync.
+    public void AddHostGroup(SettingsGroupViewModel group)
+    {
+        group.ThrowIfNull();
+        _hostGroups.Add(group);
+        group.StatusReported += OnGroupStatusReported;
+    }
 
     // A group's line on the status bar, marked as the window has always marked them: a tick
     // for success, a cross for an error, nothing for a neutral line.

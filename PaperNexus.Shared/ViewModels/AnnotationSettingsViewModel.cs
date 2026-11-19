@@ -64,10 +64,13 @@ public sealed partial class AnnotationSettingsViewModel : SettingsGroupViewModel
 
     partial void OnFontSizeChanged(int value) => SaveSoon();
 
-    // A few hex values spell words and are a reasonable thing to try in a colour box.
+    // A few hex values spell words and are a reasonable thing to try in a colour box. The egg
+    // plays when the person types one, not when a stored one is loaded as the screen opens.
     partial void OnColorChanged(string value)
     {
         SaveSoon();
+        if (IsLoading)
+            return;
         var show = EasterEggShows.MagicColor(value);
         if (show is not null)
             _easterEggs.Request(show);

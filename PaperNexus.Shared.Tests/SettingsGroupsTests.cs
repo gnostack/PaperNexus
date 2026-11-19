@@ -153,38 +153,6 @@ public class SettingsGroupsTests : IDisposable
         AssertOthersKept(saved);
     }
 
-    [Fact]
-    public async Task DesktopGroup_WritesOnlyTheDesktopsOwnSettings()
-    {
-        await _store.UpdateAsync(latest =>
-        {
-            latest.Download.RetentionDays = 12;
-            latest.Slideshow.Order = SlideshowOrder.Random;
-            latest.Annotation.FontSize = 33;
-            latest.DebugMode = true;
-            latest.FavoriteWallpapers.Add("/kept/favorite.png");
-        });
-        var group = new DesktopSettingsViewModel(_store, new NoOpShellOpener());
-        await group.LoadAsync();
-
-        group.Folder = "/new/folder";
-        group.RunOnStartup = false;
-        group.MinimizeToTray = false;
-        group.AutoUpdatesEnabled = false;
-        await group.SaveNowAsync();
-
-        var saved = await _store.LoadAsync();
-        Assert.Equal("/new/folder", saved.Download.Folder);
-        Assert.False(saved.RunOnStartup);
-        Assert.False(saved.MinimizeToTray);
-        Assert.False(saved.AutoUpdatesEnabled);
-        Assert.Equal(12, saved.Download.RetentionDays);
-        Assert.Equal(SlideshowOrder.Random, saved.Slideshow.Order);
-        Assert.Equal(33, saved.Annotation.FontSize);
-        Assert.True(saved.DebugMode);
-        Assert.Equal(["/kept/favorite.png"], saved.FavoriteWallpapers);
-    }
-
     // --- Saving and reporting ---
 
     [Fact]
@@ -415,6 +383,25 @@ public class SettingsGroupsTests : IDisposable
 
         group.Color = "#C0FFEE";
 
+        var show = Assert.Single(requested);
+        Assert.Equal(EasterEggCatalog.Colors, show.Id);
+    }
+
+    [Fact]
+    public async Task Annotation_AStoredWordColourDoesNotPlayItsEggWhenTheScreenOpens()
+    {
+        await _store.UpdateAsync(latest => latest.Annotation.Color = "#C0FFEE");
+        var eggs = new EasterEggRequests();
+        var requested = new List<EasterEggShow>();
+        eggs.Requested += requested.Add;
+        var group = new AnnotationSettingsViewModel(_store, eggs);
+
+        await group.LoadAsync();
+        Assert.Equal("#C0FFEE", group.Color);
+        Assert.Empty(requested);
+
+        // Typing a word colour still plays it
+        group.Color = "#DECADE";
         var show = Assert.Single(requested);
         Assert.Equal(EasterEggCatalog.Colors, show.Id);
     }
@@ -814,7 +801,28 @@ public class SettingsGroupsTests : IDisposable
         Assert.Equal(["/f.png"], settings.FavoriteWallpapers);
     }
 
-    // --- The desktop window's status bar ---
+    // --- The desktop window's status bar and its host groups ---
+
+    [Fact]
+    public async Task Window_AHostGroupLoadsSavesReportsAndFlushesWithTheOthers()
+    {
+        await _store.UpdateAsync(latest => latest.WindowX = 12);
+        var vm = TestHelpers.CreateViewModel(_store);
+        var hostGroup = new WindowXGroup(_store);
+        vm.AddHostGroup(hostGroup);
+        await vm.LoadAsync();
+        Assert.Equal(12, hostGroup.WindowX);
+
+        // A change waiting for its save is saved when the window closes, and its line shows
+        hostGroup.WindowX = 99;
+        vm.Cleanup();
+        var saved = await TestHelpers.WaitForSavedAsync(_store, s => s.WindowX == 99);
+        Assert.Equal(99, saved.WindowX);
+        for (var i = 0; i < 40 && vm.StatusMessage != "✓ Settings saved."; i++)
+            await Task.Delay(25);
+        Assert.Equal("✓ Settings saved.", vm.StatusMessage);
+    }
+
 
     [Fact]
     public async Task Window_ShowsAGroupsSaveWithItsTick()
@@ -829,6 +837,35 @@ public class SettingsGroupsTests : IDisposable
 
         Assert.Equal("✓ Settings saved.", vm.StatusMessage);
         vm.Cleanup();
+    }
+
+    // A host's own group, standing in for the desktop's: it owns WindowX.
+    private sealed class WindowXGroup : SettingsGroupViewModel
+    {
+        private double? _windowX;
+
+        public WindowXGroup(ISettingsStore store)
+            : base(store)
+        {
+        }
+
+        public double? WindowX
+        {
+            get => _windowX;
+            set
+            {
+                if (SetProperty(ref _windowX, value))
+                    SaveSoon();
+            }
+        }
+
+        protected override void ReadFrom(WallpaperNexusSettings settings) => WindowX = settings.WindowX;
+
+        protected override Action<WallpaperNexusSettings>? CaptureChange()
+        {
+            var windowX = WindowX;
+            return latest => latest.WindowX = windowX;
+        }
     }
 
     // A clock the test moves.

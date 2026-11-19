@@ -356,11 +356,11 @@
                         <StackPanel Spacing="12">
                             <TextBlock Text="Download Settings" FontWeight="SemiBold" FontSize="13" Opacity="0.85"/>
 
-                            <!-- Folder -->
-                            <StackPanel Spacing="4">
+                            <!-- Folder: a desktop-only setting, bound to the desktop's own group -->
+                            <StackPanel x:Name="FolderSettings" x:DataType="vm:DesktopSettingsViewModel" Spacing="4">
                                 <TextBlock Text="Folder" FontSize="12" Opacity="0.6"/>
                                 <Grid ColumnDefinitions="*,8,Auto,4,Auto">
-                                    <TextBox Grid.Column="0" Text="{Binding Desktop.Folder}"
+                                    <TextBox Grid.Column="0" Text="{Binding Folder}"
                                              PlaceholderText="e.g. your Pictures folder"/>
                                     <Button Grid.Column="2" Click="BrowseFolder_Click"
                                             ToolTip.Tip="Browse for wallpapers folder"
@@ -372,8 +372,8 @@
                                         </StackPanel>
                                     </Button>
                                     <Button Grid.Column="4"
-                                            Command="{Binding Desktop.OpenFolderCommand}"
-                                            IsEnabled="{Binding Desktop.Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                            Command="{Binding OpenFolderCommand}"
+                                            IsEnabled="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                             ToolTip.Tip="Open folder in your file manager"
                                             Padding="8,4">
                                         <PathIcon Data="M20 6H12L10 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6ZM15 15H13V17H11V15H9V13H11V11H13V13H15V15Z"
@@ -493,26 +493,28 @@
                     <Border Background="#1E1E1E" BorderBrush="#444" BorderThickness="1" CornerRadius="6" Padding="12">
                         <StackPanel Spacing="12">
                             <TextBlock Text="General Settings" FontWeight="SemiBold" FontSize="13" Opacity="0.85"/>
-                            <StackPanel Spacing="4">
+                            <!-- Run on startup, minimize to tray and automatic updates are desktop-only
+                                 settings, bound to the desktop's own group -->
+                            <StackPanel x:Name="RunOnStartupSettings" x:DataType="vm:DesktopSettingsViewModel" Spacing="4">
                                 <CheckBox Content="Run on startup"
-                                          IsChecked="{Binding Desktop.RunOnStartup}"/>
+                                          IsChecked="{Binding RunOnStartup}"/>
                                 <TextBlock Text="Automatically launch PaperNexus when you sign in"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Border Height="1" Background="#333"/>
-                            <StackPanel Spacing="4">
+                            <StackPanel x:Name="MinimizeToTraySettings" x:DataType="vm:DesktopSettingsViewModel" Spacing="4">
                                 <CheckBox x:Name="MinimizeToTrayCheckBox"
                                           Content="Minimize to system tray on close"
-                                          IsChecked="{Binding Desktop.MinimizeToTray}"
+                                          IsChecked="{Binding MinimizeToTray}"
                                           Click="MinimizeToTray_Click"
                                           ToolTip.Tip="When disabled, closing the window will fully exit PaperNexus"/>
                                 <TextBlock Text="When disabled, closing the window will fully exit PaperNexus"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Border Height="1" Background="#333"/>
-                            <StackPanel Spacing="4">
+                            <StackPanel x:Name="AutoUpdateSettings" x:DataType="vm:DesktopSettingsViewModel" Spacing="4">
                                 <CheckBox Content="Automatic updates"
-                                          IsChecked="{Binding Desktop.AutoUpdatesEnabled}"/>
+                                          IsChecked="{Binding AutoUpdatesEnabled}"/>
                                 <TextBlock Text="Silently check for and install new versions in the background"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>

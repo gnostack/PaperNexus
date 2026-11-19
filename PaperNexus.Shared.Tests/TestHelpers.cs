@@ -169,7 +169,6 @@ internal static class TestHelpers
                 new SlideshowSettingsViewModel(store, TestSettingRules.Desktop),
                 new AnnotationSettingsViewModel(store, eggs),
                 new DebugSettingsViewModel(store, appInfo, new LogLevelSwitch(false), new RecordingFactoryReset()),
-                new DesktopSettingsViewModel(store, shellOpener),
                 new AboutViewModel(appInfo, shellOpener, eggs),
                 downloadWallpapers: downloader));
         return viewModel;
