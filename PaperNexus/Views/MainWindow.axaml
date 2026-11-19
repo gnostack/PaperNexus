@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
        xmlns:vm="using:PaperNexus.ViewModels"
-       xmlns:app="using:PaperNexus"
        xmlns:v="using:PaperNexus.Views"
        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -361,7 +360,7 @@
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Folder" FontSize="12" Opacity="0.6"/>
                                 <Grid ColumnDefinitions="*,8,Auto,4,Auto">
-                                    <TextBox Grid.Column="0" Text="{Binding Folder}"
+                                    <TextBox Grid.Column="0" Text="{Binding Desktop.Folder}"
                                              PlaceholderText="e.g. your Pictures folder"/>
                                     <Button Grid.Column="2" Click="BrowseFolder_Click"
                                             ToolTip.Tip="Browse for wallpapers folder"
@@ -373,8 +372,8 @@
                                         </StackPanel>
                                     </Button>
                                     <Button Grid.Column="4"
-                                            Command="{Binding OpenFolderCommand}"
-                                            IsEnabled="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                            Command="{Binding Desktop.OpenFolderCommand}"
+                                            IsEnabled="{Binding Desktop.Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                             ToolTip.Tip="Open folder in your file manager"
                                             Padding="8,4">
                                         <PathIcon Data="M20 6H12L10 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6ZM15 15H13V17H11V15H9V13H11V11H13V13H15V15Z"
@@ -391,10 +390,10 @@
                             <!-- Saved Resolution -->
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Saved Resolution" FontSize="12" Opacity="0.6"/>
-                                <v:NonScrollableComboBox ItemsSource="{x:Static vm:WallpaperConfigViewModel.ResolutionOptions}"
-                                          SelectedItem="{Binding SelectedResolution}"
+                                <v:NonScrollableComboBox ItemsSource="{x:Static vm:DownloadSettingsViewModel.ResolutionOptions}"
+                                          SelectedItem="{Binding Download.SelectedResolution}"
                                           HorizontalAlignment="Stretch"/>
-                                <TextBlock Text="{Binding SelectedResolution.Description}"
+                                <TextBlock Text="{Binding Download.SelectedResolution.Description}"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
 
@@ -404,7 +403,7 @@
                             <!-- Retention Days -->
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Retention Period (days)" FontSize="12" Opacity="0.6"/>
-                                <NumericUpDown Value="{Binding RetentionDays}"
+                                <NumericUpDown Value="{Binding Download.RetentionDays}"
                                                Minimum="1" Maximum="3650" Increment="30"
                                                FormatString="0"/>
                                 <TextBlock Text="Wallpapers older than this are automatically deleted, favorites are always kept"
@@ -418,30 +417,30 @@
                         <StackPanel Spacing="12">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="Slideshow Settings" FontWeight="SemiBold" FontSize="13" Opacity="0.85" VerticalAlignment="Center"/>
-                                <CheckBox Grid.Column="1" Content="Enabled" IsChecked="{Binding SlideshowEnabled}" VerticalAlignment="Center"/>
+                                <CheckBox Grid.Column="1" Content="Enabled" IsChecked="{Binding Slideshow.Enabled}" VerticalAlignment="Center"/>
                             </Grid>
 
-                            <StackPanel Spacing="12" IsVisible="{Binding SlideshowEnabled}">
+                            <StackPanel Spacing="12" IsVisible="{Binding Slideshow.Enabled}">
                                 <!-- Slideshow Schedule -->
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Schedule" FontSize="12" Opacity="0.6"/>
-                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:WallpaperConfigViewModel.ScheduleModeOptions}"
-                                                             SelectedItem="{Binding SelectedScheduleMode}"
+                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:SlideshowSettingsViewModel.ScheduleModeOptions}"
+                                                             SelectedItem="{Binding Slideshow.SelectedScheduleMode}"
                                                              HorizontalAlignment="Stretch"/>
-                                    <Grid ColumnDefinitions="*,6,Auto" IsVisible="{Binding IsIntervalMode}">
+                                    <Grid ColumnDefinitions="*,6,Auto" IsVisible="{Binding Slideshow.IsIntervalMode}">
                                         <NumericUpDown Grid.Column="0"
-                                                       Value="{Binding SlideshowInterval}"
-                                                       Minimum="{Binding IntervalMinimum}"
-                                                       Maximum="{Binding IntervalMaximum}"
+                                                       Value="{Binding Slideshow.Interval}"
+                                                       Minimum="{Binding Slideshow.IntervalMinimum}"
+                                                       Maximum="{Binding Slideshow.IntervalMaximum}"
                                                        Increment="1" FormatString="0"/>
                                         <v:NonScrollableComboBox Grid.Column="2" Width="100"
-                                                                 ItemsSource="{x:Static vm:WallpaperConfigViewModel.IntervalTypeOptions}"
-                                                                 SelectedItem="{Binding SelectedIntervalType}"/>
+                                                                 ItemsSource="{x:Static vm:SlideshowSettingsViewModel.IntervalTypeOptions}"
+                                                                 SelectedItem="{Binding Slideshow.SelectedIntervalType}"/>
                                     </Grid>
-                                    <TextBox IsVisible="{Binding IsCronMode}"
-                                             Text="{Binding SlideshowCronExpression}"
+                                    <TextBox IsVisible="{Binding Slideshow.IsCronMode}"
+                                             Text="{Binding Slideshow.CronExpression}"
                                              PlaceholderText="e.g. */30 * * * *"/>
-                                    <TextBlock Text="{Binding ScheduleDescription}"
+                                    <TextBlock Text="{Binding Slideshow.ScheduleDescription}"
                                                FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                                 </StackPanel>
 
@@ -451,10 +450,10 @@
                                 <!-- Slideshow Order -->
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Order" FontSize="12" Opacity="0.6"/>
-                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:WallpaperConfigViewModel.SlideshowOrderOptions}"
-                                              SelectedItem="{Binding SelectedSlideshowOrder}"
+                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:SlideshowSettingsViewModel.SlideshowOrderOptions}"
+                                              SelectedItem="{Binding Slideshow.SelectedOrder}"
                                               HorizontalAlignment="Stretch"/>
-                                    <TextBlock Text="{Binding SelectedSlideshowOrder.Description}"
+                                    <TextBlock Text="{Binding Slideshow.SelectedOrder.Description}"
                                                FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                                 </StackPanel>
 
@@ -463,10 +462,10 @@
 
                                 <!-- Prioritize Favorites -->
                                 <StackPanel Spacing="4">
-                                    <CheckBox Content="Prioritize Favorites" IsChecked="{Binding FavoritePriorityEnabled}"
+                                    <CheckBox Content="Prioritize Favorites" IsChecked="{Binding Slideshow.FavoritePriorityEnabled}"
                                               ToolTip.Tip="Pick favorites more often during random selection"/>
-                                    <StackPanel Spacing="4" IsVisible="{Binding FavoritePriorityEnabled}">
-                                        <NumericUpDown Value="{Binding FavoritePriorityWeight}"
+                                    <StackPanel Spacing="4" IsVisible="{Binding Slideshow.FavoritePriorityEnabled}">
+                                        <NumericUpDown Value="{Binding Slideshow.FavoritePriorityWeight}"
                                                        Minimum="2" Maximum="20" Increment="1"
                                                        FormatString="0"/>
                                         <TextBlock Text="Weight: extra selection weight for favorites in random mode"
@@ -480,10 +479,10 @@
                                 <!-- Fill Style -->
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Fill Style" FontSize="12" Opacity="0.6"/>
-                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:WallpaperConfigViewModel.FillStyleOptions}"
-                                              SelectedItem="{Binding SelectedFillStyle}"
+                                    <v:NonScrollableComboBox ItemsSource="{Binding Slideshow.FillStyleOptions}"
+                                              SelectedItem="{Binding Slideshow.SelectedFillStyle}"
                                               HorizontalAlignment="Stretch"/>
-                                    <TextBlock Text="{Binding SelectedFillStyle.Description}"
+                                    <TextBlock Text="{Binding Slideshow.SelectedFillStyle.Description}"
                                                FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </StackPanel>
@@ -496,15 +495,15 @@
                             <TextBlock Text="General Settings" FontWeight="SemiBold" FontSize="13" Opacity="0.85"/>
                             <StackPanel Spacing="4">
                                 <CheckBox Content="Run on startup"
-                                          IsChecked="{Binding RunOnStartup}"/>
-                                <TextBlock Text="Automatically launch PaperNexus when Windows starts"
+                                          IsChecked="{Binding Desktop.RunOnStartup}"/>
+                                <TextBlock Text="Automatically launch PaperNexus when you sign in"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Border Height="1" Background="#333"/>
                             <StackPanel Spacing="4">
                                 <CheckBox x:Name="MinimizeToTrayCheckBox"
                                           Content="Minimize to system tray on close"
-                                          IsChecked="{Binding MinimizeToTray}"
+                                          IsChecked="{Binding Desktop.MinimizeToTray}"
                                           Click="MinimizeToTray_Click"
                                           ToolTip.Tip="When disabled, closing the window will fully exit PaperNexus"/>
                                 <TextBlock Text="When disabled, closing the window will fully exit PaperNexus"
@@ -513,23 +512,23 @@
                             <Border Height="1" Background="#333"/>
                             <StackPanel Spacing="4">
                                 <CheckBox Content="Automatic updates"
-                                          IsChecked="{Binding AutoUpdatesEnabled}"/>
+                                          IsChecked="{Binding Desktop.AutoUpdatesEnabled}"/>
                                 <TextBlock Text="Silently check for and install new versions in the background"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Border Height="1" Background="#333"/>
                             <StackPanel Spacing="4">
                                 <CheckBox Content="Show title annotation on wallpaper"
-                                          IsChecked="{Binding AnnotateWallpaper}"/>
+                                          IsChecked="{Binding Annotation.AnnotateWallpaper}"/>
                                 <TextBlock Text="Overlay the wallpaper title on the image when it is set"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                             <StackPanel Spacing="8" Margin="24,0,0,0"
-                                        IsVisible="{Binding AnnotateWallpaper}">
+                                        IsVisible="{Binding Annotation.AnnotateWallpaper}">
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Font" FontSize="12" Opacity="0.6"/>
-                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:WallpaperConfigViewModel.FontFamilyOptions}"
-                                                  SelectedItem="{Binding AnnotationFontFamily}"
+                                    <v:NonScrollableComboBox ItemsSource="{Binding Annotation.FontFamilyOptions}"
+                                                  SelectedItem="{Binding Annotation.FontFamily}"
                                                   HorizontalAlignment="Stretch"/>
                                     <TextBlock Text="Typeface used to render the annotation text"
                                                FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
@@ -540,28 +539,28 @@
                                         <!-- Font size is an absolute point size, so a title that
                                              reads well on 1080p is tiny on a 4K wallpaper. The cap
                                              is high enough to dial in a large image by hand. -->
-                                        <NumericUpDown Value="{Binding AnnotationFontSize}"
+                                        <NumericUpDown Value="{Binding Annotation.FontSize}"
                                                        Minimum="8" Maximum="200" Increment="2"
                                                        FormatString="0"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2" Spacing="4">
                                         <TextBlock Text="Color (hex)" FontSize="12" Opacity="0.6"/>
-                                        <TextBox Text="{Binding AnnotationColor}"
+                                        <TextBox Text="{Binding Annotation.Color}"
                                                  PlaceholderText="#F5F5F5"/>
                                     </StackPanel>
                                 </Grid>
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Position" FontSize="12" Opacity="0.6"/>
-                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:WallpaperConfigViewModel.AnnotationPositionOptions}"
-                                                  SelectedItem="{Binding SelectedAnnotationPosition}"
+                                    <v:NonScrollableComboBox ItemsSource="{x:Static vm:AnnotationSettingsViewModel.AnnotationPositionOptions}"
+                                                  SelectedItem="{Binding Annotation.SelectedPosition}"
                                                   HorizontalAlignment="Stretch"/>
-                                    <TextBlock Text="{Binding SelectedAnnotationPosition.Description}"
+                                    <TextBlock Text="{Binding Annotation.SelectedPosition.Description}"
                                                FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                                 </StackPanel>
                                 <StackPanel Spacing="4">
                                     <CheckBox Content="Text outline"
                                               ToolTip.Tip="Draw a contrasting outline around the annotation text"
-                                              IsChecked="{Binding AnnotationOutlineEnabled}"/>
+                                              IsChecked="{Binding Annotation.OutlineEnabled}"/>
                                     <TextBlock Text="Draw a contrasting outline around the text for better readability on bright images"
                                                FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                                 </StackPanel>
@@ -570,9 +569,9 @@
                             <StackPanel Spacing="4">
                                 <CheckBox x:Name="DebugModeCheckBox"
                                           Content="Debug mode"
-                                          IsChecked="{Binding DebugMode}"
+                                          IsChecked="{Binding Debug.DebugMode, Mode=OneWay}"
                                           Click="DebugMode_Click"/>
-                                <TextBlock Text="Skip auto-install on launch and enable verbose logging"
+                                <TextBlock Text="Write more detail to the log and add the switch time under the title"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                         </StackPanel>
@@ -588,7 +587,7 @@
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Foreground="{Binding StatusForeground}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Bottom"/>
                 <Button Grid.Column="1"
                         Click="FactoryReset_Click"
-                        IsVisible="{Binding DebugMode}"
+                        IsVisible="{Binding Debug.DebugMode}"
                         ToolTip.Tip="Delete all application data and restart"
                         Padding="5,2" Opacity="0.6">
                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -600,7 +599,7 @@
                     </StackPanel>
                 </Button>
                 <TextBlock Grid.Column="3" x:Name="VersionLabel"
-                           Text="{x:Static app:App.AppVersion}"
+                           Text="{Binding About.Version}"
                            FontSize="10" Opacity="0.35" VerticalAlignment="Bottom"
                            PointerPressed="OnVersionLabelPointerPressed"/>
                 <Button Grid.Column="5"
@@ -619,13 +618,13 @@
                     <PathIcon Data="M12 6V9L16 5L12 1V4C7.58 4 4 7.58 4 12C4 13.57 4.46 15.03 5.24 16.26L6.7 14.8C6.25 13.97 6 13.01 6 12C6 8.69 8.69 6 12 6ZM18.76 7.74L17.3 9.2C17.74 10.04 18 10.99 18 12C18 15.31 15.31 18 12 18V15L8 19L12 23V20C16.42 20 20 16.42 20 12C20 10.43 19.54 8.97 18.76 7.74Z"
                               Width="14" Height="14"/>
                 </Button>
-                <Button Grid.Column="9" Command="{Binding ReportBugCommand}"
+                <Button Grid.Column="9" Command="{Binding About.ReportBugCommand}"
                         ToolTip.Tip="Leave feedback on GitHub"
                         Padding="5,2" Opacity="0.6">
                     <PathIcon Data="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2ZM20 16H5.17L4 17.17V4H20V16Z"
                               Width="14" Height="14"/>
                 </Button>
-                <Button Grid.Column="11" Command="{Binding OpenHomepageCommand}"
+                <Button Grid.Column="11" Command="{Binding About.OpenHomepageCommand}"
                         ToolTip.Tip="Open PaperNexus on GitHub"
                         Padding="5,2" Opacity="0.6">
                     <PathIcon Data="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM11 19.93C7.05 19.44 4 16.08 4 12C4 11.38 4.08 10.79 4.21 10.21L9 15V16C9 17.1 9.9 18 11 18V19.93ZM17.9 17.39C17.64 16.58 16.9 16 16 16H15V13C15 12.45 14.55 12 14 12H8V10H10C10.55 10 11 9.55 11 9V7H13C14.1 7 15 6.1 15 5V4.59C17.93 5.77 20 8.65 20 12C20 14.08 19.19 15.98 17.9 17.39Z"

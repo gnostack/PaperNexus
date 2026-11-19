@@ -125,7 +125,7 @@ public class WallpaperConfigSourcesTests : IDisposable
         await sources.AddAsync(new SourceFields("Lakes", "https://lakes.test/feed", "$[*].imageUrl", "$[*].title", "", true));
         await _store.UpdateAsync(latest => latest.Sources[0].LastDownloadUtc = downloaded);
 
-        vm.RetentionDays = 30;
+        vm.Download.RetentionDays = 30;
         for (var i = 0; i < 100 && (await _store.LoadAsync()).Download.RetentionDays != 30; i++)
             await Task.Delay(50);
 

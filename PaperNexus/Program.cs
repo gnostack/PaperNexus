@@ -18,6 +18,14 @@ internal sealed class Program
     internal static bool IsDebugMode { get; private set; }
     internal static bool IsInstallMode { get; private set; }
 
+    // The arguments this copy was started with, so a factory reset starts the new copy the
+    // same way.
+    internal static string[] Arguments { get; private set; } = [];
+
+    // The log level both of this process's loggers read: debug entries when started with
+    // --debug or while the debug mode setting is on. Created with the first logger, in RunApp.
+    internal static LogLevelSwitch LogLevels { get; private set; } = new(startedInDebugMode: false);
+
     // Install path data exposed for InstallScreen to use when performing the actual install.
     internal static string CurrentExePath { get; private set; } = string.Empty;
     internal static string InstallDir { get; private set; } = string.Empty;
@@ -26,6 +34,7 @@ internal sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        Arguments = args;
         // Debug mode bypasses the install check and single-instance logic entirely.
         if (TryRunDebugMode(args))
             return;
@@ -240,9 +249,9 @@ internal sealed class Program
     // log messages are flushed before the process exits.
     private static void RunApp(string[] args)
     {
-        var minLogLevel = Program.IsDebugMode ? LogLevel.Debug : LogLevel.Information;
+        LogLevels = new LogLevelSwitch(Program.IsDebugMode);
         var logDirectory = FileLoggerProvider.LogDirectoryIn(new DesktopAppFolders().DataFolder);
-        using var loggerProvider = new FileLoggerProvider(logDirectory, minLogLevel);
+        using var loggerProvider = new FileLoggerProvider(logDirectory, LogLevels);
         var logger = loggerProvider.CreateLogger(nameof(Program));
 
         // Catch exceptions that escape all managed thread roots (non-UI threads, finalizers, etc.)

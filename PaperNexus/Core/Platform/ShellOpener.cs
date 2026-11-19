@@ -36,11 +36,22 @@ public static class ShellOpener
         Open(folderPath);
     }
 
-    // Launches another copy of the app (used by the installer hand-off and factory reset).
+    // Launches another copy of the app (used by the installer hand-off).
     public static void LaunchExecutable(string exePath)
     {
         PlatformPaths.EnsureExecutable(exePath);
         Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true });
+    }
+
+    // Launches another copy of the app with the given arguments (used by factory reset, so the
+    // new copy starts the way this one did).
+    public static void LaunchExecutable(string exePath, IEnumerable<string> arguments)
+    {
+        PlatformPaths.EnsureExecutable(exePath);
+        var start = new ProcessStartInfo(exePath) { UseShellExecute = false };
+        foreach (var argument in arguments)
+            start.ArgumentList.Add(argument);
+        Process.Start(start);
     }
 }
 

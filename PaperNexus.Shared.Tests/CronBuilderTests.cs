@@ -5,7 +5,7 @@ using Xunit;
 
 namespace PaperNexus.Tests;
 
-// Tests for WallpaperConfigViewModel.BuildIntervalCron.
+// Tests for SlideshowSchedule.BuildIntervalCron.
 // Verifies that generated expressions are correct, clamped to valid field ranges,
 // and parseable by Cronos without throwing.
 public class CronBuilderTests
@@ -34,7 +34,7 @@ public class CronBuilderTests
     [InlineData(1, IntervalType.Years, "0 0 1 1 *")]
     public void BuildIntervalCron_ReturnsExpectedExpression(int interval, IntervalType type, string expected)
     {
-        var result = WallpaperConfigViewModel.BuildIntervalCron(interval, type);
+        var result = SlideshowSchedule.BuildIntervalCron(interval, type);
         Assert.Equal(expected, result);
     }
 
@@ -54,7 +54,7 @@ public class CronBuilderTests
     [InlineData(99, IntervalType.Months)]   // clamps to 12
     public void BuildIntervalCron_ClampsToValidRange(int interval, IntervalType type)
     {
-        var result = WallpaperConfigViewModel.BuildIntervalCron(interval, type);
+        var result = SlideshowSchedule.BuildIntervalCron(interval, type);
         var fields = result.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var format = fields.Length == 6 ? CronFormat.IncludeSeconds : CronFormat.Standard;
         var ex = Record.Exception(() => CronExpression.Parse(result, format));
@@ -84,7 +84,7 @@ public class CronBuilderTests
     [InlineData(1, IntervalType.Years)]
     public void BuildIntervalCron_AllOutputs_ParseableByChronos(int interval, IntervalType type)
     {
-        var expression = WallpaperConfigViewModel.BuildIntervalCron(interval, type);
+        var expression = SlideshowSchedule.BuildIntervalCron(interval, type);
         var fields = expression.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var format = fields.Length == 6 ? CronFormat.IncludeSeconds : CronFormat.Standard;
         var ex = Record.Exception(() => CronExpression.Parse(expression, format));

@@ -45,11 +45,15 @@ public static class Bootstrapper
 
             // Register each IAddHostedSingleton<T> impl as both its service type and IHostedService.
             // The concrete type is registered first so both service registrations resolve the same instance.
+            // When the service type is the class itself, the concrete registration already is it: a
+            // second registration resolving the class would resolve itself, and the container waits
+            // on that forever the first time anything asks for the hosted services.
             foreach (var iface in implType.GetInterfaces().Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == openHosted))
             {
                 var serviceType = iface.GetGenericArguments()[0];
                 services.AddSingleton(implType);
-                services.AddSingleton(serviceType, sp => sp.GetRequiredService(implType));
+                if (serviceType != implType)
+                    services.AddSingleton(serviceType, sp => sp.GetRequiredService(implType));
                 services.AddSingleton<IHostedService>(sp => (IHostedService)sp.GetRequiredService(implType));
             }
         }

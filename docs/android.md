@@ -26,6 +26,7 @@ project and its logic and view models in the shared project.
 | `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
+| `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: a new `settings.json` (or one without the field) has the title off; the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. A file that already says the title is on keeps it on. |
 | `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
@@ -253,6 +254,9 @@ Rotation and dark/light mode changes still keep the activity, as before.
   slideshow does not run on a timer inside the app (issue #203, step 5 brings it).
 - The scheduled downloader starts with the host: its first run begins at once and later runs
   follow each source's schedule while Android keeps the process.
+- The logger reads its level from a `LogLevelSwitch` that `MainApplication` creates and registers:
+  debug entries while the debug mode setting is on, from the moment it changes (`DebugLogLevel`
+  applies the stored setting when the host starts).
 - The log is `no_backup/logs/app.log` (`Assembly.GetEntryAssembly()` is null on Android, so
   the logger's fallback name is used). Read it with
   `adb shell run-as com.gnostack.papernexus cat no_backup/logs/app.log` (Debug builds only).

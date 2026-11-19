@@ -44,7 +44,7 @@ public class AnnotationTests
     public void FontFamilyOptions_AlwaysOffersTheBundledFont()
     {
         // Cinzel ships with the app, so the picker is never empty even with no system fonts.
-        Assert.Contains("Cinzel", WallpaperConfigViewModel.FontFamilyOptions);
+        Assert.Contains("Cinzel", AnnotationSettingsViewModel.InstalledFontOptions);
     }
 
     [Fact]
@@ -57,15 +57,15 @@ public class AnnotationTests
         if (installed.Count == 0)
             return; // a machine with no system fonts legitimately offers only the bundled one
 
-        Assert.True(WallpaperConfigViewModel.FontFamilyOptions.Count > 1);
-        Assert.Contains(WallpaperConfigViewModel.FontFamilyOptions, option => installed.Contains(option));
+        Assert.True(AnnotationSettingsViewModel.InstalledFontOptions.Count > 1);
+        Assert.Contains(AnnotationSettingsViewModel.InstalledFontOptions, option => installed.Contains(option));
     }
 
     [Fact]
     public void FontFamilyOptions_ContainsNoDuplicates()
     {
         // A bundled family that is also installed system-wide must not appear twice.
-        var options = WallpaperConfigViewModel.FontFamilyOptions;
+        var options = AnnotationSettingsViewModel.InstalledFontOptions;
         var distinct = options.Distinct(StringComparer.OrdinalIgnoreCase).Count();
         Assert.Equal(options.Count, distinct);
     }
