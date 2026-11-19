@@ -338,6 +338,15 @@ screen's density, 2.625 on the 420 dpi emulator), so size 18 is drawn 47 pixels 
 home and lock screenshots after a Next: the title's capitals are 33 px tall, the status-bar clock's
 digits 27 px. The margins stay in pixels; the outline and the debug timestamp follow the size.
 
+A title wider than the title area less its two side margins wraps at spaces onto as many lines as it
+needs (`WallpaperAnnotator`, shared with the desktop); the right positions align each line to the
+right margin, and the bottom positions grow upward so the last line keeps its bottom margin. A single
+word wider than the whole width gets its own line from the left margin and is cut at the title area's
+edge; nothing is drawn outside the title area. At size 18 the longest downloaded title takes 4 lines,
+at size 30 six. Measured on the emulator: the launcher's search bar covers lines of a top title on the
+home screen, the dock and app icons cover a bottom title, and on the lock screen the unlock icon (and
+at size 30 the clock) sit over a bottom title. The wallpaper cannot know where those are.
+
 ## Prerequisites
 
 - The .NET `android` workload (`dotnet workload list` shows it).
