@@ -15,7 +15,7 @@ public class SettingsLocationTests : IDisposable
     {
         _directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Settings_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _store = new SettingsStore(new TemporaryAppFolders(_directory), new DesktopSettingRules());
+        _store = new SettingsStore(new TemporaryAppFolders(_directory));
     }
 
     public void Dispose()

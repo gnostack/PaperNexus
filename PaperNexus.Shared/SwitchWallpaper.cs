@@ -43,6 +43,7 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     private readonly IWallpaperApplier _wallpaperApplier;
     private readonly ISettingsStore _settingsStore;
     private readonly string _dataFolder;
+    private readonly IDeviceSettingRules _deviceRules;
 
     // One switch at a time: the window, the tray, the slideshow and the phone's buttons can
     // ask together, and each switch reads the current wallpaper, writes the processed file and
@@ -51,8 +52,14 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
 
     public event Action<string>? WallpaperChanged;
 
-    public SwitchWallpaper(ILogger<SwitchWallpaper> logger, IWallpaperApplier wallpaperApplier, ISettingsStore settingsStore, IAppFolders appFolders)
+    public SwitchWallpaper(
+        ILogger<SwitchWallpaper> logger,
+        IWallpaperApplier wallpaperApplier,
+        ISettingsStore settingsStore,
+        IAppFolders appFolders,
+        IDeviceSettingRules deviceRules)
     {
+        _deviceRules = deviceRules.ThrowIfNull();
         _logger = logger.ThrowIfNull();
         _wallpaperApplier = wallpaperApplier.ThrowIfNull();
         _settingsStore = settingsStore.ThrowIfNull();
@@ -230,8 +237,8 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     // Write to a fixed current file in the host's data folder so the original files are never modified.
     // Apply the title overlay here rather than at download time to preserve source image quality.
     // Save as PNG; if it exceeds 16 MB fall back to JPEG stepping quality down by 3% from 97%.
-    // When the device wants a canvas (the phone), the picture is fitted to it before the title
-    // is drawn, so the title lands on the part of the picture the screen shows.
+    // When the device wants a canvas (the phone), the picture is fitted to it; the phone draws
+    // no title (IDeviceSettingRules.DrawsWallpaperTitle).
     // A wallpaper the device refuses is not recorded: WallpaperRefusedException is thrown
     // before the settings are saved or WallpaperChanged is raised.
     private async Task<string?> ApplyWallpaperAsync(string next, WallpaperNexusSettings settings)
@@ -242,7 +249,9 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         if (separatorIndex >= 0)
             title = title[..separatorIndex];
 
-        var annotation = settings.AnnotateWallpaper ? BuildAnnotation(title, settings) : null;
+        // A device that draws no title (the phone) never gets one, whatever the settings say
+        var drawsTitle = _deviceRules.DrawsWallpaperTitle && settings.AnnotateWallpaper;
+        var annotation = drawsTitle ? BuildAnnotation(title, settings) : null;
 
         var canvas = _wallpaperApplier.GetCanvas();
         var fillStyle = settings.Slideshow.FillStyle;

@@ -38,7 +38,7 @@ public class WallpaperLibraryTests : IDisposable
 
     private WallpaperLibrary CreateLibrary(IWallpaperApplier? applier = null, IDownloadWallpapers? downloader = null)
     {
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, applier ?? NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, applier ?? NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         return new WallpaperLibrary(_store, switcher, downloader);
     }
 

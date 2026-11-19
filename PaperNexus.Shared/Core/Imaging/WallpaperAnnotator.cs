@@ -67,25 +67,15 @@ internal static class WallpaperAnnotator
     // Draws the annotation onto bitmap in place, placed against the bitmap's own edges. An
     // unparseable colour falls back to DefaultColor; the caller is expected to have logged it
     // via IsValidColor.
-    public static void Draw(SKBitmap bitmap, AnnotationRequest request)
-    {
-        var wholeBitmap = new SKRectI(0, 0, bitmap.Width, bitmap.Height);
-        Draw(bitmap, request, wholeBitmap);
-    }
-
-    // Draws the annotation onto bitmap, placed against the edges of area instead of the
-    // bitmap's: the margins below are measured from area. The phone passes the part of its
-    // wallpaper the screen shows with no system bar over it.
     //
-    // The title is laid out inside the area's width less the two side margins: it wraps at
+    // The title is laid out inside the picture's width less the two side margins: it wraps at
     // spaces onto as many lines as it needs, left-aligned at the left margin, or right-aligned
     // at the right margin for the right positions. At the top positions the lines go down from
     // the top margin; at the bottom positions they grow upward, so the last line keeps its
     // bottom margin. A title that fits one line is drawn exactly where it always was. A single
     // word wider than the whole width is the only thing that can still not fit: it gets a line
-    // of its own starting at the left margin and is cut at the area's edge. Nothing is drawn
-    // outside the area.
-    public static void Draw(SKBitmap bitmap, AnnotationRequest request, SKRectI area)
+    // of its own starting at the left margin and is cut at the picture's edge.
+    public static void Draw(SKBitmap bitmap, AnnotationRequest request)
     {
         if (!TryParseHexColor(request.Color, out var textColor))
             TryParseHexColor(DefaultColor, out textColor);
@@ -116,10 +106,8 @@ internal static class WallpaperAnnotator
             : null;
 
         using var titleFont = new SKFont(typeface, fontSize);
-        var layout = Layout(shaper, request.Title, titleFont, fontSize, area, rightAligned, isTop);
+        var layout = Layout(shaper, request.Title, titleFont, fontSize, bitmap.Width, bitmap.Height, rightAligned, isTop);
 
-        canvas.Save();
-        canvas.ClipRect(new SKRect(area.Left, area.Top, area.Right, area.Bottom));
         foreach (var line in layout.Lines)
             DrawOutlinedText(canvas, shaper, line.Text, line.Left, line.Top, false, titleFont, fill, outline);
 
@@ -130,11 +118,10 @@ internal static class WallpaperAnnotator
             var firstTop = layout.Lines[0].Top;
             var lastTop = layout.Lines[^1].Top;
             var timestampY = isTop ? lastTop + fontSize + 4 : firstTop - fontSize;
-            var x = rightAligned ? area.Right - SideMargin : area.Left + SideMargin;
+            var x = rightAligned ? bitmap.Width - SideMargin : SideMargin;
             DrawOutlinedText(canvas, shaper, request.Timestamp, x, timestampY, rightAligned, timestampFont, fill, outline);
         }
 
-        canvas.Restore();
         canvas.Flush();
     }
 
@@ -144,28 +131,28 @@ internal static class WallpaperAnnotator
 
     internal sealed record TitleLayout(IReadOnlyList<TitleLine> Lines, float LineAdvance);
 
-    // Lays the title out for area: wraps it into lines no wider than the width between the
-    // side margins, then places each line. Exposed so tests can check the layout without
-    // reading pixels.
-    internal static TitleLayout Layout(string familyName, int fontSize, string title, SKRectI area, AnnotationPosition position)
+    // Lays the title out on a picture of width x height: wraps it into lines no wider than the
+    // width between the side margins, then places each line. Exposed so tests can check the
+    // layout without reading pixels.
+    internal static TitleLayout Layout(string familyName, int fontSize, string title, int width, int height, AnnotationPosition position)
     {
         using var typeface = BundledFonts.ResolveTypeface(familyName);
         using var shaper = new SKShaper(typeface);
         using var font = new SKFont(typeface, fontSize);
         var rightAligned = position is AnnotationPosition.TopRight or AnnotationPosition.BottomRight;
         var isTop = position is AnnotationPosition.TopLeft or AnnotationPosition.TopRight;
-        return Layout(shaper, title, font, fontSize, area, rightAligned, isTop);
+        return Layout(shaper, title, font, fontSize, width, height, rightAligned, isTop);
     }
 
-    private static TitleLayout Layout(SKShaper shaper, string title, SKFont font, int fontSize, SKRectI area, bool rightAligned, bool isTop)
+    private static TitleLayout Layout(SKShaper shaper, string title, SKFont font, int fontSize, int pictureWidth, int pictureHeight, bool rightAligned, bool isTop)
     {
-        var maxWidth = Math.Max(1f, area.Width - 2 * SideMargin);
+        var maxWidth = Math.Max(1f, pictureWidth - 2 * SideMargin);
         var texts = WrapLines(shaper, title, font, maxWidth);
         // Lines are spaced by the font's own recommended line spacing, never closer than the size
         var lineAdvance = Math.Max(fontSize, font.Spacing);
         // y is the top edge of the first line; a bottom title's last line keeps the bottom margin
-        var lastLineTop = area.Bottom - fontSize - BottomMargin;
-        var firstTop = isTop ? area.Top + TopMargin : lastLineTop - (texts.Count - 1) * lineAdvance;
+        var lastLineTop = pictureHeight - fontSize - BottomMargin;
+        var firstTop = isTop ? TopMargin : lastLineTop - (texts.Count - 1) * lineAdvance;
 
         var lines = new List<TitleLine>(texts.Count);
         for (var i = 0; i < texts.Count; i++)
@@ -174,7 +161,7 @@ internal static class WallpaperAnnotator
             var width = ShapedWidth(shaper, text, font);
             // A line too wide to fit (one long word) starts at the left margin and is cut at the edge
             var fits = width <= maxWidth;
-            var left = rightAligned && fits ? area.Right - SideMargin - width : area.Left + SideMargin;
+            var left = rightAligned && fits ? pictureWidth - SideMargin - width : SideMargin;
             lines.Add(new TitleLine(text, left, firstTop + i * lineAdvance, width));
         }
         return new TitleLayout(lines, lineAdvance);

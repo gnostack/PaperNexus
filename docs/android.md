@@ -29,8 +29,8 @@ project and its logic and view models in the shared project.
 | `Platform/AndroidAppInfo.cs` | `IAppInfo` for the phone: the version label is "v" and the major number of the package's version name. No workflow sets the version yet, so every build is 1.0.0 and shows "v1" (step 7 sets it). |
 | `Platform/AndroidShellOpener.cs` | `IShellOpener` for the phone: opens a web address in the browser (Report a bug, the project link). Measured: the emulator's browser (WebView Browser Tester) opened the project page. |
 | `Platform/AndroidFactoryReset.cs` | `IFactoryReset` for the phone (see "Factory Reset"). |
-| `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words), with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
-| `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: a new `settings.json` (or one without the field) has the title off; the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. A file that already says the title is on keeps it on. |
+| `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words) and Hexspeak (no title colour box), three eggs, with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
+| `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: it draws no title on the wallpaper (see "No title on the phone's wallpaper"); the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. |
 | `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
@@ -290,10 +290,9 @@ both screens (decision 3). It returns the new wallpaper's id, or 0 when Android 
 it.
 
 Android does not fit a picture the way the app needs, so the app fits it itself.
-`GetCanvas()` returns a `WallpaperCanvas` for the screen in its upright orientation, and the
-shared `WallpaperRenderer` draws the picture onto it for the fill style and then draws the
-title inside its title area. Measured on the Android 16 emulator (1080x2400), issue #203
-step 3:
+`GetCanvas()` returns a `WallpaperCanvas` for the screen in its upright orientation (the screen
+size times the wallpaper zoom), and the shared `WallpaperRenderer` draws the picture onto it for
+the fill style. Measured on the Android 16 emulator (1080x2400), issue #203 step 3:
 
 - A wide picture (3840x2160) given as is was scaled to the launcher's desired size
   (`getDesiredMinimumWidth/Height`, 4800x2400) and its left part shown.
@@ -303,10 +302,6 @@ step 3:
   reads it by name and takes 1.0 when it cannot.
 - A picture 1.1 times the screen size (1188x2640) shows at one picture pixel per screen pixel,
   centred. That is the canvas.
-- The status bar is 136 px and the navigation bar 126 px. The title area leaves them out, so
-  the title is never cut off or covered: on this phone (54, 256) to (1134, 2394) of the canvas.
-- At the bottom positions the launcher's own dock icons can still sit over the title on the
-  home screen; the lock screen shows it whole.
 - Fill styles are drawn on the whole canvas, as a monitor shows them; at rest the screen shows
   its middle 91%, so Fit's sides lose about 4.5%. Span draws as Fill.
 - `dumpsys wallpaper` after a change shows `System wallpaper state: User 0: id=N: mWhich=3`
@@ -331,21 +326,20 @@ picture without downloading, as on first open with pictures.
 `ActivityManager.clearApplicationUserData` was not used: it erases the pictures as well, and its
 documentation does not say the app is started again.
 
-## Title size
+## No title on the phone's wallpaper
 
-The title's size is in density-independent units on the phone (`WallpaperCanvas.TextScale` is the
-screen's density, 2.625 on the 420 dpi emulator), so size 18 is drawn 47 pixels tall. Measured on
-home and lock screenshots after a Next: the title's capitals are 33 px tall, the status-bar clock's
-digits 27 px. The margins stay in pixels; the outline and the debug timestamp follow the size.
+The phone never draws the picture's title on the wallpaper, whatever `settings.json` says
+(`IDeviceSettingRules.DrawsWallpaperTitle` is false; `SwitchWallpaper` builds no title then). The
+owner decided it in step 4 after the measurement: the launcher's search bar and its dock and app
+icons cover a title on the home screen, and the lock screen's clock and unlock icon cover it there,
+at every position and size tried, and the wallpaper cannot know where they are.
 
-A title wider than the title area less its two side margins wraps at spaces onto as many lines as it
-needs (`WallpaperAnnotator`, shared with the desktop); the right positions align each line to the
-right margin, and the bottom positions grow upward so the last line keeps its bottom margin. A single
-word wider than the whole width gets its own line from the left margin and is cut at the title area's
-edge; nothing is drawn outside the title area. At size 18 the longest downloaded title takes 4 lines,
-at size 30 six. Measured on the emulator: the launcher's search bar covers lines of a top title on the
-home screen, the dock and app icons cover a bottom title, and on the lock screen the unlock icon (and
-at size 30 the clock) sit over a bottom title. The wallpaper cannot know where those are.
+So the phone's Settings tab (step 4, its last part) has no "Title on Wallpaper" group: no
+`AnnotationSettingsViewModel` on the phone and no font picker page. Its Secrets list leaves out
+Hexspeak, which is typed into the title's colour box ("N / 3 found").
+
+A fresh phone `settings.json` still holds `"AnnotateWallpaper": true`, the model's default; it is
+harmless, because only the switcher reads it and the phone's switcher draws no title.
 
 ## Prerequisites
 

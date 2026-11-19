@@ -2,9 +2,9 @@ using PaperNexus.Core;
 
 namespace PaperNexus;
 
-// The phone's answers for the settings that differ between devices (issue #203, step 4): the
-// title is off for a new settings file, and the fill styles are the five a single screen can
-// show. Span stretches one picture across several monitors, which a phone does not have; a
+// The phone's answers for the settings that differ between devices (issue #203, step 4): it
+// never draws the title on the wallpaper (the launcher and the lock screen cover it, and the
+// wallpaper cannot know where), and the fill styles are the five a single screen can show. Span stretches one picture across several monitors, which a phone does not have; a
 // stored Span shows as Fill and draws as Fill.
 internal sealed class AndroidSettingRules : IDeviceSettingRules, IAddSingleton<IDeviceSettingRules>
 {
@@ -17,7 +17,7 @@ internal sealed class AndroidSettingRules : IDeviceSettingRules, IAddSingleton<I
         WallpaperFillStyle.Center,
     ];
 
-    public bool AnnotateWallpaperByDefault => false;
+    public bool DrawsWallpaperTitle => false;
 
     public IReadOnlyList<WallpaperFillStyle> FillStyles => PhoneFillStyles;
 }

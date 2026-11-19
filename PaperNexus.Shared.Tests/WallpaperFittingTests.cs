@@ -25,30 +25,29 @@ public class WallpaperFittingTests : IDisposable
 
     // --- Canvas for a screen ---
 
-    // The emulator measured in step 3: a 1080x2400 screen, wallpaper zoom 1.1, a 136 px status
-    // bar and a 126 px navigation bar. The canvas is 1.1 times the screen and the title area is
-    // the screen-sized middle without the bars.
+    // The emulator measured in step 3: a 1080x2400 screen and wallpaper zoom 1.1. The canvas
+    // is 1.1 times the screen.
     [Fact]
-    public void ForScreen_EmulatorPhone_IsTheZoomedScreenWithTheBarsLeftOut()
+    public void ForScreen_EmulatorPhone_IsTheZoomedScreen()
     {
-        var canvas = WallpaperCanvas.ForScreen(1080, 2400, 1.1f, 136, 126);
+        var canvas = WallpaperCanvas.ForScreen(1080, 2400, 1.1f);
 
-        Assert.Equal(new WallpaperCanvas(1188, 2640, 54, 256, 1134, 2394), canvas);
+        Assert.Equal(new WallpaperCanvas(1188, 2640), canvas);
     }
 
     [Fact]
     public void ForScreen_NoZoom_IsTheScreenItself()
     {
-        var canvas = WallpaperCanvas.ForScreen(1080, 2400, 1f, 0, 0);
+        var canvas = WallpaperCanvas.ForScreen(1080, 2400, 1f);
 
-        Assert.Equal(new WallpaperCanvas(1080, 2400, 0, 0, 1080, 2400), canvas);
+        Assert.Equal(new WallpaperCanvas(1080, 2400), canvas);
     }
 
     // A value below 1 would leave part of the screen without picture; it is treated as none.
     [Fact]
     public void ForScreen_ZoomBelowOne_IsTreatedAsNone()
     {
-        var canvas = WallpaperCanvas.ForScreen(1080, 2400, 0.5f, 0, 0);
+        var canvas = WallpaperCanvas.ForScreen(1080, 2400, 0.5f);
 
         Assert.Equal(1080, canvas.Width);
         Assert.Equal(2400, canvas.Height);
@@ -126,82 +125,7 @@ public class WallpaperFittingTests : IDisposable
         Assert.Equal(SKColors.Black, centred.GetPixel(75, 50));
     }
 
-    // --- Rendering for a canvas ---
-
-    // With a canvas the processed wallpaper has the canvas's size, and every pixel of the title
-    // lies inside the title area: below the status bar, above the navigation bar, and inside the
-    // part the zoomed screen shows.
-    [Theory]
-    [InlineData(AnnotationPosition.TopLeft)]
-    [InlineData(AnnotationPosition.TopRight)]
-    [InlineData(AnnotationPosition.BottomLeft)]
-    [InlineData(AnnotationPosition.BottomRight)]
-    public void Render_WithACanvas_DrawsTheTitleInsideTheTitleArea(AnnotationPosition position)
-    {
-        var background = new SKColor(40, 60, 80);
-        var picturePath = Path.Combine(_directory, "wide.png");
-        TestHelpers.CreateTestPng(picturePath, 1920, 1080, background.Red, background.Green, background.Blue);
-        var canvas = WallpaperCanvas.ForScreen(540, 1200, 1.1f, 68, 63);
-        var request = new AnnotationRequest("A Title", null, BundledFonts.DefaultFontFamily, 18, "#F5F5F5", position, OutlineEnabled: true);
-
-        using var encoded = WallpaperRenderer.Render(picturePath, request, canvas, WallpaperFillStyle.Fill);
-        using var rendered = SKBitmap.Decode(encoded.Data.ToArray());
-
-        Assert.Equal(canvas.Width, rendered.Width);
-        Assert.Equal(canvas.Height, rendered.Height);
-        var changed = ChangedBounds(rendered, background);
-        Assert.NotNull(changed);
-        var bounds = changed.Value;
-        Assert.True(bounds.Left >= canvas.TitleLeft && bounds.Right < canvas.TitleRight, $"title spans x {bounds.Left}..{bounds.Right}");
-        Assert.True(bounds.Top >= canvas.TitleTop && bounds.Bottom < canvas.TitleBottom, $"title spans y {bounds.Top}..{bounds.Bottom}");
-    }
-
-    // The phone's canvas carries the screen's density: the title's size is in density-
-    // independent units, so it is drawn TextScale times as tall as the same size on a canvas
-    // of scale 1, and still inside the title area.
-    [Fact]
-    public void Render_WithATextScale_DrawsTheTitleThatManyTimesTaller()
-    {
-        var background = new SKColor(40, 60, 80);
-        var picturePath = Path.Combine(_directory, "scaled.png");
-        TestHelpers.CreateTestPng(picturePath, 1920, 1080, background.Red, background.Green, background.Blue);
-        var plain = WallpaperCanvas.ForScreen(1080, 2400, 1.1f, 136, 126);
-        var dense = WallpaperCanvas.ForScreen(1080, 2400, 1.1f, 136, 126, 2.625f);
-        var request = new AnnotationRequest("Hello", null, BundledFonts.DefaultFontFamily, 18, "#F5F5F5", AnnotationPosition.TopLeft, OutlineEnabled: false);
-
-        using var plainEncoded = WallpaperRenderer.Render(picturePath, request, plain, WallpaperFillStyle.Fill);
-        using var denseEncoded = WallpaperRenderer.Render(picturePath, request, dense, WallpaperFillStyle.Fill);
-        using var plainRendered = SKBitmap.Decode(plainEncoded.Data.ToArray());
-        using var denseRendered = SKBitmap.Decode(denseEncoded.Data.ToArray());
-
-        var plainBounds = ChangedBounds(plainRendered, background)!.Value;
-        var denseBounds = ChangedBounds(denseRendered, background)!.Value;
-        var ratio = (double)denseBounds.Height / plainBounds.Height;
-        Assert.InRange(ratio, 2.3, 2.9);
-        Assert.True(denseBounds.Top >= dense.TitleTop && denseBounds.Bottom < dense.TitleBottom);
-        Assert.True(denseBounds.Left >= dense.TitleLeft && denseBounds.Right < dense.TitleRight);
-    }
-
-    [Theory]
-    [InlineData(18, 2.625f, 47)]
-    [InlineData(18, 1f, 18)]
-    [InlineData(8, 2.625f, 21)]
-    [InlineData(1, 0.2f, 1)]
-    public void ScaledFor_IsTheSizeTimesTheScaleInWholePixels(int size, float scale, int pixels)
-    {
-        var canvas = new WallpaperCanvas(100, 100, 0, 0, 100, 100, scale);
-        var request = new AnnotationRequest("T", null, BundledFonts.DefaultFontFamily, size, "#F5F5F5", AnnotationPosition.TopLeft, OutlineEnabled: true);
-
-        Assert.Equal(pixels, WallpaperRenderer.ScaledFor(request, canvas).FontSize);
-    }
-
-    [Fact]
-    public void ForScreen_CarriesTheTextScale_AndANonPositiveOneIsNone()
-    {
-        Assert.Equal(2.625f, WallpaperCanvas.ForScreen(1080, 2400, 1.1f, 0, 0, 2.625f).TextScale);
-        Assert.Equal(1f, WallpaperCanvas.ForScreen(1080, 2400, 1.1f, 0, 0).TextScale);
-        Assert.Equal(1f, WallpaperCanvas.ForScreen(1080, 2400, 1.1f, 0, 0, 0f).TextScale);
-    }
+    // --- Rendering ---
 
     // Without a canvas (the desktop) the picture keeps its size and the title sits against its
     // own edges, exactly as before canvases existed.

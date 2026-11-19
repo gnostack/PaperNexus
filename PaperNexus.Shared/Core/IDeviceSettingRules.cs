@@ -5,9 +5,11 @@ namespace PaperNexus.Core;
 // ask which device they run on.
 public interface IDeviceSettingRules
 {
-    // Whether a new settings file, or one that lacks the field, shows the title on the
-    // wallpaper. The desktop shows it; the phone does not.
-    public bool AnnotateWallpaperByDefault { get; }
+    // Whether this device draws the picture's title on the wallpaper at all; when it does not,
+    // no title is drawn, whatever the settings say. The desktop does; the phone does not, because
+    // its launcher's search bar and dock icons and its lock screen's clock and unlock icon cover
+    // a title, and the wallpaper cannot know where they are.
+    public bool DrawsWallpaperTitle { get; }
 
     // The fill styles this device can draw, in the order the picker lists them. A stored
     // style that is not here shows as the first one.

@@ -2,9 +2,10 @@ using PaperNexus.Core;
 
 namespace PaperNexus;
 
-// The easter eggs the phone's Secrets list shows (issue #203, step 4). Fleeting Words is left
-// out: it is a line on the desktop's startup screen, and the phone has no startup screen with
-// words. Two hints name where and how on the phone: the Konami code is swiped on the Settings
+// The easter eggs the phone's Secrets list shows (issue #203, step 4): three of the five.
+// Fleeting Words is left out because it is a line on the desktop's startup screen, and the phone
+// has no startup screen with words; Hexspeak because it is typed into the title's colour box,
+// and the phone draws no title, so it has no such box. Two hints name where and how on the phone: the Konami code is swiped on the Settings
 // tab, and the version is in the About section, not a corner. The ids are the catalog's, so a
 // discovery counts on both devices.
 internal sealed class AndroidDeviceEasterEggs : IDeviceEasterEggs, IAddSingleton<IDeviceEasterEggs>
@@ -15,7 +16,7 @@ internal sealed class AndroidDeviceEasterEggs : IDeviceEasterEggs, IAddSingleton
     public AndroidDeviceEasterEggs()
     {
         Eggs = EasterEggCatalog.All
-            .Where(egg => egg.Id != EasterEggCatalog.Splash)
+            .Where(egg => egg.Id != EasterEggCatalog.Splash && egg.Id != EasterEggCatalog.Colors)
             .Select(egg => egg.Id switch
             {
                 EasterEggCatalog.Konami => egg with { Hint = KonamiHint },

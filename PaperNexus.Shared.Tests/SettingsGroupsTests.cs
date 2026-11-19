@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using PaperNexus.Core;
 using PaperNexus.Core.Imaging;
 using PaperNexus.ViewModels;
@@ -742,56 +741,12 @@ public class SettingsGroupsTests : IDisposable
         Assert.Equal(1.0, secrets.FoundFraction);
     }
 
-    // --- Device defaults through the store ---
-
-    [Fact]
-    public async Task Store_ANewPhoneFileHasTheTitleOff()
-    {
-        var phoneStore = TestHelpers.CreateSettingsStore(TestSettingRules.Phone);
-        try
-        {
-            Assert.False((await phoneStore.LoadAsync()).AnnotateWallpaper);
-            await phoneStore.UpdateAsync(latest => latest.CurrentWallpaperPath = "/a.png");
-            var written = JObject.Parse(await File.ReadAllTextAsync(phoneStore.FilePath));
-            Assert.False((bool)written["AnnotateWallpaper"]!);
-        }
-        finally
-        {
-            TestHelpers.DeleteSettingsStore(phoneStore);
-        }
-    }
-
-    [Fact]
-    public async Task Store_APhoneFileWithoutTheFieldHasTheTitleOff_AndAStoredOnStaysOn()
-    {
-        var phoneStore = TestHelpers.CreateSettingsStore(TestSettingRules.Phone);
-        try
-        {
-            await File.WriteAllTextAsync(phoneStore.FilePath, "{ \"DebugMode\": false }");
-            Assert.False((await phoneStore.LoadAsync()).AnnotateWallpaper);
-
-            await File.WriteAllTextAsync(phoneStore.FilePath, "{ \"AnnotateWallpaper\": true }");
-            Assert.True((await phoneStore.LoadAsync()).AnnotateWallpaper);
-        }
-        finally
-        {
-            TestHelpers.DeleteSettingsStore(phoneStore);
-        }
-    }
-
-    [Fact]
-    public async Task Store_TheDesktopsDefaultIsStillTheTitleOn()
-    {
-        Assert.True((await _store.LoadAsync()).AnnotateWallpaper);
-        await File.WriteAllTextAsync(_store.FilePath, "{ \"DebugMode\": false }");
-        Assert.True((await _store.LoadAsync()).AnnotateWallpaper);
-    }
+    // --- The settings store ---
 
     [Fact]
     public async Task Store_ReadingOverDefaultsKeepsListsAsStored()
     {
-        // The file is read over a new instance; its lists replace the defaults rather than
-        // adding to them.
+        // The file's lists are the lists, not added to the defaults.
         await File.WriteAllTextAsync(_store.FilePath,
             "{ \"Sources\": [ { \"Name\": \"Only\", \"Url\": \"https://only.test\" } ], \"FavoriteWallpapers\": [ \"/f.png\" ] }");
 

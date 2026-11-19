@@ -27,7 +27,6 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
 
     private readonly string _directory;
     private readonly string _defaultDownloadFolder;
-    private readonly IDeviceSettingRules _deviceRules;
 
     // Held from the read to the write of every update. The store is a container singleton,
     // so every writer in the process shares this one lock.
@@ -36,20 +35,18 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
     // The production store: settings live in the folder the host names, which on the
     // desktop is the default install directory regardless of where the executable itself
     // was installed. The host also names the download folder used when the settings hold
-    // none, and the defaults that differ between devices, so the settings model itself never
-    // has to know which device it is on.
-    public SettingsStore(IAppFolders appFolders, IDeviceSettingRules deviceRules)
-        : this(appFolders.ThrowIfNull().SettingsFolder, appFolders.DefaultDownloadFolder, deviceRules)
+    // none, so the settings model itself never has to know which device it is on.
+    public SettingsStore(IAppFolders appFolders)
+        : this(appFolders.ThrowIfNull().SettingsFolder, appFolders.DefaultDownloadFolder)
     {
     }
 
     // Internal so the container only ever sees the public constructor; tests use this to
     // root a store in their own temporary directory.
-    internal SettingsStore(string directory, string defaultDownloadFolder, IDeviceSettingRules deviceRules)
+    internal SettingsStore(string directory, string defaultDownloadFolder)
     {
         _directory = directory.ThrowIfNull();
         _defaultDownloadFolder = defaultDownloadFolder.ThrowIfNull();
-        _deviceRules = deviceRules.ThrowIfNull();
         FilePath = Path.Combine(directory, FileName);
     }
 
@@ -58,9 +55,6 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
     // Reads settings.json and deserialises it; fills in defaults for any missing or
     // invalid fields introduced by schema migrations. Returns a fresh default instance
     // if the file does not yet exist or is corrupted.
-    //
-    // The file is read over a new instance carrying this device's defaults, so a field the
-    // file does not hold has the device's default rather than the model's.
     public async Task<WallpaperNexusSettings> LoadAsync()
     {
         try
@@ -68,8 +62,8 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
             if (File.Exists(FilePath))
             {
                 var json = await File.ReadAllTextAsync(FilePath);
-                var settings = NewSettings();
-                JsonConvert.PopulateObject(json, settings, WallpaperNexusSettings.JsonFormat);
+                var settings = JsonConvert.DeserializeObject<WallpaperNexusSettings>(json, WallpaperNexusSettings.JsonFormat)
+                    ?? new WallpaperNexusSettings();
                 ApplyDefaults(settings);
                 return settings;
             }
@@ -78,18 +72,9 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
         {
             Debug.WriteLine($"Failed to load settings: {ex.Message}");
         }
-        var fresh = NewSettings();
+        var fresh = new WallpaperNexusSettings();
         ApplyDefaults(fresh);
         return fresh;
-    }
-
-    // The settings a device starts with: the model's defaults, with the ones that differ
-    // between devices taken from the host.
-    private WallpaperNexusSettings NewSettings()
-    {
-        var settings = new WallpaperNexusSettings();
-        settings.AnnotateWallpaper = _deviceRules.AnnotateWallpaperByDefault;
-        return settings;
     }
 
     // Guards against settings files written by older versions that omitted certain fields,

@@ -19,9 +19,9 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | `IAppInfo` | `WallpaperConfigViewModel`, `AboutViewModel`, `DebugSettingsViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | `AndroidAppInfo`: "v" and the major number of the package's version name (`AppVersionLabel`); never started in debug mode |
 | `IShellOpener` | `WallpaperConfigViewModel`, `AboutViewModel`, `DesktopSettingsViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | `AndroidShellOpener`: a web address opens in the browser; no folders |
 | `IStartupRegistration` (optional) | `DesktopSettingsViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
-| `IDeviceSettingRules` | `SettingsStore` (the title-on default), `SlideshowSettingsViewModel` (the fill styles) | `DesktopSettingRules`: title on, all six fill styles | `AndroidSettingRules`: title off, five fill styles (no Span) |
+| `IDeviceSettingRules` | `SwitchWallpaper` (whether to draw a title), `SlideshowSettingsViewModel` (the fill styles) | `DesktopSettingRules`: draws the title, all six fill styles | `AndroidSettingRules`: never draws a title, five fill styles (no Span) |
 | `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments except `--startup`, so the new copy shows its window | `AndroidFactoryReset`: deletes the same files (`AppDataReset`), keeps the pictures, restarts the launcher task in a new process |
-| `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | `AndroidDeviceEasterEggs`: no Fleeting Words; the Konami and version hints worded for the phone |
+| `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | `AndroidDeviceEasterEggs`: three eggs (no Fleeting Words, no Hexspeak); the Konami and version hints worded for the phone |
 | `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
 | `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |
 
@@ -32,8 +32,8 @@ service as unavailable.
 `IWallpaperApplier.GetCanvas()` says who fits the picture to the screen. The desktop answers
 `null`: the switcher writes the picture at its own size with the title against its edges, and
 the operating system fits it from the fill style, as it always has. The phone answers with a
-`WallpaperCanvas`, and the switcher draws the picture onto it for the fill style before
-placing the title (see `docs/android.md`). A wallpaper the device refuses (`SetWallpaper`
+`WallpaperCanvas`, and the switcher draws the picture onto it for the fill style; the phone draws
+no title (see `docs/android.md`). A wallpaper the device refuses (`SetWallpaper`
 returns false) is never recorded as current, on either device.
 
 ## The platform layer

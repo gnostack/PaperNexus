@@ -30,9 +30,7 @@ internal sealed class AndroidWallpaperApplier : IWallpaperApplier, IAddSingleton
     }
 
     // The picture for this phone's screen in its natural (upright) orientation: the screen
-    // size times the system's wallpaper zoom, with the title kept clear of the status bar at
-    // the top and the navigation bar at the bottom, and the title's size in density-independent
-    // units (the screen's density, 2.625 on the 420 dpi emulator).
+    // size times the system's wallpaper zoom.
     public WallpaperCanvas? GetCanvas()
     {
         var displayManager = (DisplayManager)_context.GetSystemService(Context.DisplayService)!;
@@ -42,23 +40,15 @@ internal sealed class AndroidWallpaperApplier : IWallpaperApplier, IAddSingleton
         var windowContext = _context.CreateWindowContext(display, (int)WindowManagerTypes.ApplicationOverlay, null);
         var windowManager = windowContext.GetSystemService(Context.WindowService)!.JavaCast<IWindowManager>()!;
         var metrics = windowManager.MaximumWindowMetrics;
-        var bars = metrics.WindowInsets.GetInsetsIgnoringVisibility(WindowInsets.Type.SystemBars());
 
         var width = metrics.Bounds.Width();
         var height = metrics.Bounds.Height();
-        var topBar = bars.Top;
-        var bottomBar = bars.Bottom;
+        // Turned sideways, the screen's size is read sideways; the wallpaper is the upright one
         var turned = display.Rotation is SurfaceOrientation.Rotation90 or SurfaceOrientation.Rotation270;
         if (turned)
-        {
-            // Turned sideways the navigation bar can sit at a side; the wallpaper is drawn for
-            // the upright screen, where it is at the bottom.
             (width, height) = (height, width);
-            bottomBar = Math.Max(bars.Bottom, Math.Max(bars.Left, bars.Right));
-        }
 
-        var density = windowContext.Resources!.DisplayMetrics!.Density;
-        var canvas = WallpaperCanvas.ForScreen(width, height, ReadWallpaperZoom(), topBar, bottomBar, density);
+        var canvas = WallpaperCanvas.ForScreen(width, height, ReadWallpaperZoom());
         return canvas;
     }
 
