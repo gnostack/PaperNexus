@@ -1,0 +1,64 @@
+<!-- A list to choose one value from, over the page: the page is dimmed and a box in the middle
+     shows the picker's title, one row per choice with its explanation, the chosen one marked,
+     and Cancel. A tap on a row chooses it and closes the box; Cancel or a tap on the dimmed page
+     closes it without a change. The phone's way of picking from a short list (Android's own
+     settings use the same dialog). It shows the Settings tab's open picker
+     (SettingsViewModel.Picker), so a recreated screen shows it again. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PaperNexus.ViewModels"
+             x:Class="PaperNexus.Views.ChoiceDialog"
+             x:DataType="vm:SettingsPicker"
+             IsVisible="False">
+
+    <UserControl.Styles>
+        <!-- A choice: full width, at least 56 dp tall, its label and explanation beside the mark -->
+        <Style Selector="RadioButton.choice">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="MinHeight" Value="56"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <!-- The label's first line beside the mark, with or without an explanation under it -->
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+        <Border x:Name="Backdrop" Background="#99000000"/>
+        <Border Background="#2B2B2B"
+                BorderBrush="#444" BorderThickness="1"
+                CornerRadius="8"
+                Padding="20,20,20,12"
+                Margin="24,48"
+                MaxWidth="400"
+                HorizontalAlignment="Stretch" VerticalAlignment="Center">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Margin="4,0,4,12"/>
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="Choices" ItemsSource="{Binding Choices}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PickerChoice">
+                                <RadioButton Classes="choice"
+                                             GroupName="PickerChoices"
+                                             IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                             Click="OnChoiceClicked"
+                                             ToolTip.Tip="{Binding Label}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Label}" FontSize="16"/>
+                                        <TextBlock Text="{Binding Description}" FontSize="13" Opacity="0.6"
+                                                   TextWrapping="Wrap" IsVisible="{Binding HasDescription}"/>
+                                    </StackPanel>
+                                </RadioButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <Button Grid.Row="2" x:Name="CancelButton" Content="Cancel"
+                        ToolTip.Tip="Close without changing"
+                        HorizontalAlignment="Right" Margin="0,12,0,0"
+                        MinHeight="48" MinWidth="88"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Panel>
+</UserControl>

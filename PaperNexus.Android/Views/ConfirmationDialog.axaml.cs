@@ -23,18 +23,22 @@ public partial class ConfirmationDialog : UserControl
     }
 
     // Shows the question and waits for the answer. A destructive confirm is drawn in the
-    // delete color. Asking again while open answers the earlier question with false.
+    // delete color; a title, when given, is a line above the question. Asking again while open
+    // answers the earlier question with false.
     public Task<bool> ShowAsync(
         string message,
         string confirmText,
         string confirmToolTip,
         string cancelText,
         string cancelToolTip,
-        bool isDestructive)
+        bool isDestructive,
+        string? title = null)
     {
         _answer?.TrySetResult(false);
         _answer = new TaskCompletionSource<bool>();
 
+        TitleText.Text = title;
+        TitleText.IsVisible = !string.IsNullOrEmpty(title);
         MessageText.Text = message;
         CancelButton.Content = cancelText;
         ToolTip.SetTip(CancelButton, cancelToolTip);
@@ -48,6 +52,9 @@ public partial class ConfirmationDialog : UserControl
         IsVisible = true;
         return _answer.Task;
     }
+
+    // Answers the open question with cancel (Android's back), as a tap on the dimmed page does.
+    public void Cancel() => Answer(false);
 
     private void OnBackdropPressed(object? sender, PointerPressedEventArgs e)
     {

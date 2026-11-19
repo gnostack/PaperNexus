@@ -47,7 +47,7 @@
 
         <ScrollViewer x:Name="Fields" Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="16,8,16,16" Spacing="16">
-                <StackPanel Spacing="6">
+                <StackPanel Classes="field" Spacing="6">
                     <TextBlock Classes="label" Text="Name"/>
                     <TextBox x:Name="NameBox"
                              Text="{Binding Name}"
@@ -55,7 +55,7 @@
                              TextInputOptions.ReturnKeyType="Next"/>
                 </StackPanel>
 
-                <StackPanel Spacing="6">
+                <StackPanel Classes="field" Spacing="6">
                     <TextBlock Classes="label" Text="URL"/>
                     <TextBox x:Name="UrlBox"
                              Text="{Binding Url}"
@@ -66,7 +66,7 @@
                              TextInputOptions.ReturnKeyType="Next"/>
                 </StackPanel>
 
-                <StackPanel Spacing="6">
+                <StackPanel Classes="field" Spacing="6">
                     <TextBlock Classes="label" Text="Image URL JPath"/>
                     <TextBox x:Name="ImageUrlJPathBox"
                              Text="{Binding ImageUrlJPath}"
@@ -77,7 +77,7 @@
                     <TextBlock Classes="hint" Text="JPath expression to locate image URLs in the JSON response"/>
                 </StackPanel>
 
-                <StackPanel Spacing="6">
+                <StackPanel Classes="field" Spacing="6">
                     <TextBlock Classes="label" Text="Title JPath"/>
                     <TextBox x:Name="TitleJPathBox"
                              Text="{Binding TitleJPath}"
@@ -88,7 +88,7 @@
                     <TextBlock Classes="hint" Text="JPath expression to locate image titles in the JSON response"/>
                 </StackPanel>
 
-                <StackPanel Spacing="6">
+                <StackPanel Classes="field" Spacing="6">
                     <TextBlock Classes="label" Text="Download Schedule (Cron)"/>
                     <TextBox x:Name="CronBox"
                              Text="{Binding CronExpression}"

@@ -259,6 +259,15 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         // Decoding, drawing and encoding a 4K image is CPU-bound and synchronous; run it on
         // the thread pool so a switch started from the settings window does not freeze the UI.
         using var encoded = await Task.Run(() => WallpaperRenderer.Render(next, annotation, canvas, fillStyle)).ConfigureAwait(false);
+        // Debug mode's detail: how the wallpaper was made, which no other entry says
+        _logger.LogDebug(
+            "Rendered {Path} as {Format} ({Bytes} bytes) for {Target}, fill style {FillStyle}, title {Title}.",
+            next,
+            encoded.Format,
+            encoded.Data.Length,
+            canvas is null ? "the picture's own size" : $"a {canvas.Width}x{canvas.Height} canvas",
+            fillStyle,
+            annotation is null ? "none" : $"'{annotation.Title}' at size {annotation.FontSize}");
 
         Directory.CreateDirectory(_dataFolder);
         var pngPath = Path.Combine(_dataFolder, CurrentPngName);

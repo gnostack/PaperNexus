@@ -1,0 +1,273 @@
+<!-- The Settings tab (issue #203, step 4): one scrolling list of the desktop's settings groups the
+     phone has - Download Settings, Slideshow Settings and General Settings - with the desktop's
+     labels, explanations and sentences. There is no "Title on Wallpaper" group: the phone draws no
+     title (docs/android.md). Every change saves by itself, half a second after the last one, and
+     the line over the bottom of the list confirms it. A list to choose from opens in a box over the
+     page (ChoiceDialog); debug mode's and Factory Reset's questions open in the question box. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PaperNexus.ViewModels"
+             xmlns:views="using:PaperNexus.Views"
+             x:Class="PaperNexus.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <UserControl.Styles>
+        <StyleInclude Source="/Views/StatusLineStyles.axaml"/>
+
+        <!-- A group: the Sources rows' card colors, full width, 8 dp apart -->
+        <Style Selector="Border.group">
+            <Setter Property="Background" Value="#222222"/>
+            <Setter Property="BorderBrush" Value="#383838"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Padding" Value="16,12"/>
+        </Style>
+        <Style Selector="TextBlock.heading">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Opacity" Value="0.85"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Opacity" Value="0.8"/>
+        </Style>
+        <!-- A label beside its switch reads as the switch's name, at the size of the text it sets -->
+        <Style Selector="TextBlock.switchLabel">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="Border.separator">
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Background" Value="#333"/>
+        </Style>
+
+        <!-- A picker: the chosen value and a chevron, a 48 dp touch target; a tap opens the list -->
+        <Style Selector="Button.picker">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="12,0"/>
+        </Style>
+        <Style Selector="Button.picker TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- A number: typed with the digit keyboard, or stepped with 48 dp buttons -->
+        <Style Selector="NumericUpDown">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="NumericUpDown /template/ TextBox">
+            <Setter Property="TextInputOptions.ContentType" Value="Number"/>
+            <Setter Property="TextInputOptions.ReturnKeyType" Value="Done"/>
+        </Style>
+        <Style Selector="NumericUpDown /template/ RepeatButton">
+            <Setter Property="MinWidth" Value="48"/>
+            <Setter Property="MinHeight" Value="48"/>
+        </Style>
+
+        <Style Selector="TextBox.cron">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+        <!-- Lifted above the on-screen keyboard while it is open (KeyboardLift) -->
+        <Grid x:Name="Layout">
+            <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="8,8,8,72">
+
+                    <!-- Download Settings -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="12">
+                            <TextBlock Classes="heading" Text="Download Settings"/>
+
+                            <StackPanel Classes="field" Spacing="6">
+                                <TextBlock Classes="label" Text="Saved Resolution"/>
+                                <Button Classes="picker"
+                                        Command="{Binding OpenResolutionPickerCommand}"
+                                        ToolTip.Tip="Choose the saved resolution">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding Download.SelectedResolution.Label}"/>
+                                        <PathIcon Grid.Column="1" Width="14" Height="14" Data="M7 10L12 15L17 10Z"/>
+                                    </Grid>
+                                </Button>
+                                <TextBlock Classes="hint" Text="{Binding Download.SelectedResolution.Description}"/>
+                            </StackPanel>
+
+                            <Border Classes="separator"/>
+
+                            <StackPanel Classes="field" Spacing="6">
+                                <TextBlock Classes="label" Text="Retention Period (days)"/>
+                                <NumericUpDown Value="{Binding Download.RetentionDays}"
+                                               Minimum="1" Maximum="3650" Increment="30"
+                                               FormatString="0"/>
+                                <TextBlock Classes="hint" Text="Wallpapers older than this are automatically deleted, favorites are always kept"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Slideshow Settings -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Classes="heading" Text="Slideshow Settings"/>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding Slideshow.Enabled}"
+                                              OnContent="Enabled" OffContent="Enabled"
+                                              VerticalAlignment="Center"
+                                              ToolTip.Tip="Turn the slideshow on or off"/>
+                            </Grid>
+
+                            <StackPanel Spacing="12" IsVisible="{Binding Slideshow.Enabled}">
+                                <StackPanel Classes="field" Spacing="6">
+                                    <TextBlock Classes="label" Text="Schedule"/>
+                                    <Button Classes="picker"
+                                            Command="{Binding OpenScheduleModePickerCommand}"
+                                            ToolTip.Tip="Choose how the schedule is set">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Slideshow.SelectedScheduleMode.Label}"/>
+                                            <PathIcon Grid.Column="1" Width="14" Height="14" Data="M7 10L12 15L17 10Z"/>
+                                        </Grid>
+                                    </Button>
+                                    <Grid ColumnDefinitions="*,8,140" IsVisible="{Binding Slideshow.IsIntervalMode}">
+                                        <NumericUpDown Value="{Binding Slideshow.Interval}"
+                                                       Minimum="{Binding Slideshow.IntervalMinimum}"
+                                                       Maximum="{Binding Slideshow.IntervalMaximum}"
+                                                       Increment="1" FormatString="0"/>
+                                        <Button Grid.Column="2" Classes="picker"
+                                                Command="{Binding OpenIntervalTypePickerCommand}"
+                                                ToolTip.Tip="Choose the interval's unit">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Text="{Binding Slideshow.SelectedIntervalType.Label}"/>
+                                                <PathIcon Grid.Column="1" Width="14" Height="14" Data="M7 10L12 15L17 10Z"/>
+                                            </Grid>
+                                        </Button>
+                                    </Grid>
+                                    <TextBox Classes="cron"
+                                             IsVisible="{Binding Slideshow.IsCronMode}"
+                                             Text="{Binding Slideshow.CronExpression}"
+                                             PlaceholderText="e.g. */30 * * * *"
+                                             TextInputOptions.ShowSuggestions="False"
+                                             TextInputOptions.AutoCapitalization="False"
+                                             TextInputOptions.ReturnKeyType="Done"/>
+                                    <TextBlock Classes="hint" Text="{Binding Slideshow.ScheduleDescription}"/>
+                                </StackPanel>
+
+                                <Border Classes="separator"/>
+
+                                <StackPanel Classes="field" Spacing="6">
+                                    <TextBlock Classes="label" Text="Order"/>
+                                    <Button Classes="picker"
+                                            Command="{Binding OpenOrderPickerCommand}"
+                                            ToolTip.Tip="Choose the order">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Slideshow.SelectedOrder.Label}"/>
+                                            <PathIcon Grid.Column="1" Width="14" Height="14" Data="M7 10L12 15L17 10Z"/>
+                                        </Grid>
+                                    </Button>
+                                    <TextBlock Classes="hint" Text="{Binding Slideshow.SelectedOrder.Description}"/>
+                                </StackPanel>
+
+                                <Border Classes="separator"/>
+
+                                <StackPanel Classes="field" Spacing="6">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="switchLabel" Text="Prioritize Favorites"/>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsChecked="{Binding Slideshow.FavoritePriorityEnabled}"
+                                                      OnContent="" OffContent="" MinWidth="0"
+                                                      VerticalAlignment="Center"
+                                                      ToolTip.Tip="Pick favorites more often during random selection"/>
+                                    </Grid>
+                                    <StackPanel Spacing="6" IsVisible="{Binding Slideshow.FavoritePriorityEnabled}">
+                                        <NumericUpDown Value="{Binding Slideshow.FavoritePriorityWeight}"
+                                                       Minimum="2" Maximum="20" Increment="1"
+                                                       FormatString="0"/>
+                                        <TextBlock Classes="hint" Text="Weight: extra selection weight for favorites in random mode"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Classes="separator"/>
+
+                                <StackPanel Classes="field" Spacing="6">
+                                    <TextBlock Classes="label" Text="Fill Style"/>
+                                    <Button Classes="picker"
+                                            Command="{Binding OpenFillStylePickerCommand}"
+                                            ToolTip.Tip="Choose the fill style">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Slideshow.SelectedFillStyle.Label}"/>
+                                            <PathIcon Grid.Column="1" Width="14" Height="14" Data="M7 10L12 15L17 10Z"/>
+                                        </Grid>
+                                    </Button>
+                                    <TextBlock Classes="hint" Text="{Binding Slideshow.SelectedFillStyle.Description}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- General Settings -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="12">
+                            <TextBlock Classes="heading" Text="General Settings"/>
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="switchLabel" Text="Debug mode"/>
+                                    <!-- Set from the debug group's value in code, as on the desktop -->
+                                    <ToggleSwitch x:Name="DebugModeToggle"
+                                                  Grid.Column="1"
+                                                  IsCheckedChanged="DebugMode_Changed"
+                                                  OnContent="" OffContent="" MinWidth="0"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip.Tip="Turn debug mode on or off"/>
+                                </Grid>
+                                <TextBlock Classes="hint" Text="Write more detail to the log"/>
+                            </StackPanel>
+                            <!-- Only while debug mode is on, in the delete color -->
+                            <Button Command="{Binding FactoryResetCommand}"
+                                    IsVisible="{Binding Debug.DebugMode}"
+                                    MinHeight="48"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    ToolTip.Tip="Delete all application data and restart">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <!-- The desktop's Factory Reset icon -->
+                                    <PathIcon Width="18" Height="18" Foreground="#E06C75"
+                                              Data="M12 5V1L7 6L12 11V7C15.31 7 18 9.69 18 13C18 16.31 15.31 19 12 19C8.69 19 6 16.31 6 13H4C4 17.42 7.58 21 12 21C16.42 21 20 17.42 20 13C20 8.58 16.42 5 12 5Z"/>
+                                    <TextBlock Text="Factory Reset" FontSize="16" Foreground="#E06C75" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- The confirmation line, over the bottom of the list, above the tabs -->
+            <Border Background="#1E1E1E" Padding="16,12"
+                    VerticalAlignment="Bottom"
+                    IsVisible="{Binding Status.IsShown}">
+                <TextBlock Classes="status"
+                           Classes.success="{Binding Status.IsSuccess}"
+                           Classes.error="{Binding Status.IsError}"
+                           Text="{Binding Status.Message}"/>
+            </Border>
+        </Grid>
+
+        <views:ChoiceDialog x:Name="ChoiceBox"/>
+        <views:ConfirmationDialog x:Name="Question"/>
+    </Panel>
+</UserControl>
