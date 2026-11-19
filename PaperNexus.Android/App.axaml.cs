@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.GestureRecognizers;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
+using PaperNexus.Core;
 using PaperNexus.Views;
 
 namespace PaperNexus;
@@ -40,7 +41,13 @@ public partial class App : Avalonia.Application
                 foreach (var swipe in navigation.GestureRecognizers.OfType<SwipeGestureRecognizer>())
                     swipe.IsEnabled = false;
                 var host = new PageNavigationHost { Page = navigation };
-                return host;
+                // The easter egg overlay sits over the pages, the tab bar included
+                var stage = new EasterEggStage(
+                    host,
+                    application.Services.GetRequiredService<EasterEggRequests>(),
+                    application.Services.GetRequiredService<EasterEggProgress>(),
+                    application.Services.GetRequiredService<EasterEggPlayback>());
+                return stage;
             };
         }
 

@@ -16,6 +16,11 @@ public class PictureListViewModelTests : IDisposable
     private readonly GatedSwitcher _switcher;
     private readonly WallpaperLibrary _library;
     private readonly AllowingApplier _applier = new();
+    private readonly EasterEggRequests _eggs = new();
+
+    // A favorite saved before the test, so the heart under test makes the second one, which is
+    // no milestone and shows the ordinary line.
+    private const string EarlierFavorite = "/elsewhere/earlier.png";
 
     public PictureListViewModelTests()
     {
@@ -47,7 +52,7 @@ public class PictureListViewModelTests : IDisposable
     {
         var library = store is null ? _library : TestHelpers.CreateLibrary(store, _switcher);
         return TestHelpers.WithoutSynchronizationContext(
-            () => new GalleryViewModel(library, _switcher, _applier, NullLogger<GalleryViewModel>.Instance));
+            () => new GalleryViewModel(library, _switcher, _applier, _eggs, NullLogger<GalleryViewModel>.Instance));
     }
 
     private FavoritesViewModel CreateFavorites()
@@ -101,6 +106,7 @@ public class PictureListViewModelTests : IDisposable
     public async Task Gallery_Heart_SavesAndConfirms_ThenRemoves()
     {
         var (a, _, _) = await ThreePicturesAsync();
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.Add(EarlierFavorite));
         using var gallery = CreateGallery();
         await gallery.LoadAsync();
         var card = gallery.Items.Single(i => i.FilePath == a);
@@ -110,12 +116,47 @@ public class PictureListViewModelTests : IDisposable
         Assert.Equal("Remove from favorites", card.FavoriteToolTip);
         Assert.Equal("Added to favorites.", gallery.Status.Message);
         Assert.True(gallery.Status.IsSuccess);
-        Assert.Equal([a], (await _store.LoadAsync()).FavoriteWallpapers);
+        Assert.Equal([EarlierFavorite, a], (await _store.LoadAsync()).FavoriteWallpapers);
 
         await card.ToggleFavoriteCommand.ExecuteAsync(null);
         Assert.False(card.IsFavorite);
         Assert.Equal("Removed from favorites.", gallery.Status.Message);
-        Assert.Empty((await _store.LoadAsync()).FavoriteWallpapers);
+        Assert.Equal([EarlierFavorite], (await _store.LoadAsync()).FavoriteWallpapers);
+    }
+
+    // The 1st, 10th, 25th, 50th and 100th favorite play their easter egg instead of the line,
+    // as on the desktop; the counts between show the line.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(9, true)]
+    [InlineData(24, true)]
+    [InlineData(49, true)]
+    [InlineData(99, true)]
+    [InlineData(100, false)]
+    public async Task Gallery_Heart_AMilestonePlaysItsEggInsteadOfTheLine(int earlier, bool isMilestone)
+    {
+        var (a, _, _) = await ThreePicturesAsync();
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.AddRange(Enumerable.Range(0, earlier).Select(i => $"/elsewhere/{i}.png")));
+        var requested = new List<EasterEggShow>();
+        _eggs.Requested += requested.Add;
+        using var gallery = CreateGallery();
+        await gallery.LoadAsync();
+
+        await gallery.Items.Single(i => i.FilePath == a).ToggleFavoriteCommand.ExecuteAsync(null);
+
+        if (isMilestone)
+        {
+            var show = Assert.Single(requested);
+            Assert.Equal(EasterEggCatalog.Favorites, show.Id);
+            Assert.Equal(EasterEggs.FavoriteMilestoneMessage(earlier + 1), show.Message);
+            Assert.False(gallery.Status.IsShown);
+        }
+        else
+        {
+            Assert.Empty(requested);
+            Assert.Equal("Added to favorites.", gallery.Status.Message);
+        }
     }
 
     [Fact]
@@ -261,7 +302,7 @@ public class PictureListViewModelTests : IDisposable
         var downloader = new EventDownloader();
         var library = new WallpaperLibrary(_store, _switcher, downloader);
         using var gallery = TestHelpers.WithoutSynchronizationContext(
-            () => new GalleryViewModel(library, _switcher, _applier, NullLogger<GalleryViewModel>.Instance));
+            () => new GalleryViewModel(library, _switcher, _applier, _eggs, NullLogger<GalleryViewModel>.Instance));
         await gallery.LoadAsync();
         var keptCard = gallery.Items.Single(i => i.FilePath == b);
 
@@ -338,6 +379,7 @@ public class PictureListViewModelTests : IDisposable
     public async Task ASecondViewAttaching_FindsTheCardsTheLineAndThePlace()
     {
         var (a, _, _) = await ThreePicturesAsync();
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.Add(EarlierFavorite));
         using var gallery = CreateGallery();
         await gallery.EnsureLoadedAsync();
         var cards = gallery.Items.ToList();

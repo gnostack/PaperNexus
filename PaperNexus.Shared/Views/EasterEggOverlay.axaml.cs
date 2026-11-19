@@ -33,6 +33,20 @@ public partial class EasterEggOverlay : UserControl
         PointerPressed += (_, _) => Dismiss();
     }
 
+    // Raised when a show ends: it finished, or was clicked, tapped or dismissed by its host.
+    public event Action? Dismissed;
+
+    // The line under the message saying how to skip it: the desktop's "CLICK OR PRESS ESC"
+    // unless the host words it for its own input.
+    public string DismissHint
+    {
+        get => DismissHintText.Text ?? string.Empty;
+        set => DismissHintText.Text = value;
+    }
+
+    // The frame the show is on, so a host that is replaced mid-show can continue it.
+    public int Frame => _frame;
+
     // Called once by the hosting window with the container's recorder.
     public void UseProgress(EasterEggProgress progress)
     {
@@ -40,13 +54,14 @@ public partial class EasterEggOverlay : UserControl
     }
 
     // Starts an egg. A show already playing is replaced rather than queued, so mashing a
-    // trigger restarts the animation instead of stacking overlays.
-    public void Play(EasterEggShow show)
+    // trigger restarts the animation instead of stacking overlays. startFrame continues a show
+    // a replaced host had begun (the phone's screen being recreated).
+    public void Play(EasterEggShow show, int startFrame = 0)
     {
         Stop();
 
         _show = show;
-        _frame = 0;
+        _frame = Math.Clamp(startFrame, 0, EasterEggAnimation.TotalFrames);
         MessageText.Text = show.Message;
         IsVisible = true;
 
@@ -163,12 +178,15 @@ public partial class EasterEggOverlay : UserControl
     // Esc is routed here from the hosting window, which owns the key handling.
     public void Dismiss()
     {
+        var wasShowing = _show is not null;
         Stop();
         IsVisible = false;
         SpriteCanvas.Children.Clear();
         ScanlineCanvas.Children.Clear();
         _pixels.Clear();
         _show = null;
+        if (wasShowing)
+            Dismissed?.Invoke();
     }
 
     private void Stop()

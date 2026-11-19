@@ -120,6 +120,7 @@ public partial class WallpaperConfigViewModel : ObservableObject
         _wallpaperSources.Changed += OnWallpaperSourcesChanged;
         foreach (var group in Groups)
             group.StatusReported += OnGroupStatusReported;
+        About.StatusReported += OnGroupStatusReported;
     }
 
     public DownloadSettingsViewModel Download { get; }

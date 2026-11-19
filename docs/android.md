@@ -12,7 +12,7 @@ project and its logic and view models in the shared project.
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
 | `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. |
 | `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
-| `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar and its swipe recognizer off (see "Dragging a switch"), inside a `PageNavigationHost`. |
+| `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar and its swipe recognizer off (see "Dragging a switch"), inside a `PageNavigationHost`, inside an `EasterEggStage` (see "Easter eggs"). |
 | `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"), receives the `SettingsViewModel` and reads the settings the first time the Settings tab is chosen (see "Settings"), and passes Android's back to the Settings tab. |
 | `Views/MainScreenState.cs` | The selected tab, kept for the process's lifetime. |
 | `Views/ListPlace.cs` | Records a list's scroll place in its view model (`IScrollPlace`) and returns to it when the list reaches the screen again. |
@@ -21,6 +21,8 @@ project and its logic and view models in the shared project.
 | `Views/SourcesView.axaml(.cs)`, `Views/SourceFormPage.axaml(.cs)` | The Sources tab and its full-screen add or edit form (see "Sources"). |
 | `Views/SettingsView.axaml(.cs)` | The Settings tab (see "Settings"). |
 | `Views/ChoiceDialog.axaml(.cs)` | The in-page list to choose one value from: the page dimmed, a box with a title, one row per choice (its label and the line that explains it) with the chosen one marked, and Cancel. A tap on the dimmed page cancels. The Settings tab's pickers use it. |
+| `Views/SecretsPage.axaml(.cs)` | The Secrets list as a full-screen modal page (see "Easter eggs"). |
+| `Views/EasterEggStage.cs`, `Views/EasterEggPlayback.cs` | The screen's root: the pages with the easter egg overlay over them, and the egg playing, kept for the process (see "Easter eggs"). |
 | `Views/KeyboardLift.cs` | Keeps the keyboard off what is being typed: lifts a page's content by the part of the keyboard above the navigation bar and scrolls the focused field (with its hint) into view. The Sources form and the Settings tab use it (see "Sources"). |
 | `Views/PictureListStyles.axaml` | The card, picture-button and ban-icon styles both picture lists and the Current tab share. |
 | `Views/StatusLineStyles.axaml` | The confirmation line's look (white, green, red) for every tab, which each tab's `StatusLine` drives. |
@@ -250,8 +252,8 @@ pointer, so this stays as it is.
 
 The Settings tab is the desktop window's settings groups, shared from `PaperNexus.Shared`
 (`DownloadSettingsViewModel`, `SlideshowSettingsViewModel`, `DebugSettingsViewModel`), in the
-other tabs' dark boxes. `SettingsViewModel` holds the three groups, the open picker and the
-confirmation line. Each group writes only its own fields, half a second after the last change,
+other tabs' dark boxes, then About. `SettingsViewModel` holds the three groups, `AboutViewModel`,
+`SecretsViewModel`, the open picker, whether Secrets is open, and the confirmation line. Each group writes only its own fields, half a second after the last change,
 through `ISettingsStore.UpdateAsync`; the tab never writes the desktop-only settings (start at
 login, minimize to tray, automatic updates, the folder) or the title fields.
 
@@ -276,6 +278,53 @@ login, minimize to tray, automatic updates, the folder) or the title fields.
 - **Debug entries** reach `no_backup/logs/app.log` from the moment debug mode is turned on; a
   wallpaper change then writes one with the rendered size, the canvas, the fill style and the
   title.
+- **About:** the heading with the version at its right ("v1", faint, as on the desktop), then
+  three 48 dp rows with the desktop's icons and tooltips: "Secrets", "Report a bug" and
+  "PaperNexus on GitHub". The two links open the browser through `IShellOpener`; a failure shows
+  "Could not open the browser: …" in red on the line (the desktop's status bar shows it too).
+  Report a bug opens GitHub's new-issue page, which asks a signed-out person to sign in first.
+
+## Easter eggs
+
+The phone has three of the five (`AndroidDeviceEasterEggs`): the Konami code swiped on the
+Settings tab, five taps on the version in About, and favorite milestones. No Hexspeak (no title
+colour box) and no Fleeting Words (no startup screen with words).
+
+- **The overlay** is the desktop's `EasterEggOverlay`, over the whole screen: `App` puts the
+  page host inside an `EasterEggStage`, a panel with the overlay above it, so an egg covers the
+  tab bar and the system bars' strips as the desktop's covers its window. Any view model asks
+  through `EasterEggRequests`. The line under the message reads "TAP OR PRESS BACK"; a tap
+  anywhere skips the egg (without pressing what is under it), and so does Android's back, which
+  the stage answers before the pages while an egg plays. An egg lasts three seconds; back after
+  it has ended does what it always does. The stage takes no inset padding, so the pages still get
+  the system bars' insets from the page host, and back still reaches them (measured: a picker and
+  the Sources form close on back, and back on a tab leaves the app).
+- **A recreated screen continues the egg:** `EasterEggPlayback` (a container singleton) holds the
+  egg and when it started, and the new stage plays it from the frame it had reached. Measured: a
+  screenshot taken 0.8 s after a font scale change created the new activity showed the egg.
+- **Konami by swipes:** the Settings view watches every stroke (tunnel-phase press and release,
+  handled ones too, never marking anything handled). Strokes that start on a button, switch, text
+  box or number box, or while a list or question is open, are ignored. `KonamiGestures.Classify`
+  makes a stroke a swipe (at least 48 dp along one axis and twice as far as across it, in the
+  direction the finger moved) or a tap (under 8 dp in under 300 ms); the strokes feed the
+  desktop's `KonamiSequence`, the two taps standing for B and A. A vertical swipe the list can
+  follow scrolls it, and the list then takes the finger, so the release never arrives; the stroke
+  is then the list's scroll gestures added up (`ScrollGesture` and `ScrollGestureEnded`, which
+  still bubble to the tab). Horizontal swipes reach the tab because no horizontal recognizer is
+  left (see "Dragging a switch"). Measured: up, up, down, down, left, right, left, right and two
+  taps, each started on a label or hint, played "+30 LIVES GRANTED"; the down swipes scrolled
+  the list to its top.
+- **Version taps:** five taps on the version, each within three seconds of the last.
+- **Favorite milestones:** the 1st, 10th, 25th, 50th and 100th favorite made with the Current
+  tab's or a Gallery card's heart play the egg instead of "Added to favorites.", as on the
+  desktop.
+- **Secrets** (the About row) opens a full-screen modal page with the desktop's layout and text:
+  "SECRETS", "Hidden things scattered through the app. Find them all.", "N / 3 found" (or "3 / 3
+  found - all of them. Nothing left to hide.") with the yellow bar, one row per egg with a box
+  that is filled when found, its name and the phone's hint, and Close (tooltip "Close the
+  secrets list"). Back closes it too. It reads the found eggs each time it opens; whether it is
+  open is kept in `SettingsViewModel`, so a recreated screen opens it again. Found eggs are
+  `DiscoveredEasterEggs` in `settings.json`, which Factory Reset deletes with the rest.
 
 
 ## Keeping the screen
@@ -496,7 +545,7 @@ canvas (`WallpaperFittingTests`), the switcher with a canvas or a refusal
 the picture library (`WallpaperLibraryTests`), the Gallery and Favorites tabs
 (`PictureListViewModelTests`), the source rules (`WallpaperSourcesTests`), the add or edit form
 (`SourceFormViewModelTests`), the Sources tab (`SourcesViewModelTests`), Download now's
-sentences (`DownloadOutcomeTests`) and the Settings tab (`SettingsViewModelTests`, with the
-shared groups' own tests).
+sentences (`DownloadOutcomeTests`), the Settings tab (`SettingsViewModelTests`, with the
+shared groups' own tests) and the Konami strokes (`KonamiGesturesTests`).
 The Android classes only pass Android's numbers and calls through; they are verified on the
 emulator.

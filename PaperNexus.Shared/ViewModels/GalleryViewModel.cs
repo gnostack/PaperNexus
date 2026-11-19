@@ -12,13 +12,17 @@ public sealed class GalleryViewModel : PictureListViewModel
     public const string UnbannedText = "Back in rotation.";
     public const string DeletedText = "Wallpaper deleted.";
 
+    private readonly EasterEggRequests _easterEggs;
+
     public GalleryViewModel(
         IWallpaperLibrary library,
         ISwitchWallpaper switchWallpaper,
         IWallpaperApplier wallpaperApplier,
+        EasterEggRequests easterEggs,
         ILogger<GalleryViewModel> logger)
         : base(library, switchWallpaper, wallpaperApplier, logger)
     {
+        _easterEggs = easterEggs.ThrowIfNull();
     }
 
     public override string EmptyText => EmptySentence;
@@ -74,14 +78,20 @@ public sealed class GalleryViewModel : PictureListViewModel
         }
     }
 
+    // The 1st, 10th, 25th, 50th and 100th favorite play their easter egg instead of the line,
+    // as on the desktop.
     private async Task ToggleFavoriteAsync(GalleryItem item)
     {
         var makeFavorite = !item.IsFavorite;
         try
         {
-            await Library.SetFavoriteAsync(item.FilePath, makeFavorite);
+            var favoriteCount = await Library.SetFavoriteAsync(item.FilePath, makeFavorite);
             item.IsFavorite = makeFavorite;
-            ShowStatus(makeFavorite ? AddedText : RemovedText, StatusTone.Success);
+            var milestone = makeFavorite ? EasterEggShows.Favorite(favoriteCount) : null;
+            if (milestone is not null)
+                _easterEggs.Request(milestone);
+            else
+                ShowStatus(makeFavorite ? AddedText : RemovedText, StatusTone.Success);
         }
         catch (Exception ex)
         {

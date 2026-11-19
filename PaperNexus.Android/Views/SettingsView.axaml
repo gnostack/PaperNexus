@@ -1,5 +1,5 @@
 <!-- The Settings tab (issue #203, step 4): one scrolling list of the desktop's settings groups the
-     phone has - Download Settings, Slideshow Settings and General Settings - with the desktop's
+     phone has - Download Settings, Slideshow Settings and General Settings, then About - with the desktop's
      labels, explanations and sentences. There is no "Title on Wallpaper" group: the phone draws no
      title (docs/android.md). Every change saves by itself, half a second after the last one, and
      the line over the bottom of the list confirms it. A list to choose from opens in a box over the
@@ -75,6 +75,23 @@
         <Style Selector="NumericUpDown /template/ RepeatButton">
             <Setter Property="MinWidth" Value="48"/>
             <Setter Property="MinHeight" Value="48"/>
+        </Style>
+
+        <!-- An About row: the desktop's icon and a name, a 48 dp touch target, the full width -->
+        <Style Selector="Button.aboutRow">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="12,0"/>
+        </Style>
+        <Style Selector="Button.aboutRow PathIcon">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+        </Style>
+        <Style Selector="Button.aboutRow TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
         <Style Selector="TextBox.cron">
@@ -249,6 +266,47 @@
                                     <PathIcon Width="18" Height="18" Foreground="#E06C75"
                                               Data="M12 5V1L7 6L12 11V7C15.31 7 18 9.69 18 13C18 16.31 15.31 19 12 19C8.69 19 6 16.31 6 13H4C4 17.42 7.58 21 12 21C16.42 21 20 17.42 20 13C20 8.58 16.42 5 12 5Z"/>
                                     <TextBlock Text="Factory Reset" FontSize="16" Foreground="#E06C75" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- About: the version (faint, as on the desktop; five taps play its egg), then
+                         Secrets, Report a bug and the project, with the desktop's icons and tooltips -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Classes="heading" Text="About"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding About.Version}"
+                                           FontSize="14" Opacity="0.35"
+                                           VerticalAlignment="Center"
+                                           Background="Transparent"
+                                           Padding="16,12,0,12"
+                                           PointerPressed="Version_PointerPressed"/>
+                            </Grid>
+                            <Button Classes="aboutRow"
+                                    Command="{Binding OpenSecretsCommand}"
+                                    ToolTip.Tip="Secrets - the list of hidden things to find">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <PathIcon Data="M12 2C9.24 2 7 4.24 7 7V9H6C4.9 9 4 9.9 4 11V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V11C20 9.9 19.1 9 18 9H17V7C17 4.24 14.76 2 12 2ZM12 4C13.66 4 15 5.34 15 7V9H9V7C9 5.34 10.34 4 12 4ZM12 14C13.1 14 14 14.9 14 16C14 17.1 13.1 18 12 18C10.9 18 10 17.1 10 16C10 14.9 10.9 14 12 14Z"/>
+                                    <TextBlock Text="Secrets"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="aboutRow"
+                                    Command="{Binding About.ReportBugCommand}"
+                                    ToolTip.Tip="Leave feedback on GitHub">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <PathIcon Data="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2ZM20 16H5.17L4 17.17V4H20V16Z"/>
+                                    <TextBlock Text="Report a bug"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="aboutRow"
+                                    Command="{Binding About.OpenHomepageCommand}"
+                                    ToolTip.Tip="Open PaperNexus on GitHub">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <PathIcon Data="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM11 19.93C7.05 19.44 4 16.08 4 12C4 11.38 4.08 10.79 4.21 10.21L9 15V16C9 17.1 9.9 18 11 18V19.93ZM17.9 17.39C17.64 16.58 16.9 16 16 16H15V13C15 12.45 14.55 12 14 12H8V10H10C10.55 10 11 9.55 11 9V7H13C14.1 7 15 6.1 15 5V4.59C17.93 5.77 20 8.65 20 12C20 14.08 19.19 15.98 17.9 17.39Z"/>
+                                    <TextBlock Text="PaperNexus on GitHub"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>

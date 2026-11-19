@@ -15,10 +15,11 @@
              this is meant to look like an arcade screen rather than a UI panel. -->
         <Canvas x:Name="ScanlineCanvas" ClipToBounds="True" IsHitTestVisible="False" />
 
+        <!-- The margin keeps the box off the edges of a screen narrower than it (a phone). -->
         <Border HorizontalAlignment="Center" VerticalAlignment="Center"
                 Background="#F0000000"
                 BorderBrush="#FFD93D" BorderThickness="4"
-                Padding="28,20" MaxWidth="520">
+                Padding="28,20" MaxWidth="520" Margin="24">
             <StackPanel Spacing="10">
                 <TextBlock x:Name="MessageText"
                            Text=""
@@ -29,7 +30,8 @@
                            TextAlignment="Center"
                            TextWrapping="Wrap"
                            HorizontalAlignment="Center" />
-                <TextBlock Text="CLICK OR PRESS ESC"
+                <TextBlock x:Name="DismissHintText"
+                           Text="CLICK OR PRESS ESC"
                            FontSize="10"
                            LetterSpacing="3"
                            Opacity="0.55"
