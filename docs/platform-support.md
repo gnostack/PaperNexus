@@ -16,12 +16,12 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | Shared interface | Used by | Desktop implementation | Phone implementation |
 | --- | --- | --- | --- |
 | `IAppFolders` | `SettingsStore`, `SwitchWallpaper`, `JobTimerStore`, `WallpaperConfigViewModel`; the logger's folder | `DesktopAppFolders` (`PlatformPaths.cs`): settings in the default install directory, `current.png`/`timers.json`/`logs/` beside the executable (`AppContext.BaseDirectory`), downloads in `Pictures/PaperNexus` | `AndroidAppFolders`: settings in the files folder, everything else in the no-backup folder |
-| `IAppInfo` | `WallpaperConfigViewModel`, `AboutViewModel`, `DebugSettingsViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | none yet (step 4) |
-| `IShellOpener` | `WallpaperConfigViewModel`, `AboutViewModel`, `DesktopSettingsViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | none yet (step 4) |
+| `IAppInfo` | `WallpaperConfigViewModel`, `AboutViewModel`, `DebugSettingsViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | `AndroidAppInfo`: "v" and the major number of the package's version name (`AppVersionLabel`); never started in debug mode |
+| `IShellOpener` | `WallpaperConfigViewModel`, `AboutViewModel`, `DesktopSettingsViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | `AndroidShellOpener`: a web address opens in the browser; no folders |
 | `IStartupRegistration` (optional) | `DesktopSettingsViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
 | `IDeviceSettingRules` | `SettingsStore` (the title-on default), `SlideshowSettingsViewModel` (the fill styles) | `DesktopSettingRules`: title on, all six fill styles | `AndroidSettingRules`: title off, five fill styles (no Span) |
-| `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments except `--startup`, so the new copy shows its window | none yet (step 4) |
-| `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | none yet (step 4) |
+| `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments except `--startup`, so the new copy shows its window | `AndroidFactoryReset`: deletes the same files (`AppDataReset`), keeps the pictures, restarts the launcher task in a new process |
+| `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | `AndroidDeviceEasterEggs`: no Fleeting Words; the Konami and version hints worded for the phone |
 | `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
 | `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |
 

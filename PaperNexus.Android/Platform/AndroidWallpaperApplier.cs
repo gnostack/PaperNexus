@@ -31,7 +31,8 @@ internal sealed class AndroidWallpaperApplier : IWallpaperApplier, IAddSingleton
 
     // The picture for this phone's screen in its natural (upright) orientation: the screen
     // size times the system's wallpaper zoom, with the title kept clear of the status bar at
-    // the top and the navigation bar at the bottom.
+    // the top and the navigation bar at the bottom, and the title's size in density-independent
+    // units (the screen's density, 2.625 on the 420 dpi emulator).
     public WallpaperCanvas? GetCanvas()
     {
         var displayManager = (DisplayManager)_context.GetSystemService(Context.DisplayService)!;
@@ -56,7 +57,8 @@ internal sealed class AndroidWallpaperApplier : IWallpaperApplier, IAddSingleton
             bottomBar = Math.Max(bars.Bottom, Math.Max(bars.Left, bars.Right));
         }
 
-        var canvas = WallpaperCanvas.ForScreen(width, height, ReadWallpaperZoom(), topBar, bottomBar);
+        var density = windowContext.Resources!.DisplayMetrics!.Density;
+        var canvas = WallpaperCanvas.ForScreen(width, height, ReadWallpaperZoom(), topBar, bottomBar, density);
         return canvas;
     }
 

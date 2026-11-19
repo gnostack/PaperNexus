@@ -43,7 +43,7 @@ PaperNexus/
 ├── docs/
 │   ├── ui-style-guide.md               # Avalonia AXAML patterns reference
 │   ├── platform-support.md             # Windows/Linux platform layer reference; local desktop verification (scratch build, screenshots, AT-SPI)
-│   └── android.md                      # Android host: build, emulator, Current/Gallery/Favorites/Sources tabs, keyboard, files, wallpaper canvas
+│   └── android.md                      # Android host: build, emulator, Current/Gallery/Favorites/Sources tabs, keyboard, files, wallpaper canvas, Factory Reset, title size
 ├── PaperNexus.Shared/                   # Shared class library (everything both devices use)
 │   ├── PaperNexus.Shared.csproj         # Declares every package; embeds RepositoryUrl
 │   ├── GlobalUsings.cs                  # Project-wide usings (copy of the host's minus Platform)
@@ -67,6 +67,8 @@ PaperNexus/
 │   │   ├── EasterEggRequests.cs        # View models ask for an egg; the overlay's owner plays it
 │   │   ├── LogLevelSwitch.cs           # The log level, moved at runtime by debug mode; DebugLogLevel applies it at start
 │   │   ├── SlideshowSchedule.cs        # Interval-to-cron, cron validity, the schedule sentence
+│   │   ├── AppDataReset.cs             # What Factory Reset deletes on every device (never the pictures)
+│   │   ├── AppVersionLabel.cs          # "v" + major version, for the version label
 │   │   ├── Bootstrapper.cs             # DI helpers, IAddSingleton<T>, AddServicesFrom()
 │   │   ├── Extensions.cs               # Utility extension methods
 │   │   ├── FileLogger.cs               # File-based ILogger implementation (async queue)
@@ -139,6 +141,10 @@ PaperNexus/
     │   ├── AndroidAppFolders.cs        # IAppFolders: files (settings) and no_backup (everything else)
     │   ├── AndroidWallpaperApplier.cs  # IWallpaperApplier: WallpaperManager, both screens; the canvas
     │   ├── AndroidSettingRules.cs      # IDeviceSettingRules: title off, five fill styles (no Span)
+    │   ├── AndroidAppInfo.cs           # IAppInfo: "v" + the package version name's major number
+    │   ├── AndroidShellOpener.cs       # IShellOpener: web addresses open in the browser
+    │   ├── AndroidFactoryReset.cs      # IFactoryReset: AppDataReset, then restart the launcher task in a new process
+    │   ├── AndroidDeviceEasterEggs.cs  # IDeviceEasterEggs: no Fleeting Words, phone-worded hints
     │   └── AndroidPermissions.cs       # INTERNET and SET_WALLPAPER
     ├── Views/
     │   ├── MainView.axaml(.cs)         # TabbedPage: Current, Gallery, Favorites, Sources, Settings
@@ -176,7 +182,7 @@ PaperNexus/
 - **Auto-Install:** First run copies exe to the chosen install directory (default `%LOCALAPPDATA%\PaperNexus\`), migrates settings, writes a `.installed` sentinel file alongside the exe, then relaunches. On subsequent launches, `IsRunningFromInstallLocation` detects the sentinel file so custom install paths (not equal to the default AppData path) are recognised correctly and the install flow is not re-triggered.
 - **Single Instance:** Named `Mutex` + `EventWaitHandle` for IPC (signals running instance to show UI).
 - **Tray-only:** `ShutdownMode.OnExplicitShutdown`. Menu: "Open Settings", "Next Wallpaper", "Random Wallpaper", "Exit". Each item has a programmatically-drawn icon (`Core/Imaging/MenuIcons.cs`).
-- **Wallpaper Processing:** Writes to `current.png`/`.jpg` in `IAppFolders.DataFolder`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp with HarfBuzz shaping for kerning) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB. When `IWallpaperApplier.GetCanvas()` returns a `WallpaperCanvas` (the phone), the picture is first drawn onto the canvas for the fill style (`WallpaperFitting`; Span draws as Fill) and the title is placed inside the canvas's title area, the part the screen shows clear of the system bars; with `null` (the desktop) the picture keeps its size and the operating system fits it.
+- **Wallpaper Processing:** Writes to `current.png`/`.jpg` in `IAppFolders.DataFolder`. `WallpaperRenderer` draws the title overlay (`WallpaperAnnotator`, SkiaSharp with HarfBuzz shaping for kerning) at switch time. PNG (8-bit RGB) preferred; JPEG fallback stepping quality down from 97 if >16 MB. When `IWallpaperApplier.GetCanvas()` returns a `WallpaperCanvas` (the phone), the picture is first drawn onto the canvas for the fill style (`WallpaperFitting`; Span draws as Fill) and the title is placed inside the canvas's title area, the part the screen shows clear of the system bars, at the canvas's `TextScale` (the phone's density: the size is in density-independent units there, pixels on the desktop); with `null` (the desktop) the picture keeps its size and the operating system fits it.
 - **`ISwitchWallpaper`:** Exposes `WallpaperChanged`, `SwitchToNextAsync()`, `SwitchToRandomAsync()`, `SwitchToSpecificAsync()` and `HasWallpapersAsync()`. Switches run one at a time. A wallpaper the device refuses (`SetWallpaper` returns false) throws `WallpaperRefusedException`; it is not recorded as current and `WallpaperChanged` is not raised.
 - **Downloads:** one run at a time. Each picture is written as `<name>.download` and renamed into place when complete, the way the settings store saves; each run deletes partial files a stopped process left behind, and nothing lists a `.download` file as a picture.
 - **Wallpaper Sources (JPath-based):** `HttpWallpaperSourceService` uses Newtonsoft `SelectTokens` with `ImageUrlJPath`/`TitleJPath`. **The rules for sources are `IWallpaperSources` (`PaperNexus.Shared/WallpaperSources.cs`), for both devices**: listing, adding, editing (a source that keeps its name keeps its last download time), deleting, turning on and off, the checks a source must pass (name, an https address, both JPaths, a 5-field cron; a blank cron is every hour), and Test (the same address and JPath checks, then a feed read). Names are unique ignoring case after trimming. A source is known by its `SourceKey` (name plus which of the same-named sources it is), which each `SourceItem` row carries, so an older file holding two sources of one name loads as it is and each row's edit, switch and delete act on exactly its own source. Each change is saved at once through `ISettingsStore.UpdateAsync` touching only `Sources`, and `Changed` is raised after it. **No view model or view edits `settings.Sources` itself, and the desktop settings window's save never writes sources.** The add/edit form is `SourceFormViewModel`, shown by the desktop's `WallpaperSourceDialog` and the phone's `SourceFormPage`; rows are `SourceItem`, with the edit and delete buttons on each row. Download now is `IDownloadWallpapers.DownloadAllAsync`, which returns a `DownloadOutcome` (sources tried, sources failed); `DownloadSentence` words it for both devices.

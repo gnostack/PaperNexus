@@ -26,6 +26,10 @@ project and its logic and view models in the shared project.
 | `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
+| `Platform/AndroidAppInfo.cs` | `IAppInfo` for the phone: the version label is "v" and the major number of the package's version name. No workflow sets the version yet, so every build is 1.0.0 and shows "v1" (step 7 sets it). |
+| `Platform/AndroidShellOpener.cs` | `IShellOpener` for the phone: opens a web address in the browser (Report a bug, the project link). Measured: the emulator's browser (WebView Browser Tester) opened the project page. |
+| `Platform/AndroidFactoryReset.cs` | `IFactoryReset` for the phone (see "Factory Reset"). |
+| `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words), with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
 | `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: a new `settings.json` (or one without the field) has the title off; the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. A file that already says the title is on keeps it on. |
 | `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
@@ -309,6 +313,30 @@ step 3:
   and an empty `Lock wallpaper state`: one image serves both screens.
   `getWallpaperId(FLAG_LOCK)` returns -1 while the lock screen shares the home screen's
   picture, so check `mWhich=3` rather than a lock id.
+
+## Factory Reset
+
+`AndroidFactoryReset` keeps the desktop's meaning: it deletes the app's own data with the shared
+`AppDataReset` (`files/settings.json`, and `current.*`, `timers.json` and `logs/` in `no_backup/`)
+and keeps the downloaded pictures in `no_backup/Wallpapers/`. It then starts the launcher activity
+as a new task that replaces the current one (`Intent.makeRestartActivityTask`) and ends the process
+(`Process.killProcess`), so nothing the old process held in memory survives.
+
+Measured on the Android 16 emulator, Debug and Release (a temporary trigger, since removed): the
+old process died, a new process started for the activity Android was asked to show, and the Current
+tab appeared about a second later. The settings were back to their defaults (no favorites, both
+default sources), the pictures were kept, and with the network off the tab set the next existing
+picture without downloading, as on first open with pictures.
+
+`ActivityManager.clearApplicationUserData` was not used: it erases the pictures as well, and its
+documentation does not say the app is started again.
+
+## Title size
+
+The title's size is in density-independent units on the phone (`WallpaperCanvas.TextScale` is the
+screen's density, 2.625 on the 420 dpi emulator), so size 18 is drawn 47 pixels tall. Measured on
+home and lock screenshots after a Next: the title's capitals are 33 px tall, the status-bar clock's
+digits 27 px. The margins stay in pixels; the outline and the debug timestamp follow the size.
 
 ## Prerequisites
 

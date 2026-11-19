@@ -37,7 +37,8 @@ internal static class WallpaperRenderer
     // against its edges; the operating system fits it to the screen afterwards. With a canvas
     // (the phone) the picture is first drawn onto the canvas for fillStyle and the title is
     // then placed inside the canvas's title area, the part the screen shows, so fitting can
-    // never cut the title off.
+    // never cut the title off. The title's size is then in the canvas's units (TextScale pixels
+    // each), so it reads the same on a dense phone screen as on a monitor.
     public static EncodedWallpaper Render(
         string sourcePath,
         AnnotationRequest? annotation,
@@ -57,9 +58,19 @@ internal static class WallpaperRenderer
         if (annotation is not null)
         {
             var titleArea = new SKRectI(canvas.TitleLeft, canvas.TitleTop, canvas.TitleRight, canvas.TitleBottom);
-            WallpaperAnnotator.Draw(composed, annotation, titleArea);
+            var scaled = ScaledFor(annotation, canvas);
+            WallpaperAnnotator.Draw(composed, scaled, titleArea);
         }
         return Encode(composed, sizeCeiling);
+    }
+
+    // The title at the canvas's scale: its size in pixels is the size times TextScale. The
+    // outline and the debug timestamp follow the size; the margins stay in pixels.
+    internal static AnnotationRequest ScaledFor(AnnotationRequest annotation, WallpaperCanvas canvas)
+    {
+        var pixels = (int)Math.Round(annotation.FontSize * canvas.TextScale);
+        var scaled = annotation with { FontSize = Math.Max(1, pixels) };
+        return scaled;
     }
 
     // Lossless 8-bit RGB PNG first. When that exceeds sizeCeiling (high-resolution 4K+
