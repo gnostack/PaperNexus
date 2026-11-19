@@ -16,6 +16,11 @@ public class CurrentWallpaperViewModelTests : IDisposable
     private readonly FakeDownloader _downloader;
     private readonly FakeWallpaperApplier _applier = new();
     private readonly WallpaperLibrary _library;
+    private readonly EasterEggRequests _eggs = new();
+
+    // A favorite saved before the test, so the heart under test makes the second one, which is
+    // no milestone and shows the ordinary line.
+    private const string EarlierFavorite = "/elsewhere/earlier.png";
 
     public CurrentWallpaperViewModelTests()
     {
@@ -37,7 +42,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
     private CurrentWallpaperViewModel CreateViewModel()
     {
         var viewModel = TestHelpers.WithoutSynchronizationContext(
-            () => new CurrentWallpaperViewModel(_store, _library, _switcher, _downloader, _applier, NullLogger<CurrentWallpaperViewModel>.Instance));
+            () => new CurrentWallpaperViewModel(_store, _library, _switcher, _downloader, _applier, _eggs, NullLogger<CurrentWallpaperViewModel>.Instance));
         return viewModel;
     }
 
@@ -215,6 +220,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
     {
         var current = AddPicture("One - a.png");
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: current);
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.Add(EarlierFavorite));
         using var viewModel = CreateViewModel();
         await viewModel.LoadAsync();
 
@@ -231,6 +237,47 @@ public class CurrentWallpaperViewModelTests : IDisposable
         Assert.DoesNotContain(current, (await _store.LoadAsync()).FavoriteWallpapers);
     }
 
+    // The 1st, 10th, 25th, 50th and 100th favorite play their easter egg instead of "Added to
+    // favorites.", as on the desktop; removing one never does.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(9, true)]
+    [InlineData(24, true)]
+    [InlineData(49, true)]
+    [InlineData(99, true)]
+    [InlineData(100, false)]
+    public async Task ToggleFavorite_AMilestonePlaysItsEggInsteadOfTheLine(int earlier, bool isMilestone)
+    {
+        var current = AddPicture("One - a.png");
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir, currentWallpaperPath: current);
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.AddRange(Enumerable.Range(0, earlier).Select(i => $"/elsewhere/{i}.png")));
+        var requested = new List<EasterEggShow>();
+        _eggs.Requested += requested.Add;
+        using var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+
+        await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsFavorite);
+        if (isMilestone)
+        {
+            var show = Assert.Single(requested);
+            Assert.Equal(EasterEggCatalog.Favorites, show.Id);
+            Assert.Equal(EasterEggs.FavoriteMilestoneMessage(earlier + 1), show.Message);
+            Assert.False(viewModel.Status.IsShown);
+        }
+        else
+        {
+            Assert.Empty(requested);
+            Assert.Equal("Added to favorites.", viewModel.Status.Message);
+        }
+
+        await viewModel.ToggleFavoriteCommand.ExecuteAsync(null);
+        Assert.Equal("Removed from favorites.", viewModel.Status.Message);
+        Assert.True(requested.Count <= 1);
+    }
+
     // The view model outlives the screen: a view built for a recreated screen calls
     // EnsureLoadedAsync again and finds the wallpaper as it was, without the first-open work
     // (here, setting a wallpaper) running a second time.
@@ -240,6 +287,7 @@ public class CurrentWallpaperViewModelTests : IDisposable
         AddPicture("One - a.png");
         AddPicture("Two - b.png");
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
+        await _store.UpdateAsync(latest => latest.FavoriteWallpapers.Add(EarlierFavorite));
         using var viewModel = CreateViewModel();
 
         await viewModel.EnsureLoadedAsync();

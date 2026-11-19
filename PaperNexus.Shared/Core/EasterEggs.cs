@@ -166,6 +166,9 @@ public sealed class KonamiSequence
 
     private int _position;
 
+    // The key that would move the sequence on now, e.g. "B" after the eight arrows.
+    public string Expected => Sequence[_position];
+
     // keyName is the Avalonia Key enum name, so the matcher stays free of UI types.
     public bool Advance(string keyName)
     {

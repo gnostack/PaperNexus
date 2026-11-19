@@ -63,8 +63,12 @@ public class MainApplication : AvaloniaAndroidApplication<App>
                 services.AddSingleton<DownloadSettingsViewModel>();
                 services.AddSingleton<SlideshowSettingsViewModel>();
                 services.AddSingleton<DebugSettingsViewModel>();
+                services.AddSingleton<AboutViewModel>();
+                services.AddSingleton<SecretsViewModel>();
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<MainScreenState>();
+                // The easter egg playing, so a recreated screen continues it
+                services.AddSingleton<EasterEggPlayback>();
                 services.AddTransient<MainView>();
                 // The shared services, then this host's implementations of the interfaces they
                 // need (folders, wallpaper applier). No AddInProcessSchedules: the slideshow

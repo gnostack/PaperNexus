@@ -20,14 +20,96 @@ public class SettingsViewModelTests : IDisposable
         TestHelpers.DeleteSettingsStore(_store);
     }
 
-    private SettingsViewModel Create(RecordingFactoryReset? reset = null, LogLevelSwitch? logLevels = null)
+    private readonly EasterEggRequests _eggs = new();
+
+    private SettingsViewModel Create(RecordingFactoryReset? reset = null, LogLevelSwitch? logLevels = null, IShellOpener? shellOpener = null)
     {
         var viewModel = TestHelpers.WithoutSynchronizationContext(() => new SettingsViewModel(
             _store,
             new DownloadSettingsViewModel(_store),
             new SlideshowSettingsViewModel(_store, TestSettingRules.Phone),
-            new DebugSettingsViewModel(_store, new TestAppInfo(), logLevels ?? new LogLevelSwitch(false), reset ?? new RecordingFactoryReset())));
+            new DebugSettingsViewModel(_store, new TestAppInfo(), logLevels ?? new LogLevelSwitch(false), reset ?? new RecordingFactoryReset()),
+            new AboutViewModel(new TestAppInfo(), shellOpener ?? new NoOpShellOpener(), _eggs),
+            new SecretsViewModel(_store, new TestDeviceEggs(PhoneEggs)),
+            _eggs));
         return viewModel;
+    }
+
+    // The phone's three eggs, as AndroidDeviceEasterEggs lists them (without its hints, which
+    // live in the Android project).
+    private static readonly IReadOnlyList<EasterEggDefinition> PhoneEggs = EasterEggCatalog.All
+        .Where(egg => egg.Id is EasterEggCatalog.Konami or EasterEggCatalog.Version or EasterEggCatalog.Favorites)
+        .ToList();
+
+    private static readonly KonamiStroke[] KonamiCode =
+    [
+        KonamiStroke.Up, KonamiStroke.Up, KonamiStroke.Down, KonamiStroke.Down,
+        KonamiStroke.Left, KonamiStroke.Right, KonamiStroke.Left, KonamiStroke.Right,
+        KonamiStroke.Tap, KonamiStroke.Tap,
+    ];
+
+    [Fact]
+    public void AddStroke_TheKonamiCodePlaysItsEggOnTheLastTap()
+    {
+        var viewModel = Create();
+        var requested = new List<EasterEggShow>();
+        _eggs.Requested += requested.Add;
+
+        foreach (var stroke in KonamiCode[..^1])
+            viewModel.AddStroke(stroke);
+        Assert.Empty(requested);
+        viewModel.AddStroke(KonamiStroke.Tap);
+
+        var show = Assert.Single(requested);
+        Assert.Equal(EasterEggCatalog.Konami, show.Id);
+    }
+
+    [Fact]
+    public async Task OpenSecrets_ListsThePhonesThreeEggsWithWhatWasFound()
+    {
+        await _store.UpdateAsync(latest => latest.DiscoveredEasterEggs.AddRange([EasterEggCatalog.Version, EasterEggCatalog.Splash]));
+        var viewModel = Create();
+
+        await viewModel.OpenSecretsCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsSecretsOpen);
+        Assert.Equal(3, viewModel.Secrets.Rows.Count);
+        Assert.Equal("1 / 3 found", viewModel.Secrets.ProgressText);
+        Assert.Equal(1.0 / 3, viewModel.Secrets.FoundFraction, 6);
+        Assert.Equal([false, true, false], viewModel.Secrets.Rows.Select(r => r.IsFound));
+
+        viewModel.CloseSecretsCommand.Execute(null);
+        Assert.False(viewModel.IsSecretsOpen);
+    }
+
+    [Fact]
+    public async Task OpenSecrets_AllThreeFoundSaysNothingIsLeft()
+    {
+        await _store.UpdateAsync(latest => latest.DiscoveredEasterEggs.AddRange(PhoneEggs.Select(e => e.Id)));
+        var viewModel = Create();
+
+        await viewModel.OpenSecretsCommand.ExecuteAsync(null);
+
+        Assert.Equal("3 / 3 found - all of them. Nothing left to hide.", viewModel.Secrets.ProgressText);
+        Assert.Equal(1.0, viewModel.Secrets.FoundFraction);
+    }
+
+    [Fact]
+    public void About_ALinkThatCannotOpenSaysSoOnTheLine()
+    {
+        var viewModel = Create(shellOpener: new ThrowingShellOpener());
+
+        viewModel.About.OpenHomepageCommand.Execute(null);
+
+        Assert.Equal("Could not open the browser: No app opens web addresses.", viewModel.Status.Message);
+        Assert.True(viewModel.Status.IsError);
+    }
+
+    private sealed class ThrowingShellOpener : IShellOpener
+    {
+        public void Open(string target) => throw new InvalidOperationException("No app opens web addresses.");
+
+        public void OpenFolder(string folderPath) => throw new NotSupportedException();
     }
 
     [Theory]

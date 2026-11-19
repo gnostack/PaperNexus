@@ -32,6 +32,11 @@ public sealed partial class AboutViewModel
         _clock = clock.ThrowIfNull();
     }
 
+    // A link that could not be opened, for the screen's status line.
+    public event Action<SettingsStatus>? StatusReported;
+
+    public static string BrowserFailedText(string reason) => $"Could not open the browser: {reason}";
+
     // The version label, e.g. "v12".
     public string Version => _appInfo.Version;
 
@@ -67,13 +72,28 @@ public sealed partial class AboutViewModel
     [RelayCommand]
     private void ReportBug()
     {
-        _shellOpener.Open(BugReportUrl);
+        OpenInBrowser(BugReportUrl);
     }
 
     [RelayCommand]
     private void OpenHomepage()
     {
         var homepage = GitHubRepository.Current.WebUrl;
-        _shellOpener.Open(homepage);
+        OpenInBrowser(homepage);
+    }
+
+    // Opens a web address; a failure (no browser, or the device refusing) is reported on the
+    // status line rather than thrown from the button.
+    private void OpenInBrowser(string url)
+    {
+        try
+        {
+            _shellOpener.Open(url);
+        }
+        catch (Exception ex)
+        {
+            var status = new SettingsStatus(BrowserFailedText(ex.Message), StatusTone.Error);
+            StatusReported?.Invoke(status);
+        }
     }
 }

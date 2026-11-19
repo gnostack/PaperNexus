@@ -54,6 +54,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     private readonly IDownloadWallpapers _downloadWallpapers;
     private readonly IWallpaperApplier _wallpaperApplier;
     private readonly ILogger<CurrentWallpaperViewModel> _logger;
+    private readonly EasterEggRequests _easterEggs;
     private readonly SynchronizationContext? _screenContext;
 
     // True while this tab deletes its own picture, so the library's report of that delete
@@ -103,6 +104,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         ISwitchWallpaper switchWallpaper,
         IDownloadWallpapers downloadWallpapers,
         IWallpaperApplier wallpaperApplier,
+        EasterEggRequests easterEggs,
         ILogger<CurrentWallpaperViewModel> logger)
     {
         _settingsStore = settingsStore.ThrowIfNull();
@@ -111,6 +113,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         _downloadWallpapers = downloadWallpapers.ThrowIfNull();
         _wallpaperApplier = wallpaperApplier.ThrowIfNull();
         _logger = logger.ThrowIfNull();
+        _easterEggs = easterEggs.ThrowIfNull();
         _screenContext = SynchronizationContext.Current;
         _switchWallpaper.WallpaperChanged += OnWallpaperChanged;
         _library.Changed += OnLibraryChanged;
@@ -230,7 +233,8 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     }
 
     // Makes the current wallpaper a favorite, or clears it when it already is one, as the
-    // heart shows it, and says which in the line under the buttons.
+    // heart shows it, and says which in the line under the buttons. The 1st, 10th, 25th, 50th
+    // and 100th favorite play their easter egg instead of the line, as on the desktop.
     [RelayCommand]
     private async Task ToggleFavorite()
     {
@@ -241,9 +245,13 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         var makeFavorite = !IsFavorite;
         try
         {
-            await _library.SetFavoriteAsync(path, makeFavorite);
+            var favoriteCount = await _library.SetFavoriteAsync(path, makeFavorite);
             IsFavorite = makeFavorite;
-            ShowStatus(makeFavorite ? AddedText : RemovedText, StatusTone.Success);
+            var milestone = makeFavorite ? EasterEggShows.Favorite(favoriteCount) : null;
+            if (milestone is not null)
+                _easterEggs.Request(milestone);
+            else
+                ShowStatus(makeFavorite ? AddedText : RemovedText, StatusTone.Success);
         }
         catch (Exception ex)
         {

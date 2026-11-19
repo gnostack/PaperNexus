@@ -24,8 +24,9 @@ public sealed record PickerChoice(string Label, string? Description, bool IsSele
 public sealed record SettingsPicker(SettingsPickerKind Kind, string Title, IReadOnlyList<PickerChoice> Choices);
 
 // The phone's Settings tab (issue #203, step 4): the Download, Slideshow and General groups
-// (the same groups the desktop window uses), the line that confirms each change, and the open
-// picker. The phone has no "Title on Wallpaper" group: it draws no title (docs/android.md).
+// (the same groups the desktop window uses), About, the line that confirms each change, the open
+// picker, whether Secrets is open, and the Konami code swiped on the tab. The phone has no
+// "Title on Wallpaper" group: it draws no title (docs/android.md).
 //
 // It lives as long as the process, not the screen: Android destroys and recreates its screen (a
 // new font size, language or display size), and the new screen's view attaches to this same view
@@ -34,23 +35,36 @@ public sealed record SettingsPicker(SettingsPickerKind Kind, string Title, IRead
 public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, IDisposable
 {
     private readonly ISettingsStore _settingsStore;
+    private readonly EasterEggRequests _easterEggs;
+    private readonly KonamiGestures _konami = new();
     private bool _isLoaded;
 
     [ObservableProperty]
     private SettingsPicker? _picker;
 
+    // The Secrets page is open. A recreated screen opens it again.
+    [ObservableProperty]
+    private bool _isSecretsOpen;
+
     public SettingsViewModel(
         ISettingsStore settingsStore,
         DownloadSettingsViewModel download,
         SlideshowSettingsViewModel slideshow,
-        DebugSettingsViewModel debug)
+        DebugSettingsViewModel debug,
+        AboutViewModel about,
+        SecretsViewModel secrets,
+        EasterEggRequests easterEggs)
     {
         _settingsStore = settingsStore.ThrowIfNull();
         Download = download.ThrowIfNull();
         Slideshow = slideshow.ThrowIfNull();
         Debug = debug.ThrowIfNull();
+        About = about.ThrowIfNull();
+        Secrets = secrets.ThrowIfNull();
+        _easterEggs = easterEggs.ThrowIfNull();
         foreach (var group in Groups)
             group.StatusReported += OnStatusReported;
+        About.StatusReported += OnStatusReported;
     }
 
     public DownloadSettingsViewModel Download { get; }
@@ -58,6 +72,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, 
     public SlideshowSettingsViewModel Slideshow { get; }
 
     public DebugSettingsViewModel Debug { get; }
+
+    // The version (its taps play the version egg), Report a bug and the project link.
+    public AboutViewModel About { get; }
+
+    // The Secrets page's list.
+    public SecretsViewModel Secrets { get; }
 
     // The line that confirms each change.
     public StatusLine Status { get; } = new();
@@ -103,6 +123,27 @@ public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, 
     // The Factory Reset button: the debug group asks its two questions.
     [RelayCommand]
     private void FactoryReset() => Debug.RequestFactoryReset();
+
+    // The Secrets row: reads which eggs were found, then opens the page, so an egg found
+    // moments ago is already ticked.
+    [RelayCommand]
+    private async Task OpenSecrets()
+    {
+        await Secrets.LoadAsync();
+        IsSecretsOpen = true;
+    }
+
+    // Close on the Secrets page, or Android's back.
+    [RelayCommand]
+    private void CloseSecrets() => IsSecretsOpen = false;
+
+    // A stroke made on the tab (KonamiGestures.Classify); the one that completes the Konami
+    // code plays its egg.
+    public void AddStroke(KonamiStroke stroke)
+    {
+        if (_konami.Add(stroke))
+            _easterEggs.Request(EasterEggShows.Konami());
+    }
 
     // Opens a picker on the value chosen now.
     public void Open(SettingsPickerKind kind)
@@ -177,6 +218,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, 
     {
         foreach (var group in Groups)
             group.StatusReported -= OnStatusReported;
+        About.StatusReported -= OnStatusReported;
         Status.Dispose();
     }
 }
