@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.GestureRecognizers;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using PaperNexus.Views;
@@ -31,7 +32,13 @@ public partial class App : Avalonia.Application
             {
                 var mainView = application.Services.GetRequiredService<MainView>();
                 NavigationPage.SetHasNavigationBar(mainView, false);
-                var navigation = new NavigationPage { Content = mainView };
+                var navigation = new NavigationPage { Content = mainView, IsGestureEnabled = false };
+                // NavigationPage's swipe-back recognizer takes the touch from whatever is under
+                // the finger once it moves sideways, anywhere on the page, even with gestures
+                // off; a dragged switch knob then never hears the finger lift and stops halfway.
+                // The app pushes no page a swipe could go back from (the form is modal).
+                foreach (var swipe in navigation.GestureRecognizers.OfType<SwipeGestureRecognizer>())
+                    swipe.IsEnabled = false;
                 var host = new PageNavigationHost { Page = navigation };
                 return host;
             };

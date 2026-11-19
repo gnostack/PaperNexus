@@ -12,7 +12,7 @@ project and its logic and view models in the shared project.
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
 | `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. |
 | `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
-| `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar, inside a `PageNavigationHost`. |
+| `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar and its swipe recognizer off (see "Dragging a switch"), inside a `PageNavigationHost`. |
 | `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"), receives the `SettingsViewModel` and reads the settings the first time the Settings tab is chosen (see "Settings"), and passes Android's back to the Settings tab. |
 | `Views/MainScreenState.cs` | The selected tab, kept for the process's lifetime. |
 | `Views/ListPlace.cs` | Records a list's scroll place in its view model (`IScrollPlace`) and returns to it when the list reaches the screen again. |
@@ -26,7 +26,7 @@ project and its logic and view models in the shared project.
 | `Views/StatusLineStyles.axaml` | The confirmation line's look (white, green, red) for every tab, which each tab's `StatusLine` drives. |
 | `Views/PictureFrame.cs` | Holds a card's picture in a 16:9 box as wide as the card, so every card has the same height. |
 | `Views/CardThumbnails.cs` | Loads a card's thumbnail at the screen's pixel width when the list builds the card, and releases it when the list clears or reuses the card (through the shared `CardThumbnailHolder`) or the tab leaves the screen. |
-| `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle with an optional title line, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
+| `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle (as wide as `ChoiceDialog`'s whatever the question, long text wrapping inside) with an optional title line, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
 | `Platform/AndroidAppInfo.cs` | `IAppInfo` for the phone: the version label is "v" and the major number of the package's version name. No workflow sets the version yet, so every build is 1.0.0 and shows "v1" (step 7 sets it). |
@@ -221,7 +221,30 @@ not be measured again until Avalonia changes:
 - `TextInputOptions.ContentType="Number"` reaches Android as `inputType=0x2` (the number keypad);
   `"Digits"` reaches it as `0x3`, the phone keypad. The Settings tab's number boxes use Number.
 - The emulator reports a hardware keyboard, so Android shows no on-screen keyboard until
-  `adb shell settings put secure show_ime_with_hard_keyboard 1`; set it back to `0` afterwards.
+  `adb shell settings put secure show_ime_with_hard_keyboard 1`; set it back to `0` afterwards,
+  and power the emulator off with `adb shell reboot -p` rather than `adb emu kill`: a kill right
+  after the change lost it once, and the next boot read `1` again.
+
+### Dragging a switch
+
+`NavigationPage` (Avalonia 12.1.1) adds a horizontal `SwipeGestureRecognizer` in its constructor
+for its swipe back. Once a finger moves sideways by more than half a tap anywhere on the page, the
+recognizer captures the pointer, and the touch device then sends the moves and the lift only to
+it. A `ToggleSwitch` being dragged never hears the finger lift: its knob stops where the capture
+happened and the value does not change. `NavigationPage.IsGestureEnabled = false` does not help;
+it is read only when the swipe ends, not by the recognizer. Measured on the emulator: a sideways
+drag on a Sources row switch left the knob halfway, with `IsGestureEnabled = false` set.
+
+`App` turns the recognizer off (`SwipeGestureRecognizer.IsEnabled = false`, found in the
+navigation page's `GestureRecognizers`), which the app can afford: it pushes no page a swipe
+could go back from (the Sources form is modal). Measured after: a drag turned the Settings
+switches (Prioritize Favorites, Enabled, Debug mode, which then asks question 1 and stays off)
+and a Sources row switch on and off, also when the finger ran past the switch's end.
+
+A drag that moves more up or down than sideways in a list that can scroll still scrolls the list:
+its `ScrollGestureRecognizer` captures the pointer the same way, the value stays, and the knob is
+left slightly short of its end until the next tap. `ToggleSwitch` does not handle losing the
+pointer, so this stays as it is.
 
 ## Settings
 
@@ -254,9 +277,6 @@ login, minimize to tray, automatic updates, the folder) or the title fields.
   wallpaper change then writes one with the rendered size, the canvas, the fill style and the
   title.
 
-Measured on the emulator: dragging a `ToggleSwitch` knob in this tab (Prioritize Favorites,
-Debug mode) leaves the knob halfway with the value unchanged; the switch never sees the touch
-end. A tap sets it right again, and tapping works.
 
 ## Keeping the screen
 
