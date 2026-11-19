@@ -22,7 +22,7 @@ public class PictureListViewModelTests : IDisposable
         _folder = Path.Combine(Path.GetTempPath(), $"PaperNexus_Lists_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_folder);
         _store = TestHelpers.CreateSettingsStore();
-        var realSwitcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var realSwitcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         _switcher = new GatedSwitcher(realSwitcher);
         _library = TestHelpers.CreateLibrary(_store, _switcher);
     }

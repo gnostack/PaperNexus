@@ -16,7 +16,7 @@ public class DesktopSettingsViewModelTests : IDisposable
     {
         _directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_DesktopGroup_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _store = new SettingsStore(new GroupFolders(_directory), new DesktopSettingRules());
+        _store = new SettingsStore(new GroupFolders(_directory));
     }
 
     public void Dispose()

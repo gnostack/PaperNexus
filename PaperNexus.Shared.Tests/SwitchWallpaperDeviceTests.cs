@@ -52,9 +52,9 @@ public class SwitchWallpaperDeviceTests : IDisposable
         TestHelpers.DeleteSettingsStore(_store);
     }
 
-    private SwitchWallpaper CreateSwitcher(IWallpaperApplier applier)
+    private SwitchWallpaper CreateSwitcher(IWallpaperApplier applier, IDeviceSettingRules? deviceRules = null)
     {
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, applier, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, applier, _store, TestHelpers.AppFolders, deviceRules ?? TestSettingRules.Desktop);
         return switcher;
     }
 
@@ -141,7 +141,7 @@ public class SwitchWallpaperDeviceTests : IDisposable
         var picture = Path.Combine(_wallpaperDir, "wide - x.png");
         TestHelpers.CreateTestPng(picture, 800, 450);
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
-        var canvas = WallpaperCanvas.ForScreen(270, 600, 1.1f, 34, 31);
+        var canvas = WallpaperCanvas.ForScreen(270, 600, 1.1f);
         var applier = new FakeWallpaperApplier { Canvas = canvas };
 
         var result = await CreateSwitcher(applier).SwitchToNextAsync();
@@ -150,6 +150,43 @@ public class SwitchWallpaperDeviceTests : IDisposable
         var written = Assert.Single(applier.SetPaths);
         Assert.Equal(TestHelpers.PngPath, written);
         Assert.Equal((canvas.Width, canvas.Height), TestHelpers.ReadDimensions(written));
+    }
+
+    // A device that draws no title (the phone) writes the same wallpaper with the title switched
+    // on in the settings as with it off: an older phone settings file has it on.
+    [Fact]
+    public async Task SwitchToNext_ADeviceThatDrawsNoTitle_DrawsNoneWhenTheSettingIsOn()
+    {
+        var withTitleOn = await RenderAsync(TestSettingRules.Phone, annotate: true);
+        var withTitleOff = await RenderAsync(TestSettingRules.Phone, annotate: false);
+
+        Assert.Equal(withTitleOff, withTitleOn);
+    }
+
+    // A device that draws titles (the desktop) draws one when the setting is on.
+    [Fact]
+    public async Task SwitchToNext_ADeviceThatDrawsTitles_DrawsOneWhenTheSettingIsOn()
+    {
+        var withTitleOn = await RenderAsync(TestSettingRules.Desktop, annotate: true);
+        var withTitleOff = await RenderAsync(TestSettingRules.Desktop, annotate: false);
+
+        Assert.NotEqual(withTitleOff, withTitleOn);
+    }
+
+    // Switches to a dark picture with a long title on the given device and returns the
+    // processed wallpaper's pixels.
+    private async Task<byte[]> RenderAsync(IDeviceSettingRules deviceRules, bool annotate)
+    {
+        var picture = Path.Combine(_wallpaperDir, "A Lake at Night - x.png");
+        TestHelpers.CreateTestPng(picture, 800, 450, 20, 30, 40);
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
+        await _store.UpdateAsync(latest => latest.AnnotateWallpaper = annotate);
+        var applier = new FakeWallpaperApplier();
+
+        await CreateSwitcher(applier, deviceRules).SwitchToNextAsync();
+
+        using var written = SkiaSharp.SKBitmap.Decode(Assert.Single(applier.SetPaths));
+        return written.Bytes;
     }
 
     // Without a canvas (the desktop) the processed wallpaper keeps the picture's size.

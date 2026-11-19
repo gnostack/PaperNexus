@@ -89,7 +89,7 @@ public class RefreshPreviewImageTests : IAsyncLifetime, IDisposable
         File.WriteAllBytes(TestHelpers.JpgPath, [0xFF, 0xD8, 0xFF]);
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         var vm = TestHelpers.CreateViewModel(_store);
 
         // Act: switch wallpaper, then refresh preview (simulates window reopen)

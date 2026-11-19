@@ -49,7 +49,7 @@ public class SettingsLostWriteTests : IDisposable
         // The device sets the wallpaper after the switcher read the settings and before it
         // records the new current wallpaper.
         var applier = new CallbackWallpaperApplier(() => AddFavoriteAsync(_store, picture).GetAwaiter().GetResult());
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, applier, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, applier, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         var switched = await switcher.SwitchToNextAsync();
 
@@ -153,7 +153,7 @@ public class SettingsLostWriteTests : IDisposable
         foreach (var favorite in favorites)
             TestHelpers.CreateSmallPng(favorite);
         var progress = new EasterEggProgress(_store);
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         var sourceService = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
         var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store, TestHelpers.UnusedTimerStore());
 

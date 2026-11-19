@@ -132,12 +132,11 @@ internal static class TestHelpers
     // production store, so no test can read, write or delete the real settings.json.
     // Its default download folder is a "Downloads" folder beside the settings, which no test
     // creates unless it means to.
-    // Its device rules are the desktop's unless a test gives others.
-    internal static SettingsStore CreateSettingsStore(IDeviceSettingRules? deviceRules = null)
+    internal static SettingsStore CreateSettingsStore()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"PaperNexus_Settings_{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
-        return new SettingsStore(directory, Path.Combine(directory, "Downloads"), deviceRules ?? TestSettingRules.Desktop);
+        return new SettingsStore(directory, Path.Combine(directory, "Downloads"));
     }
 
     // A settings view model wired to the given store and to do-nothing host services, so no
@@ -222,7 +221,7 @@ internal static class TestHelpers
     // machine (a no-op wallpaper applier, working files in BaseDir).
     internal static WallpaperLibrary CreateLibrary(ISettingsStore store, ISwitchWallpaper? switcher = null)
     {
-        switcher ??= new SwitchWallpaper(Microsoft.Extensions.Logging.Abstractions.NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, store, AppFolders);
+        switcher ??= new SwitchWallpaper(Microsoft.Extensions.Logging.Abstractions.NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, store, AppFolders, TestSettingRules.Desktop);
         var library = new WallpaperLibrary(store, switcher);
         return library;
     }
@@ -309,13 +308,13 @@ internal sealed class TestSettingRules : IDeviceSettingRules
         false,
         [WallpaperFillStyle.Fill, WallpaperFillStyle.Fit, WallpaperFillStyle.Stretch, WallpaperFillStyle.Tile, WallpaperFillStyle.Center]);
 
-    public TestSettingRules(bool annotateWallpaperByDefault, IReadOnlyList<WallpaperFillStyle> fillStyles)
+    public TestSettingRules(bool drawsWallpaperTitle, IReadOnlyList<WallpaperFillStyle> fillStyles)
     {
-        AnnotateWallpaperByDefault = annotateWallpaperByDefault;
+        DrawsWallpaperTitle = drawsWallpaperTitle;
         FillStyles = fillStyles;
     }
 
-    public bool AnnotateWallpaperByDefault { get; }
+    public bool DrawsWallpaperTitle { get; }
 
     public IReadOnlyList<WallpaperFillStyle> FillStyles { get; }
 }

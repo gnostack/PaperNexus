@@ -1,7 +1,7 @@
 namespace PaperNexus;
 
-// The desktop's answers for the settings that differ between devices: the title is on for a
-// new settings file, and every fill style is offered, Span included, because the operating
+// The desktop's answers for the settings that differ between devices: it draws the title on the
+// wallpaper, and every fill style is offered, Span included, because the operating
 // system fits the picture to one or more monitors itself.
 internal sealed class DesktopSettingRules : IDeviceSettingRules, IAddSingleton<IDeviceSettingRules>
 {
@@ -15,7 +15,7 @@ internal sealed class DesktopSettingRules : IDeviceSettingRules, IAddSingleton<I
         WallpaperFillStyle.Span,
     ];
 
-    public bool AnnotateWallpaperByDefault => true;
+    public bool DrawsWallpaperTitle => true;
 
     public IReadOnlyList<WallpaperFillStyle> FillStyles => AllFillStyles;
 }

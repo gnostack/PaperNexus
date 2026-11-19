@@ -51,7 +51,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         File.WriteAllBytes(TestHelpers.JpgPath, [0xFF, 0xD8, 0xFF]); // fake JPEG marker
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -71,7 +71,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         File.WriteAllBytes(TestHelpers.PngPath, [0x89, 0x50, 0x4E, 0x47]); // fake PNG marker
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -91,7 +91,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         TestHelpers.Cleanup(); // ensure no current.png/jpg
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -111,7 +111,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         var missingFolder = Path.Combine(Path.GetTempPath(), $"PaperNexus_Missing_{Guid.NewGuid():N}");
         await TestHelpers.WriteSettingsAsync(_store, missingFolder);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act — should not throw DirectoryNotFoundException
         var result = await switcher.SwitchToNextAsync();
@@ -136,7 +136,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -170,7 +170,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -203,7 +203,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -237,7 +237,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -255,7 +255,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         var missingFolder = Path.Combine(Path.GetTempPath(), $"PaperNexus_Missing_{Guid.NewGuid():N}");
         await TestHelpers.WriteSettingsAsync(_store, missingFolder);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         var result = await switcher.SwitchToRandomAsync();
 
@@ -277,7 +277,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         var result = await switcher.SwitchToRandomAsync();
 
@@ -305,7 +305,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act: run many times to ensure randomness never returns the current wallpaper
         for (var i = 0; i < 10; i++)
@@ -340,7 +340,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         var result = await switcher.SwitchToRandomAsync();
 
@@ -358,7 +358,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         TestHelpers.Cleanup();
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         var result = await switcher.SwitchToSpecificAsync(wallpaperPath);
 
@@ -374,7 +374,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         TestHelpers.Cleanup();
         await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         var result = await switcher.SwitchToSpecificAsync(missingPath);
 
@@ -409,7 +409,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
         };
         await _store.WriteAsync(settings);
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
 
         // Act
         var result = await switcher.SwitchToNextAsync();
@@ -447,7 +447,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
             AnnotateWallpaper = false,
         };
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         var favoritePicks = 0;
         const int iterations = 50;
 
@@ -496,7 +496,7 @@ public class SwitchWallpaperTests : IAsyncLifetime, IDisposable
             AnnotateWallpaper = false,
         };
 
-        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders);
+        var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         var normalPicks = 0;
         const int iterations = 40;
 

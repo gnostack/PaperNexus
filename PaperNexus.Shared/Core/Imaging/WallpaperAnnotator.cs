@@ -22,8 +22,8 @@ internal static class WallpaperAnnotator
     public const string DefaultColor = "#F5F5F5";
 
     // Distance of the text from the left or right edge, and the gap below the text at the
-    // bottom positions.
-    private const float SideMargin = 125f;
+    // bottom positions. A title is laid out between the two side margins.
+    internal const float SideMargin = 125f;
     private const float TopMargin = 5f;
     private const float BottomMargin = 10f;
 
@@ -67,16 +67,15 @@ internal static class WallpaperAnnotator
     // Draws the annotation onto bitmap in place, placed against the bitmap's own edges. An
     // unparseable colour falls back to DefaultColor; the caller is expected to have logged it
     // via IsValidColor.
+    //
+    // The title is laid out inside the picture's width less the two side margins: it wraps at
+    // spaces onto as many lines as it needs, left-aligned at the left margin, or right-aligned
+    // at the right margin for the right positions. At the top positions the lines go down from
+    // the top margin; at the bottom positions they grow upward, so the last line keeps its
+    // bottom margin. A title that fits one line is drawn exactly where it always was. A single
+    // word wider than the whole width is the only thing that can still not fit: it gets a line
+    // of its own starting at the left margin and is cut at the picture's edge.
     public static void Draw(SKBitmap bitmap, AnnotationRequest request)
-    {
-        var wholeBitmap = new SKRectI(0, 0, bitmap.Width, bitmap.Height);
-        Draw(bitmap, request, wholeBitmap);
-    }
-
-    // Draws the annotation onto bitmap, placed against the edges of area instead of the
-    // bitmap's: the margins below are measured from area. The phone passes the part of its
-    // wallpaper the screen shows with no system bar over it.
-    public static void Draw(SKBitmap bitmap, AnnotationRequest request, SKRectI area)
     {
         if (!TryParseHexColor(request.Color, out var textColor))
             TryParseHexColor(DefaultColor, out textColor);
@@ -87,10 +86,7 @@ internal static class WallpaperAnnotator
 
         var fontSize = request.FontSize > 0 ? request.FontSize : 18;
         var rightAligned = request.Position is AnnotationPosition.TopRight or AnnotationPosition.BottomRight;
-        var x = rightAligned ? area.Right - SideMargin : area.Left + SideMargin;
         var isTop = request.Position is AnnotationPosition.TopLeft or AnnotationPosition.TopRight;
-        // y is the top edge of the title line
-        var y = isTop ? area.Top + TopMargin : area.Bottom - fontSize - BottomMargin;
 
         using var typeface = BundledFonts.ResolveTypeface(request.FontFamily);
         // HarfBuzz shaping applies the font's kerning and ligature tables, which Skia's
@@ -110,17 +106,87 @@ internal static class WallpaperAnnotator
             : null;
 
         using var titleFont = new SKFont(typeface, fontSize);
-        DrawOutlinedText(canvas, shaper, request.Title, x, y, rightAligned, titleFont, fill, outline);
+        var layout = Layout(shaper, request.Title, titleFont, fontSize, bitmap.Width, bitmap.Height, rightAligned, isTop);
+
+        foreach (var line in layout.Lines)
+            DrawOutlinedText(canvas, shaper, line.Text, line.Left, line.Top, false, titleFont, fill, outline);
 
         // Debug mode adds a smaller timestamp just below a top title or just above a bottom one
         if (request.Timestamp is not null)
         {
             using var timestampFont = new SKFont(typeface, fontSize * 0.75f);
-            var timestampY = isTop ? y + fontSize + 4 : y - fontSize;
+            var firstTop = layout.Lines[0].Top;
+            var lastTop = layout.Lines[^1].Top;
+            var timestampY = isTop ? lastTop + fontSize + 4 : firstTop - fontSize;
+            var x = rightAligned ? bitmap.Width - SideMargin : SideMargin;
             DrawOutlinedText(canvas, shaper, request.Timestamp, x, timestampY, rightAligned, timestampFont, fill, outline);
         }
 
         canvas.Flush();
+    }
+
+    // One laid-out line of the title: its text and where it starts (the left edge of its text
+    // and the top edge of its line).
+    internal sealed record TitleLine(string Text, float Left, float Top, float Width);
+
+    internal sealed record TitleLayout(IReadOnlyList<TitleLine> Lines, float LineAdvance);
+
+    // Lays the title out on a picture of width x height: wraps it into lines no wider than the
+    // width between the side margins, then places each line. Exposed so tests can check the
+    // layout without reading pixels.
+    internal static TitleLayout Layout(string familyName, int fontSize, string title, int width, int height, AnnotationPosition position)
+    {
+        using var typeface = BundledFonts.ResolveTypeface(familyName);
+        using var shaper = new SKShaper(typeface);
+        using var font = new SKFont(typeface, fontSize);
+        var rightAligned = position is AnnotationPosition.TopRight or AnnotationPosition.BottomRight;
+        var isTop = position is AnnotationPosition.TopLeft or AnnotationPosition.TopRight;
+        return Layout(shaper, title, font, fontSize, width, height, rightAligned, isTop);
+    }
+
+    private static TitleLayout Layout(SKShaper shaper, string title, SKFont font, int fontSize, int pictureWidth, int pictureHeight, bool rightAligned, bool isTop)
+    {
+        var maxWidth = Math.Max(1f, pictureWidth - 2 * SideMargin);
+        var texts = WrapLines(shaper, title, font, maxWidth);
+        // Lines are spaced by the font's own recommended line spacing, never closer than the size
+        var lineAdvance = Math.Max(fontSize, font.Spacing);
+        // y is the top edge of the first line; a bottom title's last line keeps the bottom margin
+        var lastLineTop = pictureHeight - fontSize - BottomMargin;
+        var firstTop = isTop ? TopMargin : lastLineTop - (texts.Count - 1) * lineAdvance;
+
+        var lines = new List<TitleLine>(texts.Count);
+        for (var i = 0; i < texts.Count; i++)
+        {
+            var text = texts[i];
+            var width = ShapedWidth(shaper, text, font);
+            // A line too wide to fit (one long word) starts at the left margin and is cut at the edge
+            var fits = width <= maxWidth;
+            var left = rightAligned && fits ? pictureWidth - SideMargin - width : SideMargin;
+            lines.Add(new TitleLine(text, left, firstTop + i * lineAdvance, width));
+        }
+        return new TitleLayout(lines, lineAdvance);
+    }
+
+    // Splits the title at spaces into lines whose shaped width is at most maxWidth, filling
+    // each line with as many words as fit. A word wider than maxWidth gets a line of its own.
+    private static List<string> WrapLines(SKShaper shaper, string title, SKFont font, float maxWidth)
+    {
+        var words = (title ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<string>();
+        var current = string.Empty;
+        foreach (var word in words)
+        {
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (current.Length == 0 || ShapedWidth(shaper, candidate, font) <= maxWidth)
+            {
+                current = candidate;
+                continue;
+            }
+            lines.Add(current);
+            current = word;
+        }
+        lines.Add(current);
+        return lines;
     }
 
     // Draws the shaped text as an outline pass then a fill pass. x is the left edge, or the
