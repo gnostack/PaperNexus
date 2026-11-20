@@ -164,8 +164,9 @@ public class DownloadScheduleTests : IDisposable
         Assert.Equal(typeof(DownloadWallpapers), downloader.ImplementationType);
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(DownloadWallpapers));
         Assert.DoesNotContain(HostedServices(services), d => d.ImplementationType == typeof(DownloadSchedule));
-        // The one hosted service the shared assembly adds by itself applies the debug log level
-        Assert.Single(HostedServices(services));
+        // The hosted services the shared assembly adds by itself: the debug log level, and the
+        // background work, which arms nothing on a device with no background scheduler
+        Assert.Equal(2, HostedServices(services).Count);
     }
 
     [Fact]

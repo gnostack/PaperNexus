@@ -150,7 +150,9 @@ public static class SlideshowSchedule
     {
         cron.ThrowIfNull();
         zone.ThrowIfNull();
-        if (lastChange is { } last)
+        // A last change after now means the clock was set back since: it says nothing about
+        // how long ago the wallpaper changed, so it sets no floor
+        if (lastChange is { } last && last <= now)
         {
             var floor = last + shortestGap;
             if (floor > now)

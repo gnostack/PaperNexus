@@ -19,10 +19,18 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
     public const string EmptySentence = "No sources yet. Tap Add to create one.";
     public const string SavedText = "Settings saved.";
 
+    // A scheduled download in which some sources failed (issue #203, step 5)
+    public static string ScheduledDownloadFailedText(DownloadOutcome outcome) =>
+        $"The last scheduled download failed for {outcome.SourcesFailed} of {outcome.SourcesTried} sources.";
+
     private readonly IWallpaperSources _sources;
     private readonly IDownloadWallpapers _downloadWallpapers;
     private readonly ILogger<SourcesViewModel> _logger;
     private readonly SynchronizationContext? _screenContext;
+    private readonly IScheduledWorkFailures? _scheduledFailures;
+    // The failed scheduled download's line while it is shown, so a run that works removes it
+    // and nothing else
+    private string? _failureLine;
     private bool _isDisposed;
 
     // Counts the listings started, so only the newest is shown.
@@ -40,7 +48,8 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
     public SourcesViewModel(
         IWallpaperSources sources,
         IDownloadWallpapers downloadWallpapers,
-        ILogger<SourcesViewModel> logger)
+        ILogger<SourcesViewModel> logger,
+        IScheduledWorkFailures? scheduledFailures = null)
     {
         _sources = sources.ThrowIfNull();
         _downloadWallpapers = downloadWallpapers.ThrowIfNull();
@@ -48,6 +57,9 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
         _screenContext = SynchronizationContext.Current;
         Items.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
         _sources.Changed += OnSourcesChanged;
+        _scheduledFailures = scheduledFailures;
+        if (_scheduledFailures is not null)
+            _scheduledFailures.Changed += OnScheduledFailuresChanged;
     }
 
     public ObservableCollection<SourceItem> Items { get; } = [];
@@ -65,7 +77,54 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
 
     // Lists the sources the first time a view shows the tab; a later view (after the screen was
     // recreated) finds them already listed and kept current.
-    public Task EnsureLoadedAsync() => IsLoaded ? Task.CompletedTask : LoadAsync();
+    public async Task EnsureLoadedAsync()
+    {
+        if (IsLoaded)
+            return;
+        await LoadAsync();
+        await ShowScheduledDownloadFailureAsync();
+    }
+
+    // A failed scheduled download shows on the line, held until the next line replaces it; the
+    // next scheduled run that works takes it away (IScheduledWorkFailures).
+    private async Task ShowScheduledDownloadFailureAsync()
+    {
+        if (_scheduledFailures is null)
+            return;
+        try
+        {
+            var failure = await _scheduledFailures.ScheduledDownloadFailureAsync();
+            if (failure is not null)
+            {
+                _failureLine = ScheduledDownloadFailedText(failure);
+                Status.Show(_failureLine, StatusTone.Error, hold: true);
+            }
+            else if (_failureLine is not null && Status.Message == _failureLine)
+            {
+                Status.Clear();
+            }
+            if (failure is null)
+                _failureLine = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Reading the last scheduled download failed.");
+        }
+    }
+
+    // Raised on a background thread; applied on the screen's thread once the tab has listed.
+    private void OnScheduledFailuresChanged()
+    {
+        if (!IsLoaded || _isDisposed)
+            return;
+        if (_screenContext is null)
+        {
+            _ = ShowScheduledDownloadFailureAsync();
+            return;
+        }
+
+        _screenContext.Post(_ => _ = ShowScheduledDownloadFailureAsync(), null);
+    }
 
     // Lists the sources. Two changes saved close together start two listings; only the one
     // started last is shown, since it read after every change, so an older listing finishing
@@ -197,6 +256,8 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
     {
         _isDisposed = true;
         _sources.Changed -= OnSourcesChanged;
+        if (_scheduledFailures is not null)
+            _scheduledFailures.Changed -= OnScheduledFailuresChanged;
         Form?.StopTest();
         Status.Dispose();
     }

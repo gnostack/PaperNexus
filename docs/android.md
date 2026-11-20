@@ -37,7 +37,9 @@ project and its logic and view models in the shared project.
 | `Platform/AndroidFactoryReset.cs` | `IFactoryReset` for the phone (see "Factory Reset"). |
 | `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words) and Hexspeak (no title colour box), three eggs, with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
 | `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: it draws no title on the wallpaper (see "No title on the phone's wallpaper"); the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. The fastest slideshow is every 15 minutes; the interval units are Minutes (15, 20 or 30, picked from a list), Hours, Days, Weeks, Months and Years (see "Settings"). |
-| `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
+| `Platform/AndroidPermissions.cs` | `INTERNET`, `SET_WALLPAPER`, `RECEIVE_BOOT_COMPLETED` and `ACCESS_NETWORK_STATE`, as assembly attributes. |
+| `Platform/AndroidBackgroundScheduler.cs` | `IBackgroundScheduler` for the phone: the slideshow's alarm and the download job (see "Background slideshow and downloads"). |
+| `Background/SlideshowAlarmReceiver.cs`, `Background/DownloadJobService.cs`, `Background/ScheduleRestoreReceiver.cs` | What Android starts the app for: a slideshow change, a scheduled download run, and a restart, app update or clock change that needs the work armed again. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
 
@@ -98,6 +100,11 @@ Decisions that are easy to undo by accident:
 - A phone that forbids changing the wallpaper (`IWallpaperApplier.CanSetWallpaper` is false)
   shows "This phone does not allow apps to change the wallpaper." in red, and Next and Random
   stay dimmed.
+- After a background slideshow change failed (the phone refused the picture, or it could not be
+  read), the tab shows "The slideshow could not change the wallpaper. Tap Next to try again." in
+  red under the buttons when it opens, or at once if it is open. The next change that works - a
+  background one, Next, Random or set as current - takes it away. The fact is the slideshow's
+  entry in `timers.json` (`BackgroundWork`, read through `IScheduledWorkFailures`).
 - The picture is the downloaded source picture, scaled to the screen's pixel width by
   `ImageResizing.CreatePngOfWidth` (the shared imaging layer) rather than held at 4K.
 - Each activity gets a new view; the view model lives as long as the process (see "Keeping
@@ -180,6 +187,11 @@ dialog).
   "Downloading wallpapers..." (white) while Download now runs, then "Download complete.", "Download
   failed for N of M sources.", "Download failed: check your connection." or "No enabled sources to
   download from." Download now is dimmed while it runs. Delete asks nothing, as on the desktop.
+- **A failed scheduled download** (some sources' feeds could not be read) shows "The last
+  scheduled download failed for N of M sources." in red on the line when the tab is first shown,
+  held until another line replaces it. The next scheduled run that works takes it away (Download
+  now does not: it is not the scheduled run). The fact is the scheduled download's entry in
+  `timers.json`, which `BackgroundWork` writes after each run that tried a source.
 - **The switch saves at once** (the desktop's checkbox saved with the window's settings save, half
   a second later); a failed save puts it back.
 - **The form** covers the whole screen: the title and the Enabled switch, then Name, URL, Image URL
@@ -404,12 +416,15 @@ Rotation and dark/light mode changes still keep the activity, as before.
 - `MainApplication.OnCreate` builds the container once per process with `new HostBuilder()`:
   the shared services (`AddServicesFrom` on the shared assembly), then this host's
   implementations (`AddServicesFrom` on the Android assembly), the screens as transient
-  registrations, and the file logger. It does not call `AddInProcessSchedules`, so the
-  slideshow does not run on a timer inside the app (issue #203, step 5 brings it).
-- The scheduled downloads still run on a timer inside the process (`DownloadSchedule`, added by
-  `AddInProcessDownloadSchedule`): its first run begins when the host starts and later runs
-  follow each source's schedule while Android keeps the process. Issue #203 step 5, change 3
-  replaces it with Android's own scheduling (see "Background slideshow and downloads").
+  registrations, and the file logger. It does not call `AddInProcessSchedules`: the slideshow
+  and the scheduled downloads run no timer inside the app's process, which Android can stop at
+  any time. Android starts the process for each change and each download run (see "Background
+  slideshow and downloads").
+- `OnCreate` runs whatever starts the process: the screen, the slideshow's alarm, the download
+  job or a broadcast. Starting the host applies the stored log level (`DebugLogLevel`) and arms
+  the background work (`BackgroundWork`); it starts no download and no wallpaper change itself.
+  The tabs' view models are created only when a screen asks for them, so the Current tab's
+  first-open download runs only when the app is opened.
 - The logger reads its level from a `LogLevelSwitch` that `MainApplication` creates and registers:
   debug entries while the debug mode setting is on, from the moment it changes (`DebugLogLevel`
   applies the stored setting when the host starts). The Settings tab's Debug mode switch changes
@@ -420,13 +435,57 @@ Rotation and dark/light mode changes still keep the activity, as before.
 
 ## Background slideshow and downloads (issue #203, step 5)
 
-Being built in four changes; this section grows with them. The design: the slideshow is a
+Built in four changes; Exact timing arrives with change 4. The design: the slideshow is a
 one-shot alarm set for the next change and set again after every change, a 10-minute window
 alarm with Exact timing off, an exact allow-while-idle alarm plus the same window alarm as a
 backup with it on; downloads are one persisted JobScheduler job that waits for a network. What is
 armed is always derived from the settings (`BackgroundPlan.For`, after each `ISettingsStore.Saved`
 and at every process start), never stored. No package is added: AlarmManager and JobScheduler are
 the platform's own.
+
+**How it runs (change 3, Exact timing off):**
+
+- **`BackgroundWork`** (shared) plans when the process starts (it is a hosted service), after every
+  settings save (`ISettingsStore.Saved`), and after every change and download run. It arms each
+  of the two only when its time differs from what is armed, through `IBackgroundScheduler`
+  (`AndroidBackgroundScheduler`). The slideshow switched off cancels its alarm; an edited schedule
+  arms the new time; Factory Reset starts a new process, which plans from the defaults.
+- **The slideshow** is a one-shot `AlarmManager.SetWindow(RtcWakeup, time, 10 minutes)` alarm whose
+  pending intent carries the scheduled time. `SlideshowAlarmReceiver` handles it with `goAsync`:
+  `BackgroundWork.RunSlideshowAsync` changes to the next picture in slideshow order (the desktop
+  slideshow's rule), records the run in `timers.json` (`PaperNexus.BackgroundSlideshow`: when it
+  ran, the time it was for, whether it failed), and arms the next change at least 15 minutes
+  after it. A second alarm for a time already handled, or one arriving with the slideshow off,
+  changes nothing. A spent alarm is always armed again, even for the same time. A last change
+  recorded after now (the clock was set back) sets no floor.
+- **Downloads** are one JobScheduler job (id 1, `DownloadJobService`): one-shot, persisted, needing a
+  network, with a minimum latency up to the earliest time a source is due. `RunDownloadsAsync`
+  calls `IDownloadWallpapers.DownloadDueAsync`, records the run (`PaperNexus.BackgroundDownloads`:
+  when it ran, sources tried and failed), finishes the job, then arms the next. While a run is in
+  progress its job is not armed again (scheduling the running job's id stops it). A source that
+  failed waits for its next occurrence; a run that tried nothing records nothing.
+- **Restoring:** `ScheduleRestoreReceiver` plans again after a restart (`BOOT_COMPLETED`), an app
+  update (`MY_PACKAGE_REPLACED`) and a clock or time zone change. A change whose time was skipped
+  by a clock change is not made up: the next one follows the new clock.
+- **The two failure lines** (`IScheduledWorkFailures`): the Current tab's "The slideshow could not
+  change the wallpaper. Tap Next to try again." and the Sources tab's "The last scheduled download
+  failed for N of M sources." (see those sections).
+- `dotnet build -t:Install` of a Debug build force-stops the app after installing it, which
+  cancels its alarms and job until the app is opened (measured: `pi_cancelled` in `dumpsys
+  alarm`); `adb install -r` of a package, which is what an update does, keeps them.
+
+Measured on the Android 16 emulator (Release, issue #203 step 5, change 3):
+
+| What | Result |
+| --- | --- |
+| A real change with the app closed and never opened in that process | Armed for 20:00 with a 10-minute window; Android started the process for `SlideshowAlarmReceiver` at 20:10:00.005; the wallpaper id went from 74 to 75; the next change was armed for 20:30; no activity was created. |
+| A cold change, start of the process to the end of the change | 1699 ms (1086 ms in the receiver); a second cold one 1477 ms (975 ms). A warm one 1166 ms. Well inside the receiver's 10 seconds, so no job is needed for the change. |
+| Doze (forced deep idle, unplugged, screen off) | The window alarm for 21:00 was held (`dumpsys alarm`: `device_idle=+55m`); after leaving Doze it was delivered at the end of its window, 21:10:01. |
+| Restart, app not opened | The boot broadcast started the process and armed the change; the next change came with no activity created. |
+| App update (`adb install -r`, twice) | The alarm and the job stayed; `MY_PACKAGE_REPLACED` started the process and planned again. |
+| Factory Reset | The new process armed the defaults (every 30 minutes) and the download job, which ran at once and then armed the next. |
+| A picture that cannot be read | The change failed (`timers.json`: `LastExecutionSucceeded: false`), the wallpaper stayed, the Current tab showed the red line; Next with the picture repaired changed the wallpaper and took the line away. |
+| A feed that cannot be reached (forced with `adb shell cmd jobscheduler run -f com.gnostack.papernexus 1`) | The run recorded 3 tried, 1 failed; the Sources tab showed "The last scheduled download failed for 1 of 3 sources."; the next run that worked cleared it. |
 
 Change 1 (shared groundwork, nothing on the phone behaves differently yet): the downloader's
 scheduled run is `IDownloadWallpapers.DownloadDueAsync`, the in-process timer is `DownloadSchedule`,

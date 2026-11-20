@@ -42,6 +42,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     public const string DownloadFailedText = "Could not download wallpapers. Check your connection.";
     public const string NotAllowedText = "This phone does not allow apps to change the wallpaper.";
     public const string SwitchFailedText = "Could not change the wallpaper. Try again.";
+    public const string SlideshowFailedText = "The slideshow could not change the wallpaper. Tap Next to try again.";
     public const string AddedText = "Added to favorites.";
     public const string RemovedText = "Removed from favorites.";
     public const string DeleteQuestion = "Delete this wallpaper file from disk?";
@@ -56,6 +57,7 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
     private readonly ILogger<CurrentWallpaperViewModel> _logger;
     private readonly EasterEggRequests _easterEggs;
     private readonly SynchronizationContext? _screenContext;
+    private readonly IScheduledWorkFailures? _scheduledFailures;
 
     // True while this tab deletes its own picture, so the library's report of that delete
     // is not handled a second time.
@@ -105,7 +107,8 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         IDownloadWallpapers downloadWallpapers,
         IWallpaperApplier wallpaperApplier,
         EasterEggRequests easterEggs,
-        ILogger<CurrentWallpaperViewModel> logger)
+        ILogger<CurrentWallpaperViewModel> logger,
+        IScheduledWorkFailures? scheduledFailures = null)
     {
         _settingsStore = settingsStore.ThrowIfNull();
         _library = library.ThrowIfNull();
@@ -117,6 +120,9 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         _screenContext = SynchronizationContext.Current;
         _switchWallpaper.WallpaperChanged += OnWallpaperChanged;
         _library.Changed += OnLibraryChanged;
+        _scheduledFailures = scheduledFailures;
+        if (_scheduledFailures is not null)
+            _scheduledFailures.Changed += OnScheduledFailuresChanged;
     }
 
     public bool IsShowing => State == CurrentWallpaperState.Showing;
@@ -190,10 +196,12 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
             if (!string.IsNullOrEmpty(current) && File.Exists(current))
             {
                 await ShowWallpaperAsync(current);
+                await ShowSlideshowFailureAsync();
                 return;
             }
 
             await MakeAWallpaperAsync();
+            await ShowSlideshowFailureAsync();
         }
         catch (Exception ex)
         {
@@ -470,11 +478,49 @@ public partial class CurrentWallpaperViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Stops listening to the switcher and the library, which outlive this tab.
+    // A failed background slideshow change shows as the red line under the buttons, unless
+    // the line already says something else; the next change that works takes it away
+    // (IScheduledWorkFailures, issue #203 step 5).
+    private async Task ShowSlideshowFailureAsync()
+    {
+        if (_scheduledFailures is null)
+            return;
+        try
+        {
+            var failed = await _scheduledFailures.SlideshowChangeFailedAsync();
+            if (failed && ErrorMessage is null && IsSwitchingAllowed)
+                ErrorMessage = SlideshowFailedText;
+            else if (!failed && ErrorMessage == SlideshowFailedText)
+                ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Reading the last background slideshow change failed.");
+        }
+    }
+
+    // Raised on a background thread; applied on the screen's thread once the tab has loaded.
+    private void OnScheduledFailuresChanged()
+    {
+        if (_loadTask is null)
+            return;
+        if (_screenContext is null)
+        {
+            _ = ShowSlideshowFailureAsync();
+            return;
+        }
+
+        _screenContext.Post(_ => _ = ShowSlideshowFailureAsync(), null);
+    }
+
+    // Stops listening to the switcher, the library and the background work, which outlive
+    // this tab.
     public void Dispose()
     {
         _switchWallpaper.WallpaperChanged -= OnWallpaperChanged;
         _library.Changed -= OnLibraryChanged;
+        if (_scheduledFailures is not null)
+            _scheduledFailures.Changed -= OnScheduledFailuresChanged;
         Status.Dispose();
     }
 }

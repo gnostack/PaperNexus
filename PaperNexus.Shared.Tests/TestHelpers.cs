@@ -362,3 +362,19 @@ internal sealed class NoOpShellOpener : IShellOpener
 
     public void OpenFolder(string folderPath) { }
 }
+
+// What the background work last left wrong, set by the test (IScheduledWorkFailures).
+internal sealed class FakeScheduledFailures : IScheduledWorkFailures
+{
+    public event Action? Changed;
+
+    public bool SlideshowFailed { get; set; }
+
+    public DownloadOutcome? DownloadFailure { get; set; }
+
+    public Task<bool> SlideshowChangeFailedAsync() => Task.FromResult(SlideshowFailed);
+
+    public Task<DownloadOutcome?> ScheduledDownloadFailureAsync() => Task.FromResult(DownloadFailure);
+
+    public void RaiseChanged() => Changed?.Invoke();
+}
