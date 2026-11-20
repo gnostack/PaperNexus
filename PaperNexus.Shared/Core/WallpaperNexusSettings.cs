@@ -56,6 +56,11 @@ public class SlideshowSettings
     public WallpaperFillStyle FillStyle { get; set; } = WallpaperFillStyle.Fill;
     public bool FavoritePriorityEnabled { get; set; }
     public int FavoritePriorityWeight { get; set; } = 3;
+
+    // Change on the minute rather than within Android's background window, on a device that
+    // offers it (IDeviceSettingRules.OffersExactTiming: the phone, issue #203 step 5). Only the
+    // phone's Settings tab shows or writes it; on while the phone allows exact alarms.
+    public bool ExactTiming { get; set; }
 }
 
 public enum WallpaperSourceType

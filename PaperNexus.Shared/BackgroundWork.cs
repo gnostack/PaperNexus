@@ -27,11 +27,15 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
     private readonly IDeviceSettingRules _deviceRules;
     private readonly ILogger<BackgroundWork> _logger;
     private readonly IBackgroundScheduler? _scheduler;
+    private readonly IExactTimingPermission? _exactTiming;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _zone;
 
     // One plan at a time, so two saves close together cannot arm in the wrong order
     private readonly SemaphoreSlim _planLock = new(1);
+    // One background change at a time: with Exact timing the exact alarm and its backup can
+    // arrive together, and the second must find the first one's record
+    private readonly SemaphoreSlim _slideshowLock = new(1);
     private bool _slideshowArmed;
     private (DateTimeOffset? At, bool Exact) _armedSlideshow;
     private bool _downloadsArmed;
@@ -47,8 +51,9 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         IDownloadWallpapers downloadWallpapers,
         IDeviceSettingRules deviceRules,
         ILogger<BackgroundWork> logger,
-        IBackgroundScheduler? scheduler = null)
-        : this(settingsStore, timerStore, switchWallpaper, downloadWallpapers, deviceRules, logger, scheduler, TimeProvider.System, TimeZoneInfo.Local)
+        IBackgroundScheduler? scheduler = null,
+        IExactTimingPermission? exactTiming = null)
+        : this(settingsStore, timerStore, switchWallpaper, downloadWallpapers, deviceRules, logger, scheduler, TimeProvider.System, TimeZoneInfo.Local, exactTiming)
     {
     }
 
@@ -62,7 +67,8 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         ILogger<BackgroundWork> logger,
         IBackgroundScheduler? scheduler,
         TimeProvider clock,
-        TimeZoneInfo zone)
+        TimeZoneInfo zone,
+        IExactTimingPermission? exactTiming = null)
     {
         _settingsStore = settingsStore.ThrowIfNull();
         _timerStore = timerStore.ThrowIfNull();
@@ -71,6 +77,7 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         _deviceRules = deviceRules.ThrowIfNull();
         _logger = logger.ThrowIfNull();
         _scheduler = scheduler;
+        _exactTiming = exactTiming;
         _clock = clock.ThrowIfNull();
         _zone = zone.ThrowIfNull();
     }
@@ -108,8 +115,9 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
             var slideshow = await _timerStore.LoadContextAsync(SlideshowJobName).ConfigureAwait(false);
             var downloads = await _timerStore.LoadContextAsync(DownloadsJobName).ConfigureAwait(false);
             var now = _clock.GetUtcNow();
-            // Exact timing arrives with issue #203 step 5, change 4
-            var plan = BackgroundPlan.For(settings, now, slideshow.StartedAt, downloads.StartedAt, exact: false, _deviceRules.ShortestSlideshowGap, _zone);
+            // On the minute while Exact timing is on and the device still allows it
+            var exact = settings.Slideshow.ExactTiming && _exactTiming?.IsAllowed == true;
+            var plan = BackgroundPlan.For(settings, now, slideshow.StartedAt, downloads.StartedAt, exact, _deviceRules.ShortestSlideshowGap, _zone);
 
             var slideshowKey = (plan.SlideshowAt, plan.SlideshowExact);
             if (!_slideshowArmed || slideshowKey != _armedSlideshow)
@@ -120,7 +128,7 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
                 if (plan.SlideshowAt is null)
                     _logger.LogInformation("No slideshow change armed: the slideshow is off or its schedule does not parse.");
                 else
-                    _logger.LogInformation("Slideshow armed for {At:O}.", plan.SlideshowAt);
+                    _logger.LogInformation("Slideshow armed for {At:O}{Exact}.", plan.SlideshowAt, plan.SlideshowExact ? ", on the minute" : string.Empty);
             }
 
             // A run that is due now stays the same run however often the plan is made while
@@ -155,6 +163,7 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
     {
         // The alarm that started this is spent: whatever the next plan is, it is armed
         await ForgetArmedAsync(slideshow: true).ConfigureAwait(false);
+        await _slideshowLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var last = await _timerStore.LoadContextAsync(SlideshowJobName).ConfigureAwait(false);
@@ -175,6 +184,10 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         catch (Exception ex)
         {
             _logger.LogError(ex, "The background slideshow change could not be recorded.");
+        }
+        finally
+        {
+            _slideshowLock.Release();
         }
         await PlanAsync().ConfigureAwait(false);
     }
@@ -288,6 +301,28 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
             return null;
         var outcome = new DownloadOutcome(tried, last.SourcesFailed ?? 0);
         return outcome;
+    }
+
+    // The person's Download now covers every enabled source; when none failed, the last run
+    // worked, and a failed scheduled run's fact is cleared here, by its one writer.
+    public async Task RecordDownloadNowAsync(DownloadOutcome outcome)
+    {
+        if (outcome.SourcesTried == 0 || outcome.SourcesFailed > 0)
+            return;
+        try
+        {
+            var last = await _timerStore.LoadContextAsync(DownloadsJobName).ConfigureAwait(false);
+            if (last.StartedAt is null || last.LastExecutionSucceeded)
+                return;
+            // When the scheduled run last ran stays, for its own schedule
+            var cleared = last with { LastExecutionSucceeded = true };
+            await _timerStore.SaveContextAsync(DownloadsJobName, cleared).ConfigureAwait(false);
+            Changed?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Clearing the failed scheduled download failed.");
+        }
     }
 
     private void OnSettingsSaved(WallpaperNexusSettings settings) => _ = PlanAsync();

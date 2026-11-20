@@ -24,4 +24,9 @@ public interface IDeviceSettingRules
     // the numbers it allows (SlideshowSchedule.IntervalRules has the desktop's). A stored unit
     // that is not here still shows as it is.
     public IReadOnlyList<IntervalRule> IntervalTypes { get; }
+
+    // Whether this device has the "Exact timing" setting (SlideshowSettings.ExactTiming): the
+    // phone, whose background slideshow is otherwise allowed to come late. The desktop's
+    // slideshow runs on a timer in its own process and is always on time.
+    public bool OffersExactTiming { get; }
 }

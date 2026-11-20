@@ -56,6 +56,19 @@ public class SourcesViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task DownloadNow_IsHandedToTheBackgroundWork()
+    {
+        // Its one writer clears a failed scheduled run when every source worked
+        var failures = new FakeScheduledFailures();
+        using var vm = Create(await SourcesAsync(Source("One")), failures);
+        _downloader.Outcome = new DownloadOutcome(1, 0);
+
+        await vm.DownloadNowCommand.ExecuteAsync(null);
+
+        Assert.Equal([new DownloadOutcome(1, 0)], failures.DownloadNows);
+    }
+
+    [Fact]
     public async Task NoFailedScheduledDownload_ShowsNoLine()
     {
         using var vm = Create(await SourcesAsync(Source("One")), new FakeScheduledFailures());

@@ -27,6 +27,9 @@ internal sealed class AndroidSettingRules : IDeviceSettingRules, IAddSingleton<I
 
     public IReadOnlyList<IntervalRule> IntervalTypes => PhoneIntervalTypes;
 
+    // The "Exact timing" switch (issue #203, step 5): on the minute with Android's exact alarms
+    public bool OffersExactTiming => true;
+
     private static readonly TimeSpan FifteenMinutes = TimeSpan.FromMinutes(15);
 
     // No seconds. Minutes are picked from 15, 20 and 30: the counts that divide the hour and are
