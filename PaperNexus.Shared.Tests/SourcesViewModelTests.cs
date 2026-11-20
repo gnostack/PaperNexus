@@ -22,10 +22,47 @@ public class SourcesViewModelTests : IDisposable
         return wallpaperSources;
     }
 
-    private SourcesViewModel Create(IWallpaperSources sources)
+    private SourcesViewModel Create(IWallpaperSources sources, IScheduledWorkFailures? failures = null)
     {
         return TestHelpers.WithoutSynchronizationContext(
-            () => new SourcesViewModel(sources, _downloader, NullLogger<SourcesViewModel>.Instance));
+            () => new SourcesViewModel(sources, _downloader, NullLogger<SourcesViewModel>.Instance, failures));
+    }
+
+    // --- A failed scheduled download (issue #203, step 5) ---
+
+    [Fact]
+    public async Task AFailedScheduledDownload_ShowsOnTheLineWhenTheTabOpens()
+    {
+        var failures = new FakeScheduledFailures { DownloadFailure = new DownloadOutcome(2, 1) };
+        using var vm = Create(await SourcesAsync(Source("One"), Source("Two")), failures);
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.Equal("The last scheduled download failed for 1 of 2 sources.", vm.Status.Message);
+        Assert.True(vm.Status.IsError);
+    }
+
+    [Fact]
+    public async Task TheLine_GoesWhenAScheduledRunWorks()
+    {
+        var failures = new FakeScheduledFailures { DownloadFailure = new DownloadOutcome(2, 2) };
+        using var vm = Create(await SourcesAsync(Source("One"), Source("Two")), failures);
+        await vm.EnsureLoadedAsync();
+
+        failures.DownloadFailure = null;
+        failures.RaiseChanged();
+
+        await WaitUntil(() => vm.Status.Message is null);
+    }
+
+    [Fact]
+    public async Task NoFailedScheduledDownload_ShowsNoLine()
+    {
+        using var vm = Create(await SourcesAsync(Source("One")), new FakeScheduledFailures());
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.Null(vm.Status.Message);
     }
 
     private static WallpaperSource Source(string name, bool isEnabled = true) => new()

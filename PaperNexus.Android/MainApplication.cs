@@ -16,8 +16,8 @@ namespace PaperNexus;
 //
 // It is also the phone's composition root: it builds the service container once per process,
 // so the shared engine (settings, sources, downloads, switching) runs for as long as Android
-// keeps the process, and every Android part of the app (the screen now; the widget and the
-// background slideshow in later steps) reaches the same services through it.
+// keeps the process, and every Android part of the app (the screen, the background slideshow's
+// alarm and download job, and the widget in a later step) reaches the same services through it.
 [Application(Label = "PaperNexus", Icon = "@mipmap/icon", Theme = "@style/PaperNexusTheme")]
 public class MainApplication : AvaloniaAndroidApplication<App>
 {
@@ -71,17 +71,19 @@ public class MainApplication : AvaloniaAndroidApplication<App>
                 services.AddSingleton<EasterEggPlayback>();
                 services.AddTransient<MainView>();
                 // The shared services, then this host's implementations of the interfaces they
-                // need (folders, wallpaper applier). No AddInProcessSchedules: the slideshow
-                // does not run on a timer inside the app's process (issue #203, step 5).
+                // need (folders, wallpaper applier, background scheduler). No
+                // AddInProcessSchedules: the slideshow and the scheduled downloads do not run on
+                // timers inside the app's process, which Android can stop at any time; Android
+                // starts the process for each (AndroidBackgroundScheduler, BackgroundWork,
+                // issue #203 step 5).
                 services.AddServicesFrom(typeof(CurrentWallpaperViewModel).Assembly);
                 services.AddServicesFrom(typeof(MainApplication).Assembly);
-                // The scheduled downloads still run on a timer inside the process, as before,
-                // until Android's own scheduling runs them (issue #203, step 5, change 3).
-                services.AddInProcessDownloadSchedule();
             })
             .Build();
 
-        // Starts the scheduled downloads; the first run begins at once
+        // Applies the stored log level and arms the background slideshow and downloads
+        // (BackgroundWork). It runs whatever started the process - the screen, an alarm, a job
+        // or a broadcast - and starts no download or wallpaper change itself.
         _ = _host.StartAsync();
 
         base.OnCreate();

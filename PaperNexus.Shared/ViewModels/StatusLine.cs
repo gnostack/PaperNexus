@@ -57,6 +57,14 @@ public sealed partial class StatusLine : ObservableObject, IDisposable
             _ = ClearAfterAsync(durationMs, cts.Token);
     }
 
+    // Takes the line away now.
+    public void Clear()
+    {
+        lock (_lock)
+            _clearCts.Cancel();
+        Message = null;
+    }
+
     private async Task ClearAfterAsync(int durationMs, CancellationToken token)
     {
         try

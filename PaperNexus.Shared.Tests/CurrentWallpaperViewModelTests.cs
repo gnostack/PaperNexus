@@ -39,11 +39,81 @@ public class CurrentWallpaperViewModelTests : IDisposable
         TestHelpers.DeleteSettingsStore(_store);
     }
 
-    private CurrentWallpaperViewModel CreateViewModel()
+    private CurrentWallpaperViewModel CreateViewModel(IScheduledWorkFailures? failures = null)
     {
         var viewModel = TestHelpers.WithoutSynchronizationContext(
-            () => new CurrentWallpaperViewModel(_store, _library, _switcher, _downloader, _applier, _eggs, NullLogger<CurrentWallpaperViewModel>.Instance));
+            () => new CurrentWallpaperViewModel(_store, _library, _switcher, _downloader, _applier, _eggs, NullLogger<CurrentWallpaperViewModel>.Instance, failures));
         return viewModel;
+    }
+
+    // --- A failed background slideshow change (issue #203, step 5) ---
+
+    [Fact]
+    public async Task AFailedBackgroundChange_ShowsTheRedLineWhenTheTabOpens()
+    {
+        var path = AddPicture("a.png");
+        await _store.UpdateAsync(s => s.CurrentWallpaperPath = path);
+        var failures = new FakeScheduledFailures { SlideshowFailed = true };
+        using var viewModel = CreateViewModel(failures);
+
+        await viewModel.EnsureLoadedAsync();
+
+        Assert.Equal("The slideshow could not change the wallpaper. Tap Next to try again.", viewModel.ErrorMessage);
+        Assert.True(viewModel.HasError);
+    }
+
+    [Fact]
+    public async Task NoFailedBackgroundChange_ShowsNoLine()
+    {
+        var path = AddPicture("a.png");
+        await _store.UpdateAsync(s => s.CurrentWallpaperPath = path);
+        using var viewModel = CreateViewModel(new FakeScheduledFailures());
+
+        await viewModel.EnsureLoadedAsync();
+
+        Assert.Null(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TheLine_GoesWhenAChangeWorks()
+    {
+        var path = AddPicture("a.png");
+        AddPicture("b.png");
+        await _store.UpdateAsync(s => s.CurrentWallpaperPath = path);
+        var failures = new FakeScheduledFailures { SlideshowFailed = true };
+        using var viewModel = CreateViewModel(failures);
+        await viewModel.EnsureLoadedAsync();
+
+        // A background change that worked clears the fact
+        failures.SlideshowFailed = false;
+        failures.RaiseChanged();
+
+        await WaitUntilAsync(() => viewModel.ErrorMessage is null);
+    }
+
+    [Fact]
+    public async Task Next_TakesTheLineAway()
+    {
+        var path = AddPicture("a.png");
+        AddPicture("b.png");
+        await _store.UpdateAsync(s => s.CurrentWallpaperPath = path);
+        using var viewModel = CreateViewModel(new FakeScheduledFailures { SlideshowFailed = true });
+        await viewModel.EnsureLoadedAsync();
+
+        await viewModel.NextCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("The condition was not reached.");
+            await Task.Delay(10);
+        }
     }
 
     private string AddPicture(string name)

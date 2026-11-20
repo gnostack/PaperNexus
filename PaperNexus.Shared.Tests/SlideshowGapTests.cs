@@ -144,6 +144,15 @@ public class SlideshowGapTests
     }
 
     [Fact]
+    public void NextChange_ALastChangeAfterNow_SetsNoFloor()
+    {
+        // The clock was set back two hours since the last change
+        var next = SlideshowSchedule.NextChange(EveryFifteen, At(12, 7), At(14, 0), FifteenMinutes, TimeZoneInfo.Utc);
+
+        Assert.Equal(At(12, 15), next);
+    }
+
+    [Fact]
     public void NextChange_ReadsTheExpressionInTheGivenZone()
     {
         var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");

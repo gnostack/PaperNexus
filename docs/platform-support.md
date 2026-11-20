@@ -24,6 +24,7 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | `AndroidDeviceEasterEggs`: three eggs (no Fleeting Words, no Hexspeak); the Konami and version hints worded for the phone |
 | `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
 | `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |
+| `IBackgroundScheduler` (optional) | `BackgroundWork` | none: the slideshow and the downloads run on timers in its own process (`AddInProcessSchedules`) | `AndroidBackgroundScheduler`: the slideshow's alarm and the download job (issue #203, step 5) |
 
 `ISettingsStore` (shared, not a host interface) raises `Saved` after each successful update; the
 download work is `IDownloadWallpapers` (all sources, or only the due ones) and its in-process timer

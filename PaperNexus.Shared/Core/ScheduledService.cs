@@ -20,6 +20,19 @@ public record struct JobExecutionContext()
     public TimeSpan Duration { get; set; }
     public bool LastExecutionSucceeded { get; set; }
     public string ErrorMessage { get; set; }
+
+    // The scheduled time a background slideshow change was made for (issue #203, step 5): a
+    // second alarm for the same time changes nothing. Left out of the file when not set, so the
+    // desktop's jobs write their entries as before.
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public DateTimeOffset? ScheduledFor { get; set; }
+
+    // What a scheduled download run did: how many sources it tried and how many failed.
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public int? SourcesTried { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public int? SourcesFailed { get; set; }
 }
 
 public record JobConfig(
