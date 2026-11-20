@@ -20,6 +20,24 @@
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
+      <!-- The long-press menu's "Next Wallpaper" and "Random Wallpaper" (issue #203, step 6).
+           Android reads an app's entries only from its launcher activity. -->
+      <meta-data android:name="android.app.shortcuts"
+                 android:resource="@xml/shortcuts" />
     </activity>
+    <!-- What those entries start: an activity that shows nothing, changes the wallpaper and
+         finishes (ShortcutActivity). Its own task (empty taskAffinity), so the app's screen is
+         neither brought forward nor destroyed by the CLEAR_TASK flag an entry always carries;
+         never in Recents and never kept in a back stack. Not exported: Android starts an
+         entry's activity on the app's own behalf, and no other app may change the wallpaper
+         through it. configChanges lists every change that would otherwise recreate it in the
+         middle of its own change, assetsPaths above all: each new wallpaper is one. -->
+    <activity android:name="com.gnostack.papernexus.ShortcutActivity"
+              android:exported="false"
+              android:theme="@style/PaperNexusShortcutTheme"
+              android:taskAffinity=""
+              android:excludeFromRecents="true"
+              android:noHistory="true"
+              android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale|locale|layoutDirection|keyboard|keyboardHidden|navigation|assetsPaths" />
   </application>
 </manifest>

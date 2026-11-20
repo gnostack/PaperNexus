@@ -470,6 +470,8 @@ public class CurrentWallpaperViewModelTests : IDisposable
 
         public event Action<string>? WallpaperChanged;
 
+        public bool IsSwitching => false;
+
         public TaskCompletionSource? Gate { get; set; }
         public bool Refuses { get; set; }
         public int Switches { get; private set; }

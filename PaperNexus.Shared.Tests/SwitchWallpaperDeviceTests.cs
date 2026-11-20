@@ -250,4 +250,38 @@ public class SwitchWallpaperDeviceTests : IDisposable
         Assert.Equal([second, third], results.Order());
         Assert.Equal(third, (await _store.LoadAsync()).CurrentWallpaperPath);
     }
+
+    // The long-press menu reads IsSwitching (issue #203, step 6): true from the moment a switch
+    // is asked for, including while a second one waits its turn, and false once each has ended.
+    [Fact]
+    public async Task IsSwitching_IsTrueWhileASwitchRunsOrWaits_AndFalseAfter()
+    {
+        TestHelpers.CreateSmallPng(Path.Combine(_wallpaperDir, "a.png"));
+        TestHelpers.CreateSmallPng(Path.Combine(_wallpaperDir, "b.png"));
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
+        var gate = new TaskCompletionSource();
+        var switcher = CreateSwitcher(new FakeWallpaperApplier { Gate = gate });
+        Assert.False(switcher.IsSwitching);
+
+        var one = switcher.SwitchToNextAsync();
+        Assert.True(switcher.IsSwitching);
+        var two = switcher.SwitchToRandomAsync();
+        gate.SetResult();
+        await one;
+        await two;
+
+        Assert.False(switcher.IsSwitching);
+    }
+
+    [Fact]
+    public async Task IsSwitching_IsFalseAfterARefusedSwitch()
+    {
+        TestHelpers.CreateSmallPng(Path.Combine(_wallpaperDir, "a.png"));
+        await TestHelpers.WriteSettingsAsync(_store, _wallpaperDir);
+        var switcher = CreateSwitcher(new FakeWallpaperApplier { Accepts = false });
+
+        await Assert.ThrowsAsync<WallpaperRefusedException>(switcher.SwitchToNextAsync);
+
+        Assert.False(switcher.IsSwitching);
+    }
 }

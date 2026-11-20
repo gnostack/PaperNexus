@@ -6,7 +6,7 @@
 
 - `PaperNexus.Shared` - class library (`net10.0`) with everything both devices use: settings model and store, wallpaper sources and downloads, wallpaper switching, the imaging layer, the view models, easter eggs, logging, DI helpers. No `Avalonia.Desktop` and no Windows/Linux-only API, so the Android host references it unchanged.
 - `PaperNexus` - the desktop host (Windows/Linux exe): `Program`, the tray `App`, every window and dialog, install, auto-update, single instance, startup registration and the platform layer. The project, assembly and exe keep the name `PaperNexus`, because the release asset names, `WM_CLASS` and `StartupWMClass` depend on it.
-- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); Gallery and Favorites list the pictures and Current deletes one (step 4, part 1); Sources adds, edits, tests, turns on and off and deletes wallpaper sources and downloads now (step 4, part 2); Settings shows the download, slideshow and debug settings groups and About, with Secrets and three easter eggs (step 4, part 3). Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
+- `PaperNexus.Android` - the Android host (`net10.0-android`, Android 12 / API 31 and later, application ID `com.gnostack.papernexus`): the Android application and activity, the phone's own Avalonia `App`, its screens, and its implementations of the shared host interfaces. It opens on five bottom tabs; the Current tab shows the current wallpaper and its Next and Random buttons change the home screen and lock screen wallpaper (step 3 of issue #203); Gallery and Favorites list the pictures and Current deletes one (step 4, part 1); Sources adds, edits, tests, turns on and off and deletes wallpaper sources and downloads now (step 4, part 2); Settings shows the download, slideshow and debug settings groups and About, with Secrets and three easter eggs (step 4, part 3); the slideshow and downloads run with the app closed (step 5); long-pressing the app icon offers "Next Wallpaper" and "Random Wallpaper", which change the wallpaper without opening the app (step 6, `Shortcuts/ShortcutActivity.cs`). Building it needs the .NET `android` workload and the `ANDROID_HOME` and `JAVA_HOME` environment variables, so a solution-level build does too; see `docs/android.md`.
 - `PaperNexus.Shared.Tests` covers `PaperNexus.Shared`; `PaperNexus.Tests` covers the desktop host. Each references only the project it covers.
 
 ## Quick Reference
@@ -49,7 +49,7 @@ PaperNexus/
 │   ├── GlobalUsings.cs                  # Project-wide usings (copy of the host's minus Platform)
 │   ├── DownloadWallpapers.cs            # Wallpaper downloader (IDownloadWallpapers: all sources, or only the due ones); DownloadOutcome
 │   ├── DownloadSchedule.cs              # The desktop's in-process download timer
-│   ├── BackgroundWork.cs                # The phone's background slideshow and downloads: plans, runs each change and download run, records failures
+│   ├── BackgroundWork.cs                # The phone's background slideshow and downloads: plans, runs each change and download run, records failures; the change a long-press menu entry asks for (RunShortcutChangeAsync)
 │   ├── HttpWallpaperSourceService.cs    # HTTP feed client + WallpaperImage DTO
 │   ├── SwitchWallpaper.cs               # Wallpaper switching logic + job wrapper
 │   ├── WallpaperLibrary.cs              # IWallpaperLibrary: list, heart, ban, delete pictures; Changed
@@ -98,6 +98,7 @@ PaperNexus/
 │   │   ├── SourceItem.cs               # One source row (both apps)
 │   │   ├── SettingsViewModel.cs        # The phone's Settings tab: the shared groups, the open picker, the line
 │   │   ├── DownloadSentence.cs         # What Download now says, from DownloadOutcome (both apps)
+│   │   ├── ShortcutSentence.cs         # The pop-up a long-press menu entry shows, from ShortcutChangeOutcome (phone)
 │   │   ├── StatusLine.cs               # The phone tabs' three-second confirmation line
 │   │   ├── IScrollPlace.cs             # A list view model that keeps its scroll place
 │   │   ├── WallpaperDisplayName.cs     # A wallpaper's shown name from its file name
@@ -154,6 +155,8 @@ PaperNexus/
     │   ├── AndroidExactTimingPermission.cs # IExactTimingPermission: exact alarms allowed; opens "Alarms & reminders" to ask
     │   ├── AndroidDeviceEasterEggs.cs  # IDeviceEasterEggs: three eggs (no Fleeting Words, no Hexspeak), phone-worded hints
     │   └── AndroidPermissions.cs       # INTERNET, SET_WALLPAPER, RECEIVE_BOOT_COMPLETED, ACCESS_NETWORK_STATE
+    ├── Shortcuts/
+    │   └── ShortcutActivity.cs         # "Next Wallpaper"/"Random Wallpaper" on the icon's long-press menu: shows nothing, changes, finishes (issue #203 step 6)
     ├── Background/                      # What Android starts the app for (issue #203 step 5)
     │   ├── SlideshowAlarmReceiver.cs   # A slideshow change (BackgroundWork.RunSlideshowAsync)
     │   ├── DownloadJobService.cs       # A scheduled download run (BackgroundWork.RunDownloadsAsync)
@@ -180,7 +183,10 @@ PaperNexus/
     │   ├── ListPlace.cs                # Keeps a list's scroll place in its view model
     │   └── ConfirmationDialog.axaml(.cs) # Reusable in-page question (dimmed page, centered box, optional title)
     └── Resources/
-        ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window)
+        ├── values/styles.xml           # Android theme (AppCompat, no action bar, #2B2B2B window); the long-press entries' transparent theme
+        ├── values/strings.xml          # The long-press entries' labels (Android requires string resources)
+        ├── xml/shortcuts.xml           # The long-press entries (static app shortcuts)
+        ├── drawable/shortcut_*.xml     # The entries' adaptive icons (the Current tab's Next and Random glyphs)
         └── mipmap-anydpi-v26/icon.xml  # Adaptive launcher icon around the linked logo
 ```
 
@@ -209,6 +215,7 @@ PaperNexus/
 - **Picture library (`PaperNexus.Shared/WallpaperLibrary.cs`):** `IWallpaperLibrary` holds the rules for listing the gallery (newest first by last write time) and the favorites (hearted order), hearting, banning and deleting pictures, for both devices. **No view model reads or writes `FavoriteWallpapers`/`BannedWallpapers` or deletes a picture file itself**; each asks the library and shows the result. One delete rule: the file, its favorite and its ban go, and deleting the current wallpaper sets the next one. The library raises `Changed` after every save (and `PicturesChanged` after a download run), so every open screen follows changes made on another; view models apply it on the thread that created them. Setting a picture as the wallpaper stays with `ISwitchWallpaper`.
 - **Favorites:** Heart toggle, stored in `settings.json`, excluded from retention cleanup. The Favorites tab shows one `GalleryItem` card per favorite (thumbnail, title, set-as-current and remove buttons), built by the ViewModel's `FavoriteWallpapers` collection and sharing the Gallery's thumbnail load/dispose handlers.
 - **Easter eggs (`Core/EasterEggs.cs`, `EasterEggSprites.cs`, `EasterEggAnimation.cs`, `PaperNexus.Shared/Views/EasterEggOverlay.axaml`):** Eggs play a retro pixel animation in a full-window overlay - auto-dismisses after ~3s, click or Esc skips. Sprites are `'X'`/`'.'` bitmasks; motion is a pure function of (particle, frame) with no `Random` and no accumulated state, so the visuals are unit tested and can be rendered offscreen for inspection. The overlay only creates rectangles and moves them. View models ask for an egg through `EasterEggRequests` (a process singleton); `MainWindow` subscribes while open and owns the overlay, and on the phone `EasterEggStage` does (docs/android.md, "Easter eggs"; the Konami code is swiped there, `Core/KonamiGestures.cs`). Currently: Konami (burst), version-label ×5 (rise), favorite milestones (rise), word-spelling annotation hex colours (fall; played when the person types one, not when a stored one loads), plus an occasional alternate splash line. Each show carries a catalog `Id`, and `EasterEggOverlay.Play` records discovery through the injected `EasterEggProgress` service (handed to the overlay by `MainWindow`, since Avalonia creates the overlay from markup), so a new egg cannot be left out of the checklist. The **Secrets** button beside the version label opens `EasterEggListDialog`, which shows `SecretsViewModel`: a checklist of the eggs the device has (`IDeviceEasterEggs`; the desktop's are `EasterEggCatalog.All`) with progress; discovery ids persist in `settings.json` as `DiscoveredEasterEggs` and **must never be renamed** (that resets the egg to unfound for everyone). **Check these files before adding one** - the Konami egg already existed in `MainWindow.axaml.cs` and was nearly duplicated.
+- **Phone long-press menu (`PaperNexus.Android/Shortcuts/ShortcutActivity.cs`, `Resources/xml/shortcuts.xml`):** the entry ids `next_wallpaper` and `random_wallpaper`, their actions, and the activity's Java name `com.gnostack.papernexus.ShortcutActivity` **must never be renamed**: an entry the person dragged out as its own home screen icon is recorded by them, and an update that drops one disables those icons for everyone (docs/android.md, "Long-press menu").
 - **Startup at login:** Registry key at `HKCU\...\Run\PaperNexus` on Windows; `~/.config/autostart/PaperNexus.desktop` on Linux.
 - **Linux launcher:** `DesktopEntry` writes `~/.local/share/applications/PaperNexus.desktop` and a hicolor icon on every launch. Required for dock pinning: without it the shell synthesises a temporary entry that vanishes when the app exits. `WM_CLASS`, `StartupWMClass`, and the `.desktop` basename must all stay `PaperNexus`.
 - **Wallpaper on Linux:** No cross-desktop API - dispatches to KDE Plasma (`evaluateScript` over D-Bus), GNOME (`gsettings`), or `feh`/`xwallpaper`/`swaybg`. SteamOS Desktop Mode (KDE Plasma) is the Linux deployment target.

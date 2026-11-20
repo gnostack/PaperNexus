@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Current tab's Random glyph (two dice, a 24-unit path) drawn 48 units wide in the middle
+     of the adaptive icon's 108-unit canvas. The pips are cut out of the dice (even-odd fill), as
+     the tab draws them. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <group android:translateX="30" android:translateY="30" android:scaleX="2" android:scaleY="2">
+    <path android:fillColor="@color/window_background" android:fillType="evenOdd" android:pathData="M1 7H10V17H14V22H1Z M11 1H23V16H11Z M2.5,11A1.5,1.5,0,1,1,5.5,11A1.5,1.5,0,1,1,2.5,11Z M5.5,14A1.5,1.5,0,1,1,8.5,14A1.5,1.5,0,1,1,5.5,14Z M8.5,19A1.5,1.5,0,1,1,11.5,19A1.5,1.5,0,1,1,8.5,19Z M13,4.5A1.5,1.5,0,1,1,16,4.5A1.5,1.5,0,1,1,13,4.5Z M18,4.5A1.5,1.5,0,1,1,21,4.5A1.5,1.5,0,1,1,18,4.5Z M13,12.5A1.5,1.5,0,1,1,16,12.5A1.5,1.5,0,1,1,13,12.5Z M18,12.5A1.5,1.5,0,1,1,21,12.5A1.5,1.5,0,1,1,18,12.5Z" />
+  </group>
+</vector>

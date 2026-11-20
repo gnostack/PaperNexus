@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using PaperNexus.Core;
+using PaperNexus.ViewModels;
 using Xunit;
 
 namespace PaperNexus.Tests;
@@ -32,9 +33,10 @@ public class BackgroundWorkTests : IDisposable
     private JobTimerStore Timers() => new(_timerDir);
 
     private readonly SettablePermission _exactTiming = new();
+    private readonly FakeWallpaperApplier _applier = new();
 
     private BackgroundWork Create(IBackgroundScheduler? scheduler = null, JobTimerStore? timers = null) =>
-        new(_store, timers ?? Timers(), _switcher, _downloader, TestSettingRules.Phone,
+        new(_store, timers ?? Timers(), _switcher, _downloader, TestSettingRules.Phone, _applier,
             NullLogger<BackgroundWork>.Instance, scheduler ?? _scheduler, _clock, TimeZoneInfo.Utc, _exactTiming);
 
     // --- Exact timing ---
@@ -165,7 +167,7 @@ public class BackgroundWorkTests : IDisposable
     public async Task WithNoScheduler_NothingIsArmedOrRecorded()
     {
         // The desktop registers none: its slideshow and downloads run in its own process
-        var work = new BackgroundWork(_store, Timers(), _switcher, _downloader, TestSettingRules.Desktop,
+        var work = new BackgroundWork(_store, Timers(), _switcher, _downloader, TestSettingRules.Desktop, _applier,
             NullLogger<BackgroundWork>.Instance, null, _clock, TimeZoneInfo.Utc);
 
         await work.StartAsync(CancellationToken.None);
@@ -390,6 +392,106 @@ public class BackgroundWorkTests : IDisposable
         Assert.Equal(["finished", "armed"], events);
     }
 
+    // --- A change from the long-press menu (issue #203, step 6) ---
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public async Task AMenuEntry_ChangesTheWallpaper_NextOrRandom(bool random, int randoms)
+    {
+        var work = Create();
+
+        var outcome = await work.RunShortcutChangeAsync(random);
+
+        Assert.Equal(ShortcutChangeOutcome.Changed, outcome);
+        Assert.Equal(1, _switcher.Nexts);
+        Assert.Equal(randoms, _switcher.Randoms);
+    }
+
+    [Fact]
+    public async Task AMenuEntryTheDeviceRefuses_IsAFailure_AndRecordsNothing()
+    {
+        _switcher.Refuses = true;
+        var work = Create();
+
+        var outcome = await work.RunShortcutChangeAsync(random: false);
+
+        Assert.Equal(ShortcutChangeOutcome.Failed, outcome);
+        Assert.Equal("Could not change the wallpaper.", ShortcutSentence.For(outcome));
+        // The pop-up says it at once; no screen reads it later
+        Assert.False(File.Exists(Path.Combine(_timerDir, JobTimerStore.FileName)));
+    }
+
+    [Fact]
+    public async Task AMenuEntry_OnAPhoneThatForbidsChanges_MakesNoChange()
+    {
+        _applier.CanSetWallpaper = false;
+        var work = Create();
+
+        var outcome = await work.RunShortcutChangeAsync(random: true);
+
+        Assert.Equal(ShortcutChangeOutcome.NotAllowed, outcome);
+        Assert.Equal("This phone does not allow apps to change the wallpaper.", ShortcutSentence.For(outcome));
+        Assert.Equal(0, _switcher.Nexts);
+    }
+
+    [Fact]
+    public async Task AMenuEntry_WithNoPictures_OpensTheApp_AndMakesNoChange()
+    {
+        _switcher.HasPictures = false;
+        var work = Create();
+
+        var outcome = await work.RunShortcutChangeAsync(random: false);
+
+        Assert.Equal(ShortcutChangeOutcome.NoPictures, outcome);
+        Assert.Null(ShortcutSentence.For(outcome));
+        Assert.Equal(0, _switcher.Nexts);
+    }
+
+    [Fact]
+    public async Task AMenuEntry_WhileAnotherChangeRuns_MakesNoSecondChange()
+    {
+        // The slideshow or the app's own buttons are changing the wallpaper
+        _switcher.OtherChangeRunning = true;
+        var work = Create();
+
+        var outcome = await work.RunShortcutChangeAsync(random: false);
+
+        Assert.Equal(ShortcutChangeOutcome.AlreadyRunning, outcome);
+        Assert.Null(ShortcutSentence.For(outcome));
+        Assert.Equal(0, _switcher.Nexts);
+    }
+
+    [Fact]
+    public async Task TwoMenuTapsTogether_MakeOneChange_AndTheSecondWaitsForIt()
+    {
+        var work = Create();
+        var gate = new TaskCompletionSource();
+        _switcher.Gate = gate;
+
+        var first = work.RunShortcutChangeAsync(random: false);
+        var second = work.RunShortcutChangeAsync(random: true);
+        Assert.False(second.IsCompleted);
+        gate.SetResult();
+        var outcomes = await Task.WhenAll(first, second);
+
+        Assert.Equal([ShortcutChangeOutcome.Changed, ShortcutChangeOutcome.AlreadyRunning], outcomes);
+        Assert.Equal(1, _switcher.Nexts);
+        Assert.Equal(0, _switcher.Randoms);
+    }
+
+    [Fact]
+    public async Task AMenuTapAfterTheLastOneEnded_MakesANewChange()
+    {
+        var work = Create();
+
+        await work.RunShortcutChangeAsync(random: false);
+        var outcome = await work.RunShortcutChangeAsync(random: false);
+
+        Assert.Equal(ShortcutChangeOutcome.Changed, outcome);
+        Assert.Equal(2, _switcher.Nexts);
+    }
+
     // --- Fakes ---
 
     private sealed class SettableClock(DateTimeOffset now) : TimeProvider
@@ -425,15 +527,31 @@ public class BackgroundWorkTests : IDisposable
 
         public bool Refuses { get; set; }
         public bool HasPictures { get; set; } = true;
+        // How many switches were asked for (Next, Random and set as current), and how many of
+        // them were Random
         public int Nexts { get; private set; }
+        public int Randoms { get; private set; }
 
         public TaskCompletionSource? Gate { get; set; }
 
+        // True while a switch waits at the gate, or when a test says another change is running
+        public bool IsSwitching => Volatile.Read(ref _waiting) > 0 || OtherChangeRunning;
+        public bool OtherChangeRunning { get; set; }
+        private int _waiting;
+
         public async Task<string?> SwitchToNextAsync()
         {
-            if (Gate is not null)
-                await Gate.Task;
-            return Switch();
+            Interlocked.Increment(ref _waiting);
+            try
+            {
+                if (Gate is not null)
+                    await Gate.Task;
+                return Switch();
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _waiting);
+            }
         }
 
         private string? Switch()
@@ -447,7 +565,11 @@ public class BackgroundWorkTests : IDisposable
             return "/pictures/lake.png";
         }
 
-        public Task<string?> SwitchToRandomAsync() => SwitchToNextAsync();
+        public Task<string?> SwitchToRandomAsync()
+        {
+            Randoms++;
+            return SwitchToNextAsync();
+        }
 
         public Task<string?> SwitchToSpecificAsync(string path) => SwitchToNextAsync();
 

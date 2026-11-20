@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- The long-press menu's entries (Resources/xml/shortcuts.xml). Android requires the labels to
+       be string resources. The long labels are the desktop tray menu's words and show in the
+       menu; the short labels show under an entry dragged out as its own home screen icon. -->
+  <string name="shortcut_next_long">Next Wallpaper</string>
+  <string name="shortcut_next_short">Next</string>
+  <string name="shortcut_random_long">Random Wallpaper</string>
+  <string name="shortcut_random_short">Random</string>
+</resources>

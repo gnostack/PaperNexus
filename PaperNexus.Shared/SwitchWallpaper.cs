@@ -8,6 +8,11 @@ public interface ISwitchWallpaper
     // Raised with the source picture's path after the device accepted a new wallpaper.
     public event Action<string>? WallpaperChanged;
 
+    // True while a switch runs or waits for its turn. The phone's long-press menu entries read
+    // it, so a tap while the wallpaper is already changing makes no second change (issue #203,
+    // step 6).
+    public bool IsSwitching { get; }
+
     // Each switch returns the source path it set, or null when there was nothing to set (no
     // wallpapers, or the file is gone). A wallpaper the device refuses throws
     // WallpaperRefusedException and leaves the current wallpaper as it was.
@@ -50,7 +55,12 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
     // records the new one, so two at once would race on the file and on the settings.
     private readonly SemaphoreSlim _switchLock = new(1);
 
+    // How many switches are running or waiting for the lock
+    private int _switchesInProgress;
+
     public event Action<string>? WallpaperChanged;
+
+    public bool IsSwitching => Volatile.Read(ref _switchesInProgress) > 0;
 
     public SwitchWallpaper(
         ILogger<SwitchWallpaper> logger,
@@ -87,31 +97,36 @@ internal sealed class SwitchWallpaper : ISwitchWallpaper, IAddSingleton<ISwitchW
         return any;
     }
 
-    public async Task<string?> SwitchToNextAsync()
+    public Task<string?> SwitchToNextAsync() => RunSwitchAsync(SwitchToNextLockedAsync);
+
+    public Task<string?> SwitchToRandomAsync() => RunSwitchAsync(SwitchToRandomLockedAsync);
+
+    public Task<string?> SwitchToSpecificAsync(string path) => RunSwitchAsync(() => SwitchToSpecificLockedAsync(path));
+
+    // Runs one switch under the lock. The count goes up before the first await, so a caller
+    // that asks right after this one already reads IsSwitching as true.
+    private async Task<string?> RunSwitchAsync(Func<Task<string?>> lockedSwitch)
     {
-        using (await _switchLock.EnterAsync().ConfigureAwait(false))
+        Interlocked.Increment(ref _switchesInProgress);
+        try
         {
-            return await SwitchToNextLockedAsync().ConfigureAwait(false);
+            using (await _switchLock.EnterAsync().ConfigureAwait(false))
+            {
+                return await lockedSwitch().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _switchesInProgress);
         }
     }
 
-    public async Task<string?> SwitchToRandomAsync()
+    private async Task<string?> SwitchToSpecificLockedAsync(string path)
     {
-        using (await _switchLock.EnterAsync().ConfigureAwait(false))
-        {
-            return await SwitchToRandomLockedAsync().ConfigureAwait(false);
-        }
-    }
-
-    public async Task<string?> SwitchToSpecificAsync(string path)
-    {
-        using (await _switchLock.EnterAsync().ConfigureAwait(false))
-        {
-            if (!File.Exists(path))
-                return null;
-            var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
-            return await ApplyWallpaperAsync(path, settings).ConfigureAwait(false);
-        }
+        if (!File.Exists(path))
+            return null;
+        var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+        return await ApplyWallpaperAsync(path, settings).ConfigureAwait(false);
     }
 
     // Advances to the next wallpaper according to the configured slideshow order.

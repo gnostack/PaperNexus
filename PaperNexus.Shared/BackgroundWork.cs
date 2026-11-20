@@ -10,6 +10,10 @@ namespace PaperNexus;
 //     its next occurrence) and how many sources it tried and how many failed.
 // The Current and Sources tabs read the two failures through IScheduledWorkFailures.
 //
+// It also makes the change a tap on the phone's long-press menu asks for ("Next Wallpaper",
+// "Random Wallpaper", issue #203 step 6; RunShortcutChangeAsync). That one records nothing: the
+// tap's own pop-up says at once what went wrong, and no screen reads it later.
+//
 // It plans when the process starts (StartAsync), after every settings save (ISettingsStore.Saved:
 // a schedule edited, the slideshow switched off, a source's download time), and after every
 // change and download run. On the desktop no IBackgroundScheduler is registered and it does
@@ -25,6 +29,7 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
     private readonly ISwitchWallpaper _switchWallpaper;
     private readonly IDownloadWallpapers _downloadWallpapers;
     private readonly IDeviceSettingRules _deviceRules;
+    private readonly IWallpaperApplier _wallpaperApplier;
     private readonly ILogger<BackgroundWork> _logger;
     private readonly IBackgroundScheduler? _scheduler;
     private readonly IExactTimingPermission? _exactTiming;
@@ -43,6 +48,10 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
     // While a download run is in progress its job is not armed again: arming the job the
     // operating system is running stops it
     private int _downloadsRunning;
+    // The change a long-press menu entry started, while it runs: a second tap waits for it
+    // rather than making another
+    private readonly object _shortcutLock = new();
+    private Task<ShortcutChangeOutcome>? _shortcutChange;
 
     public BackgroundWork(
         ISettingsStore settingsStore,
@@ -50,10 +59,11 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         ISwitchWallpaper switchWallpaper,
         IDownloadWallpapers downloadWallpapers,
         IDeviceSettingRules deviceRules,
+        IWallpaperApplier wallpaperApplier,
         ILogger<BackgroundWork> logger,
         IBackgroundScheduler? scheduler = null,
         IExactTimingPermission? exactTiming = null)
-        : this(settingsStore, timerStore, switchWallpaper, downloadWallpapers, deviceRules, logger, scheduler, TimeProvider.System, TimeZoneInfo.Local, exactTiming)
+        : this(settingsStore, timerStore, switchWallpaper, downloadWallpapers, deviceRules, wallpaperApplier, logger, scheduler, TimeProvider.System, TimeZoneInfo.Local, exactTiming)
     {
     }
 
@@ -64,6 +74,7 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         ISwitchWallpaper switchWallpaper,
         IDownloadWallpapers downloadWallpapers,
         IDeviceSettingRules deviceRules,
+        IWallpaperApplier wallpaperApplier,
         ILogger<BackgroundWork> logger,
         IBackgroundScheduler? scheduler,
         TimeProvider clock,
@@ -75,6 +86,7 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         _switchWallpaper = switchWallpaper.ThrowIfNull();
         _downloadWallpapers = downloadWallpapers.ThrowIfNull();
         _deviceRules = deviceRules.ThrowIfNull();
+        _wallpaperApplier = wallpaperApplier.ThrowIfNull();
         _logger = logger.ThrowIfNull();
         _scheduler = scheduler;
         _exactTiming = exactTiming;
@@ -224,6 +236,57 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
         Changed?.Invoke();
     }
 
+    // A change asked for from the phone's long-press menu: "Next Wallpaper" (random false) or
+    // "Random Wallpaper" (random true). One change at a time, whoever asked: while an entry's
+    // change runs, a second tap waits for it and answers AlreadyRunning; while any other change
+    // runs (the slideshow, the app's buttons) a tap changes nothing. The answer is what the tap
+    // shows (ShortcutSentence), or that the app must open to download pictures. Never throws.
+    public Task<ShortcutChangeOutcome> RunShortcutChangeAsync(bool random)
+    {
+        lock (_shortcutLock)
+        {
+            if (_shortcutChange is { IsCompleted: false } running)
+                return WaitForRunningChangeAsync(running);
+            if (_switchWallpaper.IsSwitching)
+            {
+                _logger.LogInformation("A shortcut asked for a change while one was running; no second change.");
+                return Task.FromResult(ShortcutChangeOutcome.AlreadyRunning);
+            }
+
+            _shortcutChange = ChangeForShortcutAsync(random);
+            return _shortcutChange;
+        }
+    }
+
+    private static async Task<ShortcutChangeOutcome> WaitForRunningChangeAsync(Task<ShortcutChangeOutcome> running)
+    {
+        await running.ConfigureAwait(false);
+        return ShortcutChangeOutcome.AlreadyRunning;
+    }
+
+    private async Task<ShortcutChangeOutcome> ChangeForShortcutAsync(bool random)
+    {
+        try
+        {
+            if (!_wallpaperApplier.CanSetWallpaper)
+                return ShortcutChangeOutcome.NotAllowed;
+            if (!await _switchWallpaper.HasWallpapersAsync().ConfigureAwait(false))
+                return ShortcutChangeOutcome.NoPictures;
+
+            var path = random
+                ? await _switchWallpaper.SwitchToRandomAsync().ConfigureAwait(false)
+                : await _switchWallpaper.SwitchToNextAsync().ConfigureAwait(false);
+            // The pictures went between the check and the switch
+            var outcome = path is null ? ShortcutChangeOutcome.NoPictures : ShortcutChangeOutcome.Changed;
+            return outcome;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The change asked for from the long-press menu failed.");
+            return ShortcutChangeOutcome.Failed;
+        }
+    }
+
     // A scheduled download run the operating system started: downloads the sources that are
     // due, records when it ran and what failed, calls jobFinished (the job is done before the
     // next run is armed, since arming the running job stops it), then plans the next. A run in
@@ -347,4 +410,23 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
             _logger.LogError(ex, "Clearing the failed slideshow change failed.");
         }
     }
+}
+
+// What a change asked for from the phone's long-press menu came to (BackgroundWork.RunShortcutChangeAsync).
+public enum ShortcutChangeOutcome
+{
+    // The wallpaper changed.
+    Changed,
+
+    // The device refused the wallpaper, or the picture could not be read.
+    Failed,
+
+    // This device does not let the app change the wallpaper.
+    NotAllowed,
+
+    // There are no pictures yet: the app opens, and its Current tab downloads them.
+    NoPictures,
+
+    // A change was already running; this tap made none.
+    AlreadyRunning,
 }

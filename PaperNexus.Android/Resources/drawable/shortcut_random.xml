@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The "Random Wallpaper" entry's icon: the Current tab's Random glyph (two dice), dark on the
+     launcher icon's green. See shortcut_next.xml. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/icon_background" />
+  <foreground android:drawable="@drawable/shortcut_random_glyph" />
+</adaptive-icon>
