@@ -1,0 +1,115 @@
+<!-- The look of a switch with no words beside it (Prioritize Favorites, Debug mode, the Sources
+     rows): Fluent's switch drawn without the 12 dp column its template keeps for the words, so the
+     switch ends where its track ends and lines up with the pickers and number boxes beside it.
+
+     Copied from Avalonia 12.1.1, src/Avalonia.Themes.Fluent/Controls/ToggleSwitch.xaml (the
+     ToggleSwitch ControlTheme's Template), with the column definitions and the 12 dp column
+     removed; everything else, every part name included, is as Fluent has it. The theme is based
+     on Fluent's own switch theme, so all of Fluent's on, off, pressed, pointer-over, disabled and
+     dragging looks (selectors on these part names) still apply. Re-check it against that file
+     whenever Avalonia is updated (docs/android.md, "Switches without words"). -->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ControlTheme x:Key="IconToggleSwitch"
+                  TargetType="ToggleSwitch"
+                  BasedOn="{StaticResource {x:Type ToggleSwitch}}">
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="OnContent" Value="{x:Null}"/>
+        <Setter Property="OffContent" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid Background="{TemplateBinding Background}" RowDefinitions="Auto,*">
+
+                    <ContentPresenter
+                        x:Name="PART_ContentPresenter"
+                        Grid.Row="0"
+                        VerticalAlignment="Top"
+                        Content="{TemplateBinding Content}"
+                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                        Margin="{DynamicResource ToggleSwitchTopHeaderMargin}" />
+
+                    <Grid
+                        Grid.Row="1"
+                        MinWidth="{DynamicResource ToggleSwitchThemeMinWidth}"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top">
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="{DynamicResource ToggleSwitchPreContentMargin}" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="{DynamicResource ToggleSwitchPostContentMargin}" />
+                        </Grid.RowDefinitions>
+
+                        <!-- No column definitions: the track is the only column -->
+
+                        <Grid
+                            x:Name="SwitchAreaGrid"
+                            Grid.RowSpan="3"
+                            Background="{DynamicResource ToggleSwitchContainerBackground}"
+                            Margin="0,5"
+                            TemplatedControl.IsTemplateFocusTarget="True" />
+
+                        <!-- Kept for the control and Fluent's styles; with no words they take no room -->
+                        <ContentPresenter
+                            x:Name="PART_OffContentPresenter"
+                            Grid.RowSpan="3"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Content="{TemplateBinding OffContent}"
+                            ContentTemplate="{TemplateBinding OffContentTemplate}" />
+
+                        <ContentPresenter
+                            x:Name="PART_OnContentPresenter"
+                            Grid.RowSpan="3"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Content="{TemplateBinding OnContent}"
+                            ContentTemplate="{TemplateBinding OnContentTemplate}" />
+
+                        <Border
+                            x:Name="OuterBorder"
+                            Grid.Row="1"
+                            Width="40"
+                            Height="20"
+                            Background="{DynamicResource ToggleSwitchFillOff}"
+                            BorderBrush="{DynamicResource ToggleSwitchStrokeOff}"
+                            BorderThickness="{DynamicResource ToggleSwitchOuterBorderStrokeThickness}"
+                            CornerRadius="10" />
+
+                        <Border
+                            x:Name="SwitchKnobBounds"
+                            Grid.Row="1"
+                            Width="40"
+                            Height="20"
+                            Background="{DynamicResource ToggleSwitchFillOn}"
+                            BorderBrush="{DynamicResource ToggleSwitchStrokeOn}"
+                            BorderThickness="{DynamicResource ToggleSwitchOnStrokeThickness}"
+                            CornerRadius="10" />
+
+                        <Canvas
+                            x:Name="PART_SwitchKnob"
+                            Grid.Row="1"
+                            Width="20"
+                            Height="20"
+                            HorizontalAlignment="Left">
+
+                            <Grid x:Name="PART_MovingKnobs" Width="20" Height="20">
+                                <Ellipse
+                                    x:Name="SwitchKnobOn"
+                                    Fill="{DynamicResource ToggleSwitchKnobFillOn}"
+                                    Width="10"
+                                    Height="10" />
+                                <Ellipse
+                                    x:Name="SwitchKnobOff"
+                                    Fill="{DynamicResource ToggleSwitchKnobFillOff}"
+                                    Width="10"
+                                    Height="10" />
+                            </Grid>
+                        </Canvas>
+                    </Grid>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+</ResourceDictionary>

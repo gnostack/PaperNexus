@@ -23,6 +23,7 @@ project and its logic and view models in the shared project.
 | `Views/ChoiceDialog.axaml(.cs)` | The in-page list to choose one value from: the page dimmed, a box with a title, one row per choice (its label and the line that explains it) with the chosen one marked, and Cancel. A tap on the dimmed page cancels. The Settings tab's pickers use it. |
 | `Views/SecretsPage.axaml(.cs)` | The Secrets list as a full-screen modal page (see "Easter eggs"). |
 | `Views/EasterEggStage.cs`, `Views/EasterEggPlayback.cs` | The screen's root: the pages with the easter egg overlay over them, and the egg playing, kept for the process (see "Easter eggs"). |
+| `Views/IconToggleSwitchTheme.axaml` | The look of a switch with no words beside it (see "Switches without words"). |
 | `Views/KeyboardLift.cs` | Keeps the keyboard off what is being typed: lifts a page's content by the part of the keyboard above the navigation bar and scrolls the focused field (with its hint) into view. The Sources form and the Settings tab use it (see "Sources"). |
 | `Views/PictureListStyles.axaml` | The card, picture-button and ban-icon styles both picture lists and the Current tab share. |
 | `Views/StatusLineStyles.axaml` | The confirmation line's look (white, green, red) for every tab, which each tab's `StatusLine` drives. |
@@ -247,6 +248,25 @@ A drag that moves more up or down than sideways in a list that can scroll still 
 its `ScrollGestureRecognizer` captures the pointer the same way, the value stays, and the knob is
 left slightly short of its end until the next tap. `ToggleSwitch` does not handle losing the
 pointer, so this stays as it is.
+
+### Switches without words
+
+Fluent's switch template (Avalonia 12.1.1) keeps a fixed 12 dp column after the track for the
+words beside it (`<ColumnDefinition Width="12" MaxWidth="12" />`), with no property or resource to
+remove it, so a switch with no words ended 12 dp short of the pickers and number boxes. The
+`IconToggleSwitch` theme (`Views/IconToggleSwitchTheme.axaml`, merged into `App`'s resources) is
+Fluent's switch theme with that template copied from
+`src/Avalonia.Themes.Fluent/Controls/ToggleSwitch.xaml` and the columns removed; every part name is
+kept and the theme is based on Fluent's, so the on, off, pressed, disabled and dragging looks still
+apply. The switches with no words use it (`Theme="{StaticResource IconToggleSwitch}"`): Prioritize
+Favorites and Debug mode on the Settings tab, and the Sources rows (whose right margin grew by the
+same 12 dp, so their track did not move). The two switches with "Enabled" beside them keep the
+built-in look: their word already ends on the edge. **Re-check this theme against Fluent's
+`ToggleSwitch.xaml` whenever Avalonia is updated**: a changed template there is not picked up here.
+
+Measured on the emulator (Debug and Release): the Settings switch tracks end at pixel column 1013,
+the pickers at 1012 and the number box at 1013; a Sources row's track is at 647 to 751 and its
+edit button starts at 794, as before. Tap and drag work on each switch.
 
 ## Settings
 

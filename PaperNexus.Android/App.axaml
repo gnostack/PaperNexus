@@ -3,6 +3,15 @@
              x:Class="PaperNexus.App"
              RequestedThemeVariant="Dark">
 
+    <!-- The look of a switch with no words beside it (Views/IconToggleSwitchTheme.axaml) -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Views/IconToggleSwitchTheme.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
     </Application.Styles>
