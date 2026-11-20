@@ -12,13 +12,22 @@ public interface IDownloadWallpapers
     // tried and how many of them failed. A source fails when its feed cannot be read; a single
     // picture that fails to download is logged and does not fail its source.
     public Task<DownloadOutcome> DownloadAllAsync();
+
+    // The scheduled run: downloads only the enabled sources that are due (never downloaded, or
+    // whose next cron occurrence after the last download has passed), and says how many it
+    // tried and how many failed. Each device decides when to call it: the desktop's
+    // DownloadSchedule on its own timer, the phone from Android's scheduling.
+    public Task<DownloadOutcome> DownloadDueAsync();
 }
 
 // What a download run did: how many enabled sources it tried, and how many of those failed.
 // Tried is 0 when no source is enabled (or no download folder is set).
 public sealed record DownloadOutcome(int SourcesTried, int SourcesFailed);
 
-internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IAddHostedSingleton<IDownloadWallpapers>
+// The download work itself: reading the feeds, saving the pictures, the retention pass and the
+// download times. It runs nothing on a schedule of its own; when it runs is the host's choice
+// (DownloadSchedule on the desktop, Android's scheduling on the phone, issue #203 step 5).
+internal class DownloadWallpapers : IDownloadWallpapers, IAddSingleton<IDownloadWallpapers>
 {
     private static readonly HashSet<char> InvalidFileNameChars = Path.GetInvalidFileNameChars()
         .Concat(Path.GetInvalidPathChars())
@@ -47,44 +56,20 @@ internal class DownloadWallpapers : ScheduledJobService, IDownloadWallpapers, IA
 
     public event Action? WallpapersDownloaded;
 
-    public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService, ISettingsStore settingsStore, JobTimerStore timerStore)
-        : base(logger, timerStore)
+    public DownloadWallpapers(ILogger<DownloadWallpapers> logger, HttpWallpaperSourceService sourceService, ISettingsStore settingsStore)
     {
+        Logger = logger.ThrowIfNull();
         _sourceService = sourceService.ThrowIfNull();
         _settingsStore = settingsStore.ThrowIfNull();
-        ExecuteOnStartup = true;
     }
 
-    // Returns the soonest upcoming cron occurrence across all enabled sources so the
-    // legacy scheduler wakes up at the right time. Falls back to 1 hour if no source
-    // has a next occurrence within that window. Sources with an invalid cron expression
-    // are skipped rather than crashing the scheduler into a 1-minute error loop.
-    protected override async Task<DateTimeOffset> GetNextExecutionAsync(JobExecutionContext context)
-    {
-        var settings = await _settingsStore.LoadAsync();
-        var earliest = DateTimeOffset.Now.AddHours(1);
-        foreach (var source in settings.Sources.Where(s => s.IsEnabled))
-        {
-            try
-            {
-                var expression = CronExpression.Parse(source.CronExpression);
-                var next = expression.GetNextOccurrence(DateTimeOffset.UtcNow, TimeZoneInfo.Local);
-                if (next.HasValue && next.Value < earliest)
-                    earliest = next.Value;
-            }
-            catch (CronFormatException)
-            {
-                Logger.LogWarning("Source '{Source}' has invalid cron expression '{Expression}' - skipping for next-execution calculation.", source.Name, source.CronExpression);
-            }
-        }
-        return earliest;
-    }
+    private ILogger Logger { get; }
 
     public Task<DownloadOutcome> DownloadAllAsync() => DownloadFromSourcesAsync(_ => true);
 
     // Scheduled execution: only downloads from sources whose cron interval has elapsed
     // since the last successful download, skipping recently-updated sources.
-    protected override Task Execute() => DownloadFromSourcesAsync(source =>
+    public Task<DownloadOutcome> DownloadDueAsync() => DownloadFromSourcesAsync(source =>
     {
         if (!IsOverdue(source))
         {

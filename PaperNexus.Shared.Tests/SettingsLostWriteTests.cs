@@ -73,7 +73,7 @@ public class SettingsLostWriteTests : IDisposable
         // the source's download time.
         server.OnImageRequested = () => AddFavoriteAsync(_store, favorite).GetAwaiter().GetResult();
         var sourceService = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store, TestHelpers.UnusedTimerStore());
+        var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store);
 
         await downloader.DownloadAllAsync();
 
@@ -97,7 +97,7 @@ public class SettingsLostWriteTests : IDisposable
         await _store.UpdateAsync(latest => latest.Sources = [source]);
         server.OnImageRequested = () => AddFavoriteAsync(_store, old).GetAwaiter().GetResult();
         var sourceService = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store, TestHelpers.UnusedTimerStore());
+        var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store);
 
         await downloader.DownloadAllAsync();
 
@@ -155,7 +155,7 @@ public class SettingsLostWriteTests : IDisposable
         var progress = new EasterEggProgress(_store);
         var switcher = new SwitchWallpaper(NullLogger<SwitchWallpaper>.Instance, NoOpWallpaperApplier.Instance, _store, TestHelpers.AppFolders, TestSettingRules.Desktop);
         var sourceService = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance);
-        var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store, TestHelpers.UnusedTimerStore());
+        var downloader = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, sourceService, _store);
 
         var writers = new List<Task>
         {

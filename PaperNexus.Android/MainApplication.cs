@@ -75,6 +75,9 @@ public class MainApplication : AvaloniaAndroidApplication<App>
                 // does not run on a timer inside the app's process (issue #203, step 5).
                 services.AddServicesFrom(typeof(CurrentWallpaperViewModel).Assembly);
                 services.AddServicesFrom(typeof(MainApplication).Assembly);
+                // The scheduled downloads still run on a timer inside the process, as before,
+                // until Android's own scheduling runs them (issue #203, step 5, change 3).
+                services.AddInProcessDownloadSchedule();
             })
             .Build();
 

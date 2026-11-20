@@ -41,7 +41,7 @@ public class DownloadOutcomeTests : IDisposable
             Sources = [.. sources],
         });
         var feedReader = new HttpWallpaperSourceService(NullLogger<HttpWallpaperSourceService>.Instance, new FeedsHandler());
-        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, feedReader, _store, TestHelpers.UnusedTimerStore());
+        var sut = new DownloadWallpapers(NullLogger<DownloadWallpapers>.Instance, feedReader, _store);
         var outcome = await sut.DownloadAllAsync();
         return outcome;
     }

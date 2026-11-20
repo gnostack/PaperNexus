@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using System.Linq;
 using System.Reflection;
@@ -62,8 +63,9 @@ public static class Bootstrapper
     }
 
     // Runs every IScheduleScopedJob in the given assembly on this process's own timer, each
-    // wrapped in a ScheduledJobHostedService<T> that lives as long as the host. The desktop
-    // calls this for its slideshow and update check. The phone does not: Android can stop a
+    // wrapped in a ScheduledJobHostedService<T> that lives as long as the host, and every
+    // ScheduledJobService (the download schedule) as a hosted service. The desktop calls this
+    // for its slideshow, its downloads and its update check. The phone does not: Android can stop a
     // phone app's process at any time, so its slideshow is left to Android's own scheduling
     // (issue #203, step 5) rather than a timer inside the process.
     public static IServiceCollection AddInProcessSchedules(this IServiceCollection services, Assembly assembly)
@@ -83,6 +85,24 @@ public static class Bootstrapper
             addMethod.Invoke(null, new object[] { services });
         }
 
+        // The legacy timers (ScheduledJobService subclasses: the shared download schedule) are
+        // hosted services of their own and run the same way
+        var legacyTimers = assembly.GetTypes()
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(ScheduledJobService).IsAssignableFrom(t))
+            .ToList();
+        foreach (var timerType in legacyTimers)
+            services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IHostedService), timerType));
+
+        return services;
+    }
+
+    // Runs the scheduled downloads on this process's own timer (DownloadSchedule): at start,
+    // then at each source's next cron occurrence. AddInProcessSchedules adds it for the
+    // desktop. The phone calls it directly only until Android's own scheduling runs its
+    // downloads (issue #203, step 5, change 3).
+    public static IServiceCollection AddInProcessDownloadSchedule(this IServiceCollection services)
+    {
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, DownloadSchedule>());
         return services;
     }
 

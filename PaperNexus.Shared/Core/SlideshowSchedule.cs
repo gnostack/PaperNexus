@@ -63,6 +63,80 @@ public static class SlideshowSchedule
         return CronExpression.Parse(expression, format);
     }
 
+    // Where and how far the shortest gap between changes is looked for: four years and a day
+    // from the start of a leap year, so February 29 and every pair of consecutive days a
+    // schedule's day fields allow are inside it.
+    private static readonly DateTimeOffset GapSearchStart = new(2028, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    internal static readonly TimeSpan GapSearchLength = TimeSpan.FromDays((4 * 365) + 1 + 1);
+
+    // Whether two consecutive changes on expression can come less than gap apart. A device's
+    // fastest slideshow (the phone's 15 minutes, issue #203 step 5) refuses such a schedule. An
+    // expression that does not parse is not faster: its own check refuses it.
+    public static bool IsFasterThan(string expression, TimeSpan gap)
+    {
+        if (gap <= TimeSpan.Zero)
+            return false;
+        var shortest = ShortestGap(expression, stopBelow: gap);
+        return shortest is not null && shortest.Value < gap;
+    }
+
+    // The shortest time between two consecutive occurrences of expression, in wall-clock time:
+    // the occurrences are counted in UTC, so a daylight-saving change never shortens or
+    // lengthens a gap here. Looks over GapSearchLength and stops at the first gap shorter than
+    // stopBelow. Null when the expression does not parse or occurs less than twice in that time.
+    public static TimeSpan? ShortestGap(string expression, TimeSpan? stopBelow = null)
+    {
+        CronExpression cron;
+        try
+        {
+            cron = Parse(expression);
+        }
+        catch (CronFormatException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        var end = GapSearchStart + GapSearchLength;
+        var occurrences = cron.GetOccurrences(GapSearchStart, end, TimeZoneInfo.Utc, fromInclusive: true, toInclusive: false);
+        TimeSpan? shortest = null;
+        DateTimeOffset? previous = null;
+        foreach (var occurrence in occurrences)
+        {
+            if (previous is { } last)
+            {
+                var gap = occurrence - last;
+                if (shortest is null || gap < shortest.Value)
+                    shortest = gap;
+                if (stopBelow is { } limit && gap < limit)
+                    return shortest;
+            }
+            previous = occurrence;
+        }
+        return shortest;
+    }
+
+    // When the slideshow next changes: the first occurrence of cron at or after the later of now
+    // and the last change plus shortestGap, so two changes are never closer than the device's
+    // fastest slideshow, whatever is stored (a stored schedule that is too fast runs at that
+    // floor). Without a floor still ahead, an occurrence exactly at now is not taken: it is the
+    // change being made. Null when the schedule has no further occurrence.
+    public static DateTimeOffset? NextChange(CronExpression cron, DateTimeOffset now, DateTimeOffset? lastChange, TimeSpan shortestGap, TimeZoneInfo zone)
+    {
+        cron.ThrowIfNull();
+        zone.ThrowIfNull();
+        if (lastChange is { } last)
+        {
+            var floor = last + shortestGap;
+            if (floor > now)
+                return cron.GetNextOccurrence(floor, zone, inclusive: true);
+        }
+        return cron.GetNextOccurrence(now, zone, inclusive: false);
+    }
+
     // The sentence under the schedule: a prompt when cron mode has nothing typed, the plain
     // description of the schedule, or the field guide when it cannot be read.
     public static string Describe(SlideshowScheduleMode mode, string effectiveCron)

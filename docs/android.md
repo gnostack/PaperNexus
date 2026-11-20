@@ -393,8 +393,10 @@ Rotation and dark/light mode changes still keep the activity, as before.
   implementations (`AddServicesFrom` on the Android assembly), the screens as transient
   registrations, and the file logger. It does not call `AddInProcessSchedules`, so the
   slideshow does not run on a timer inside the app (issue #203, step 5 brings it).
-- The scheduled downloader starts with the host: its first run begins at once and later runs
-  follow each source's schedule while Android keeps the process.
+- The scheduled downloads still run on a timer inside the process (`DownloadSchedule`, added by
+  `AddInProcessDownloadSchedule`): its first run begins when the host starts and later runs
+  follow each source's schedule while Android keeps the process. Issue #203 step 5, change 3
+  replaces it with Android's own scheduling (see "Background slideshow and downloads").
 - The logger reads its level from a `LogLevelSwitch` that `MainApplication` creates and registers:
   debug entries while the debug mode setting is on, from the moment it changes (`DebugLogLevel`
   applies the stored setting when the host starts). The Settings tab's Debug mode switch changes
@@ -402,6 +404,56 @@ Rotation and dark/light mode changes still keep the activity, as before.
 - The log is `no_backup/logs/app.log` (`Assembly.GetEntryAssembly()` is null on Android, so
   the logger's fallback name is used). Read it with
   `adb shell run-as com.gnostack.papernexus cat no_backup/logs/app.log` (Debug builds only).
+
+## Background slideshow and downloads (issue #203, step 5)
+
+Being built in four changes; this section grows with them. The design: the slideshow is a
+one-shot alarm set for the next change and set again after every change, a 10-minute window
+alarm with Exact timing off, an exact allow-while-idle alarm plus the same window alarm as a
+backup with it on; downloads are one persisted JobScheduler job that waits for a network. What is
+armed is always derived from the settings (`BackgroundPlan.For`, after each `ISettingsStore.Saved`
+and at every process start), never stored. No package is added: AlarmManager and JobScheduler are
+the platform's own.
+
+Change 1 (shared groundwork, nothing on the phone behaves differently yet): the downloader's
+scheduled run is `IDownloadWallpapers.DownloadDueAsync`, the in-process timer is `DownloadSchedule`,
+the store raises `Saved`, and the schedule rules are `SlideshowSchedule.ShortestGap`,
+`SlideshowSchedule.IsFasterThan` (a gap is counted between consecutive occurrences in UTC, over
+four years and a day from the start of 2028, so February 29 is inside it), `SlideshowSchedule.NextChange`
+(the first occurrence at or after the later of now and the last change plus the device's fastest
+slideshow) and `BackgroundPlan.For` (a due download source is tried once, then waits for its next
+occurrence).
+
+Android's rules this rests on, read in the Android documentation and measured on the Android 16
+emulator with a throwaway probe app (issue #203, step 5 plan):
+
+- `SCHEDULE_EXACT_ALARM` is denied at install on Android 14 and later (measured on 16:
+  `canScheduleExactAlarms()` false) and granted at install on 12 and 13. Google Play allows
+  `USE_EXACT_ALARM` only for alarm, timer and calendar apps, so the app declares
+  `SCHEDULE_EXACT_ALARM`.
+- Revoking it kills the app's process and deletes its exact alarms, with no broadcast; an
+  inexact alarm set beside the exact one stays and fires (measured). Granting it sends
+  `SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` (measured, about 7 ms after the grant).
+- Alarms are cleared by a restart (the boot broadcast reaches only an app opened at least once)
+  and kept by an app update (measured with `adb install -r`; `MY_PACKAGE_REPLACED` started the
+  process).
+- An inexact `setAndAllowWhileIdle` alarm got a window of 75% of its delay and fired at the end of
+  it (measured). Android 12 and later deliver inexact alarms within an hour outside battery saver
+  and Doze. During Doze only the allow-while-idle alarms fire, at most once every nine minutes per
+  app; an exact one set for 19:00:01.137 fired at 19:00:01.140 in forced deep Doze (measured).
+- A broadcast receiver's work, `goAsync` included, must end within 10 seconds. The Release app
+  with its screen starts cold in about 2 seconds (`am start -W`, 2061 ms).
+- **An app nobody opens for 8 days goes into the restricted standby bucket on Android 13 and
+  later (45 days on 12):** one alarm a day, jobs once a day, no network. The slideshow then
+  changes about once a day and downloads stop until the person opens the app; the home screen
+  widget (step 6) lifts it while it is on the home screen, and so does setting the app's battery
+  use to "Unrestricted". On battery the frequent and rare buckets allow 2 and 1 alarms an hour.
+  The owner accepted this as it is (issue #203, step 5): nothing new is shown for it.
+- Force-stop cancels every alarm and job until the person opens the app again (Android 15 and
+  later then send the boot broadcast).
+- This emulator image cannot show standby buckets: App Standby is off (`mAppIdleEnabled=false`),
+  it always reports charging, and every app is in bucket 5. Deep Doze is off until
+  `adb shell dumpsys deviceidle enable deep`; put it back with `disable deep`.
 
 ## Where the files are
 

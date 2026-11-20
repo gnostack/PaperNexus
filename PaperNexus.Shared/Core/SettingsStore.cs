@@ -19,6 +19,14 @@ public interface ISettingsStore
     // store. When it throws, nothing is written and the exception reaches the caller.
     // Returns the settings as written.
     public Task<WallpaperNexusSettings> UpdateAsync(Action<WallpaperNexusSettings> change);
+
+    // Raised with the settings as written after every UpdateAsync that wrote the file, once the
+    // store's lock is released, so a handler may read or update the store itself. Not raised
+    // when the change or the write failed. Raised on the thread that called UpdateAsync. A
+    // handler must not throw: the file is already written, and the caller would read the
+    // exception as a failed save. The
+    // phone re-derives its background scheduling from it (issue #203, step 5).
+    public event Action<WallpaperNexusSettings>? Saved;
 }
 
 public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore>
@@ -139,21 +147,27 @@ public sealed class SettingsStore : ISettingsStore, IAddSingleton<ISettingsStore
         settings.Sources ??= WallpaperNexusSettings.DefaultSources;
     }
 
+    public event Action<WallpaperNexusSettings>? Saved;
+
     public async Task<WallpaperNexusSettings> UpdateAsync(Action<WallpaperNexusSettings> change)
     {
         change.ThrowIfNull();
+        WallpaperNexusSettings settings;
         await _writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            var settings = await LoadAsync().ConfigureAwait(false);
+            settings = await LoadAsync().ConfigureAwait(false);
             change(settings);
             await WriteFileAsync(settings).ConfigureAwait(false);
-            return settings;
         }
         finally
         {
             _writeLock.Release();
         }
+
+        // After the lock, so a handler that reads or updates the store does not wait on itself
+        Saved?.Invoke(settings);
+        return settings;
     }
 
     // Replaces the whole file with settings, under the same lock as UpdateAsync. Only tests
