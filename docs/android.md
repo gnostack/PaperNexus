@@ -558,21 +558,24 @@ emulator with a throwaway probe app (issue #203, step 5 plan):
   app; an exact one set for 19:00:01.137 fired at 19:00:01.140 in forced deep Doze (measured).
 - A broadcast receiver's work, `goAsync` included, must end within 10 seconds. The Release app
   with its screen starts cold in about 2 seconds (`am start -W`, 2061 ms).
-- **An app nobody uses for 8 days goes into the restricted standby bucket on Android 13 and
-  later (45 days on 12):** one alarm a day, jobs once a day, no network. The slideshow then
-  changes about once a day and downloads stop until the person uses the app again; setting the
-  app's battery use to "Unrestricted" lifts it. On battery the frequent and rare buckets allow 2
-  and 1 alarms an hour. The owner accepted this as it is (issue #203, step 5): nothing new is
-  shown for it. The background slideshow alone never counts as use. A tap on a long-press menu
-  entry, or on an entry dragged out as its own home screen icon, does count and resets the 8-day
-  clock, because its activity comes to the front (see "Long-press menu"). There is no home screen
-  widget (issue #203, step 6 replaced it with the long-press menu).
+- **An app nobody uses for a number of days goes into the restricted standby bucket: 8 days on
+  Android 13 and later, 45 days on Android 12 and 12L** (the restricted bucket itself is new in
+  Android 12; time the phone is off does not count). There it gets one alarm a day, jobs once a
+  day and no network, even while charging. The slideshow then changes about once a day and downloads
+  stop until the person uses the app again; setting the app's battery use to "Unrestricted" lifts
+  it. On battery the frequent and rare buckets allow 2 and 1 alarms an hour. The owner accepted
+  this as it is (issue #203, step 5): nothing new is shown for it. The background slideshow alone
+  never counts as use. A tap on a long-press menu entry, or on an entry dragged out as its own home
+  screen icon, does count and starts the count of days again, because its activity comes to the
+  front (see "Long-press menu"). There is no home screen widget (issue #203, step 6 replaced it
+  with the long-press menu).
 - Force-stop cancels every alarm and job until the person opens the app again (Android 15 and
   later then send the boot broadcast). A tap on a long-press menu entry starts the process too,
   which arms them again (measured: after `dotnet build -t:Install` force-stopped the app, a tap
   armed the next change).
 - This emulator image cannot show standby buckets: App Standby is off (`mAppIdleEnabled=false`),
-  it always reports charging, and every app is in bucket 5. Deep Doze is off until
+  it always reports charging, and every app is in bucket 5 (the Android 12 image reports the same
+  and puts PaperNexus in bucket 10, `adb shell am get-standby-bucket`). Deep Doze is off until
   `adb shell dumpsys deviceidle enable deep`; put it back with `disable deep`.
 
 ## Long-press menu (issue #203, step 6)
@@ -616,9 +619,10 @@ change, which would otherwise recreate it in the middle of its own change.
 **Standby.** Each tap brings an activity of the app to the front, which Android counts as using
 the app (the App Standby documentation: an app is active when it launches an activity; AOSP's
 `AppStandbyController` treats an activity coming to the front as use and resets the usage time),
-so a tap resets the 8-day clock. Measured: `dumpsys usagestats` records `ACTIVITY_RESUMED` for
-`ShortcutActivity` and a new `lastTimeUsed` at each tap, plus a `SHORTCUT_INVOCATION`. The emulator
-cannot show the bucket itself (App Standby is off; `app_standby_enabled` does not turn it on).
+so a tap starts the count of days to the restricted bucket again (8 days, 45 on Android 12).
+Measured: `dumpsys usagestats` records `ACTIVITY_RESUMED` for `ShortcutActivity` and a new
+`lastTimeUsed` at each tap, plus a `SHORTCUT_INVOCATION`. The emulator cannot show the bucket itself
+(App Standby is off; `app_standby_enabled` does not turn it on).
 
 Measured on the Android 16 emulator (Debug and Release, issue #203 step 6):
 
@@ -642,6 +646,63 @@ not let a tap through to the launcher (measured, three runs each way). A tap mad
 activity's window is up (within its start, about 1 s from cold and 0.3 s warm) does reach the
 launcher, which acts on it once the activity ends: a double tap on an entry that quick makes two
 changes, one after the other.
+
+## Android 12 (issue #203, step 7)
+
+Android 12 (API 31) is the oldest version the app supports (decision 6). Every tab and every
+behavior of steps 3 to 6 was checked on the Android 12 emulator (`papernexus-phone-12`,
+1080x2400, 420 dpi), Release unless the row says Debug (the Debug build is needed for `run-as`
+and the log), from the build of commit `ffd57ae`.
+
+| What | Result on Android 12 |
+| --- | --- |
+| Install and cold start (Release) | `Displayed` after 1625 to 1820 ms; no crash in the log |
+| Launch screen | Tapping the icon shows the launcher icon on #2B2B2B, as on Android 16; a start from the shell shows the plain #2B2B2B window |
+| First open (no pictures) | Downloaded, then set the first wallpaper with no tap |
+| Next, Random, the heart, delete with its question | Work as on Android 16; the first favorite plays the milestone egg; "Deleted and switched to: …" |
+| Delete of the last picture (Debug, the others moved aside) | "Wallpaper deleted. No more wallpapers.", "No wallpapers yet. Downloading…", then a new first wallpaper |
+| No network and no pictures | "Could not download wallpapers. Check your connection." with "Try again"; with the network back, Try again downloaded and set a wallpaper |
+| A picture that cannot be read (Debug, files cut to 100 bytes) | "Could not change the wallpaper. Try again." in red, the wallpaper stayed. A picture cut to 20 KB is not refused: Skia decodes what is there and the rest is black |
+| Changing the wallpaper is forbidden (`no_set_wallpaper` as root) | "This phone does not allow apps to change the wallpaper." in red, Next and Random dimmed; the long-press entry shows the same sentence as a pop-up |
+| Home screen and lock screen | Both show the picture (screenshots); `dumpsys wallpaper` lists no lock wallpaper. Android 12's dump has no `mWhich`, and its wallpaper id sometimes goes up by 2 for one change (one "Switching wallpaper" line in the log), so a change is judged by the id changing |
+| Wallpaper zoom and fill styles | The canvas is 1188x2640 (Debug log), so Android 12 enlarges the wallpaper by 1.1 as Android 16 does. Fit, Stretch, Tile and Center read on both screens from screenshots look as on Android 16 |
+| A wallpaper change while the app is open | The activity is not recreated (no `wm_on_create_called`); a font size change recreates it |
+| Gallery and Favorites | Set as current, heart, ban (red tint, "Banned from rotation."), unban, delete, remove from favorites |
+| Memory with 56 pictures (total PSS) | Debug: 206 MB at rest, 228 MB on Gallery, 271 MB peak flinging the list twice, 238 MB after leaving. Release: 159, 180, 217 and 189 MB |
+| Sources | Edit and Test (the success line, "7 image(s) found.", and each title and address), a duplicate name refused ("A source named bing daily 4k already exists."), add and save, the row switch (tap and drag), delete, Download now. Field `inputType`s as on Android 16: Name `0x1`, URL `0x10`, the JPaths `0x80081`, the schedule `0x80081` with Done |
+| The keyboard on the form | The buttons sit on the keyboard's top edge and the focused field stays in view; back closes the keyboard, then the form |
+| Settings | The pickers, the Minutes list (15, 20, 30), the number box (step 30, number keypad `0x2`), a 5-minute cron refused ("The phone can change the wallpaper at most every 15 minutes."), the 17 debug questions, About "v1" (the pre-Android-13 `GetPackageInfo` path), Report a bug and the GitHub page open the browser |
+| Easter eggs | Konami by swipes ("+30 LIVES GRANTED"), five version taps, Secrets "3 / 3 found" |
+| Exact timing | On with no system screen, "Settings saved."; the exact alarm and the window alarm armed (`exactAllowReason=permission`). Revoked with the app in the background: "Killing … schedule_exact_alarm revoked", only the window alarm left, and the next open showed it off with "Exact timing needs the phone's Alarms & reminders permission.". On while denied: the phone's "Alarms & reminders" screen opened; back without allowing kept it off; allowing turned it on. Granted outside the app with the switch off: the broadcast started the process and only the window alarm was armed |
+| A real background change, Exact timing off, app closed | Window alarm for 15:20; Android started the process for `SlideshowAlarmReceiver` at 15:24:28; the wallpaper id went 18 to 19; 15:40 armed next; no activity created |
+| A real exact change, app closed, after a restart with the app not opened | The boot broadcast armed the pair; the process started at 15:40:00.003 and the change finished at 15:40:01.854; id 19 to 20, once; the next pair armed |
+| Forced deep Doze, unplugged, screen off (Debug) | The exact alarm was delivered at 16:00:00.004 |
+| A background change that failed (Debug, pictures cut to 100 bytes) | Recorded in `timers.json` as failed; the Current tab showed "The slideshow could not change the wallpaper. Tap Next to try again."; Next with the pictures put back changed the wallpaper and took the line away |
+| Scheduled download with one feed unreachable (Debug, sources made due, job forced) | 2 tried, 1 failed; the Sources tab showed "The last scheduled download failed for 1 of 2 sources."; Download now took it away |
+| An app update (`adb install -r`) | `MY_PACKAGE_REPLACED` started the process; the alarms and the job stayed |
+| Long-press menu | 12's launcher shows App info as an (i) icon above "Next Wallpaper" and "Random Wallpaper". A tap with the app closed changed the wallpaper with only `ShortcutActivity` created; the failure and "does not allow" pop-ups show with the app icon; with no pictures it opened the app; a dragged-out icon, "Next" with the app badge, works the same |
+| Back on the tabs | Leaves the app; Android 12 keeps the activity, and the next open returns to the same tab |
+| Factory Reset | A new process on the Current tab, the defaults (Exact timing off, every 30 minutes), the pictures kept |
+| Standby | The emulator cannot show it: App Standby off, always charging, bucket 10 |
+
+**What differs from Android 16 on screen:**
+
+- Android 12 does not draw the app under the system bars: the status bar and the navigation bar
+  are their own strips, #1A1A1A, darker than the app's #2B2B2B. On Android 16 the app's color
+  runs under both.
+- The selected tab's accent is always the same bright blue (#00B9FA) on Android 12; on Android 16
+  it follows the wallpaper's colors.
+- The launcher's long-press menu shows App info as an icon, not a row of text.
+- An easter egg covers the app's area only, not the status bar.
+
+**Known problem on both versions:** a wallpaper change made while the app is in the background
+with the Current tab shown (a long-press entry, the slideshow, or Next/Random just before
+leaving) can leave the Current tab broken when the app is opened again: no picture, no tab bar,
+the title cut off at the right and the buttons pushed to the right. It stays so until the
+activity is recreated. Measured on Android 12 (Debug 3 times of 3; Release 3 times of 3 after a
+long-press change, 0 of 2 after Random tapped just before leaving) and on Android 16 (Release,
+once of 3 after a long-press change). Left on the Settings tab instead, the layout is right, but the Current tab then
+shows the new wallpaper's title over the old picture.
 
 ## Where the files are
 
@@ -725,8 +786,10 @@ harmless, because only the switcher reads it and the phone's switcher draws no t
 - The .NET `android` workload (`dotnet workload list` shows it).
 - A JDK, version 17 to 21 (the range the workload accepts), at `JAVA_HOME`.
 - The Android SDK at `ANDROID_HOME`, with `platform-tools`, `platforms;android-36` and
-  `build-tools;36.0.0`; for the emulator also `emulator` and a system image such as
-  `system-images;android-36;default;x86_64`, plus `/dev/kvm`.
+  `build-tools;36.0.0`; for the emulators also `emulator`, the system images
+  `system-images;android-36;default;x86_64` (Android 16) and
+  `system-images;android-31;default;x86_64` (Android 12, the oldest version supported), plus
+  `/dev/kvm`.
 
 The Android build reads `ANDROID_HOME` and `JAVA_HOME` from the environment; nothing in the
 repository names a path. **Both must be exported in the shell that builds the solution**: without
@@ -768,7 +831,15 @@ $ANDROID_HOME/emulator/emulator -avd <name> -no-window -no-audio -no-boot-anim -
 until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 2; done
 ```
 
+- The virtual phones are `papernexus-phone` (Android 16) and `papernexus-phone-12` (Android 12),
+  both 1080x2400. Run one at a time.
 - Clean install: `adb uninstall com.gnostack.papernexus`, then install as above.
+- A Debug package installed with `adb install` does not start ("No assemblies found … Assuming
+  this is part of Fast Deployment"): a Debug build keeps its assemblies outside the package and
+  only `-t:Install` or `-t:Run` copies them. After the package was replaced or removed by `adb`,
+  `-t:Install` can still believe they are on the phone and skip them (measured: it finished in 2
+  seconds and the app would not start); build with `-p:EmbedAssembliesIntoApk=true` to put them
+  in the package, which `adb install -r` can then update while keeping the app's data.
 - Open the app the way a person does: `adb shell input keyevent KEYCODE_HOME`, swipe up for the
   app drawer (`adb shell input swipe 540 1800 540 600 300` on a 1080x2400 screen) and tap the
   PaperNexus icon. Without the launcher:
@@ -789,8 +860,10 @@ until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 2
   The app reads the file on every change, so the next tap uses it.
 - No network: `adb shell svc wifi disable` and `adb shell svc data disable` (`enable` to undo).
 - Font size (recreates the activity): `adb shell settings put system font_scale 1.15`, and `1.0`
-  to undo.
-- Shut the emulator down when finished: `adb emu kill`.
+  to undo (`adb shell settings delete system font_scale` where it was never set, as on the
+  Android 12 phone).
+- Shut the emulator down when finished with `adb shell reboot -p`, not `adb emu kill`: a kill can
+  lose a setting changed just before it (see "Text input options").
 
 The app drawer on a 5-column launcher shortens the label to "PaperNe..."; the label itself is
 `PaperNexus`.
