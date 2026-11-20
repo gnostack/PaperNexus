@@ -205,8 +205,8 @@
                                     <Grid ColumnDefinitions="*,Auto">
                                         <TextBlock Classes="switchLabel" Text="Prioritize Favorites"/>
                                         <ToggleSwitch Grid.Column="1"
+                                                      Theme="{StaticResource IconToggleSwitch}"
                                                       IsChecked="{Binding Slideshow.FavoritePriorityEnabled}"
-                                                      OnContent="" OffContent="" MinWidth="0"
                                                       VerticalAlignment="Center"
                                                       ToolTip.Tip="Pick favorites more often during random selection"/>
                                     </Grid>
@@ -246,8 +246,8 @@
                                     <!-- Set from the debug group's value in code, as on the desktop -->
                                     <ToggleSwitch x:Name="DebugModeToggle"
                                                   Grid.Column="1"
+                                                  Theme="{StaticResource IconToggleSwitch}"
                                                   IsCheckedChanged="DebugMode_Changed"
-                                                  OnContent="" OffContent="" MinWidth="0"
                                                   VerticalAlignment="Center"
                                                   ToolTip.Tip="Turn debug mode on or off"/>
                                 </Grid>

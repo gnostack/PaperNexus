@@ -161,6 +161,7 @@ PaperNexus/
     │   ├── EasterEggPlayback.cs        # The egg playing, kept so a recreated screen continues it
     │   ├── ChoiceDialog.axaml(.cs)     # In-page list to choose one value from (the Settings pickers)
     │   ├── KeyboardLift.cs             # Keeps the keyboard off the field being typed (form and Settings)
+    │   ├── IconToggleSwitchTheme.axaml # Switch look without the words column (re-check on Avalonia updates)
     │   ├── PictureListStyles.axaml     # Card and picture-button styles
     │   ├── StatusLineStyles.axaml      # Confirmation-line styles (every tab)
     │   ├── PictureFrame.cs             # 16:9 picture box so every card has the same height
@@ -207,6 +208,8 @@ PaperNexus/
 Every package is declared once, in `PaperNexus.Shared.csproj`; the desktop host gets them through its project reference and declares only `Avalonia.Desktop` 12.1.1 (which also brings the Linux SkiaSharp/HarfBuzz native libraries via `Avalonia.Skia`). `PaperNexus.Shared.Tests` declares `Avalonia.Skia` 12.1.1 for the same reason: the test runner needs those native libraries on Linux, and `PaperNexus.Shared` carries only the managed SkiaSharp. Keep its version equal to Avalonia's; Dependabot does not group the Avalonia packages, so update them together by hand when one moves. The xUnit packages are declared in both test projects.
 
 Avalonia 12.1.1, Avalonia.Themes.Fluent 12.1.1, Avalonia.Fonts.Inter 12.1.1, CommunityToolkit.Mvvm 8.4.2, Cronos 0.13.0, CronExpressionDescriptor 2.51.0, Microsoft.Extensions.Hosting 10.0.11, Newtonsoft.Json 13.0.4, SkiaSharp 3.119.4 (the version Avalonia 12.1.1 renders with, so its native libraries already ship in both binaries; Dependabot ignores it, and it is updated together with Avalonia), SkiaSharp.HarfBuzz 3.119.2 (text shaping for the annotation's kerning; pinned at 3.119.2 in Dependabot because later versions require a newer HarfBuzzSharp than the 8.3.1.3 native library Avalonia 12.1.1 ships - lift the pin when Avalonia moves). The Android host adds only Avalonia.Android 12.1.1, which moves with Avalonia; its Skia and HarfBuzz native libraries resolve to the same versions.
+
+When Avalonia is updated, re-check `PaperNexus.Android/Views/IconToggleSwitchTheme.axaml` against Fluent's `ToggleSwitch.xaml` at the new version: it is a copy of that template (from 12.1.1) without the column kept for words (docs/android.md, "Switches without words").
 
 No `Avalonia.Diagnostics` reference: it has no 12.x release, and `AttachDevTools` was never called. Adding the visual-tree inspector back would mean pinning Avalonia to 11.x.
 

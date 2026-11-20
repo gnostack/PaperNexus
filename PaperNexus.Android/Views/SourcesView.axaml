@@ -84,12 +84,13 @@
                                                FontSize="16"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"/>
+                                    <!-- The right margin is the 12 dp the built-in switch kept empty
+                                         plus its 4, so the track sits where it always did -->
                                     <ToggleSwitch Grid.Column="1"
+                                                  Theme="{StaticResource IconToggleSwitch}"
                                                   IsChecked="{Binding IsEnabled}"
                                                   IsEnabled="{Binding CanAct}"
-                                                  OnContent="" OffContent=""
-                                                  MinWidth="0"
-                                                  Margin="8,0,4,0"
+                                                  Margin="8,0,16,0"
                                                   VerticalAlignment="Center"
                                                   ToolTip.Tip="Turn this source on or off"/>
                                     <Button Grid.Column="2" Classes="rowAction"
