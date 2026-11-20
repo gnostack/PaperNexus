@@ -115,7 +115,7 @@ public class SettingsViewModelTests : IDisposable
     [Theory]
     [InlineData(SettingsPickerKind.Resolution, "Saved Resolution", 7, "Native")]
     [InlineData(SettingsPickerKind.ScheduleMode, "Schedule", 2, "Interval")]
-    [InlineData(SettingsPickerKind.IntervalType, "Interval", 7, "Minutes")]
+    [InlineData(SettingsPickerKind.IntervalType, "Interval", 6, "Minutes")]   // the phone has no seconds
     [InlineData(SettingsPickerKind.Order, "Order", 4, "Newest first")]
     [InlineData(SettingsPickerKind.FillStyle, "Fill Style", 5, "Fill")]
     public async Task Open_ListsTheChoicesWithTheCurrentOneMarked(SettingsPickerKind kind, string title, int count, string selected)
@@ -170,7 +170,7 @@ public class SettingsViewModelTests : IDisposable
         await viewModel.EnsureLoadedAsync();
 
         viewModel.Open(SettingsPickerKind.IntervalType);
-        viewModel.Choose(2); // Hours
+        viewModel.Choose(1); // Hours: the phone's units start at Minutes
         viewModel.Open(SettingsPickerKind.ScheduleMode);
         viewModel.Choose(1); // Cron expression
 

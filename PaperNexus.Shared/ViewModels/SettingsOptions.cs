@@ -28,8 +28,12 @@ public record ScheduleModeOption(string Label, SlideshowScheduleMode Mode)
     public override string ToString() => Label;
 }
 
-public record IntervalTypeOption(string Label, IntervalType Type, double Minimum, double Maximum)
+// FixedValues, when set, are the only numbers the unit allows, picked from a list instead of typed
+// (IntervalRule).
+public record IntervalTypeOption(string Label, IntervalType Type, double Minimum, double Maximum, IReadOnlyList<int>? FixedValues = null)
 {
+    public bool HasFixedValues => FixedValues is { Count: > 0 };
+
     public override string ToString() => Label;
 }
 

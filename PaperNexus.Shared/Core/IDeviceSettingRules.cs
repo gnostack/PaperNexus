@@ -14,4 +14,14 @@ public interface IDeviceSettingRules
     // The fill styles this device can draw, in the order the picker lists them. A stored
     // style that is not here shows as the first one.
     public IReadOnlyList<WallpaperFillStyle> FillStyles { get; }
+
+    // The shortest time this device allows between two slideshow changes. A schedule that can
+    // change faster is refused when typed and shown with a sentence when stored. The desktop has
+    // none (zero); the phone's is 15 minutes (issue #203, step 5).
+    public TimeSpan ShortestSlideshowGap { get; }
+
+    // The interval units this device offers, in the order the unit picker lists them, each with
+    // the numbers it allows (SlideshowSchedule.IntervalRules has the desktop's). A stored unit
+    // that is not here still shows as it is.
+    public IReadOnlyList<IntervalRule> IntervalTypes { get; }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -9,6 +10,7 @@ public enum SettingsPickerKind
     Resolution,
     ScheduleMode,
     IntervalType,
+    IntervalValue,
     Order,
     FillStyle,
 }
@@ -114,6 +116,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, 
     [RelayCommand]
     private void OpenIntervalTypePicker() => Open(SettingsPickerKind.IntervalType);
 
+    // The interval's number, for a unit whose numbers are picked from a list (the phone's minutes)
+    [RelayCommand]
+    private void OpenIntervalValuePicker() => Open(SettingsPickerKind.IntervalValue);
+
     [RelayCommand]
     private void OpenOrderPicker() => Open(SettingsPickerKind.Order);
 
@@ -154,8 +160,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, 
                 o => o.Label, o => o.Description, Download.SelectedResolution),
             SettingsPickerKind.ScheduleMode => Build(kind, "Schedule", SlideshowSettingsViewModel.ScheduleModeOptions,
                 o => o.Label, _ => null, Slideshow.SelectedScheduleMode),
-            SettingsPickerKind.IntervalType => Build(kind, "Interval", SlideshowSettingsViewModel.IntervalTypeOptions,
+            SettingsPickerKind.IntervalType => Build(kind, "Interval", Slideshow.IntervalTypeChoices,
                 o => o.Label, _ => null, Slideshow.SelectedIntervalType),
+            // Titled with the unit ("Minutes"); a stored number the list does not offer marks none
+            SettingsPickerKind.IntervalValue => Build(kind, Slideshow.SelectedIntervalType.Label, Slideshow.FixedIntervals,
+                v => v.ToString(CultureInfo.InvariantCulture), _ => null, (int)(Slideshow.Interval ?? 0)),
             SettingsPickerKind.Order => Build(kind, "Order", SlideshowSettingsViewModel.SlideshowOrderOptions,
                 o => o.Label, o => o.Description, Slideshow.SelectedOrder),
             _ => Build(kind, "Fill Style", Slideshow.FillStyleOptions,
@@ -179,7 +188,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IScrollPlace, 
                 Slideshow.SelectedScheduleMode = SlideshowSettingsViewModel.ScheduleModeOptions[index];
                 break;
             case SettingsPickerKind.IntervalType:
-                Slideshow.SelectedIntervalType = SlideshowSettingsViewModel.IntervalTypeOptions[index];
+                Slideshow.SelectedIntervalType = Slideshow.IntervalTypeChoices[index];
+                break;
+            case SettingsPickerKind.IntervalValue:
+                Slideshow.Interval = Slideshow.FixedIntervals[index];
                 break;
             case SettingsPickerKind.Order:
                 Slideshow.SelectedOrder = SlideshowSettingsViewModel.SlideshowOrderOptions[index];
