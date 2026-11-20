@@ -114,10 +114,12 @@ public class SourcesViewModelTests : IDisposable
         Assert.Equal("https://two.test/feed", form.Url);
         form.Name = "Rivers";
         await form.SaveCommand.ExecuteAsync(null);
-
-        await WaitUntil(() => vm.Items[1].Name == "Rivers");
-        Assert.Equal(["One", "Rivers"], vm.Items.Select(i => i.Name));
         Assert.Equal("Settings saved.", vm.Status.Message);
+
+        // The rows are listed again on a background thread here (the tests have no screen
+        // thread): a renamed source's row is inserted before the old one is removed, so the list
+        // is read only as a whole and once it has settled
+        await WaitUntil(() => NamesOf(vm) is ["One", "Rivers"]);
     }
 
     [Fact]
@@ -296,6 +298,19 @@ public class SourcesViewModelTests : IDisposable
 
         Assert.Equal("Download failed: The disk is full.", vm.Status.Message);
         Assert.True(vm.Status.IsError);
+    }
+
+    // The rows' names, or none while another thread is changing the list.
+    private static string[] NamesOf(SourcesViewModel vm)
+    {
+        try
+        {
+            return vm.Items.Select(i => i.Name).ToArray();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return [];
+        }
     }
 
     private static async Task WaitUntil(Func<bool> condition)
