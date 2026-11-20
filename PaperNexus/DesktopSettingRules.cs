@@ -18,4 +18,9 @@ internal sealed class DesktopSettingRules : IDeviceSettingRules, IAddSingleton<I
     public bool DrawsWallpaperTitle => true;
 
     public IReadOnlyList<WallpaperFillStyle> FillStyles => AllFillStyles;
+
+    // The desktop changes as often as it is told: any interval, seconds included, and any cron
+    public TimeSpan ShortestSlideshowGap => TimeSpan.Zero;
+
+    public IReadOnlyList<IntervalRule> IntervalTypes => SlideshowSchedule.IntervalRules;
 }

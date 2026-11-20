@@ -3,11 +3,33 @@ using CronExpressionDescriptor;
 
 namespace PaperNexus.Core;
 
+// The numbers an interval unit allows: a range typed into a number box, or, when FixedValues is
+// set, only those values, picked from a list (the phone's minutes: 15, 20 and 30, because every
+// other minute count either changes faster than every 15 minutes or does not keep its spacing
+// across the hour, issue #203 step 5).
+public sealed record IntervalRule(IntervalType Type, int Minimum, int Maximum, IReadOnlyList<int>? FixedValues = null)
+{
+    public bool HasFixedValues => FixedValues is { Count: > 0 };
+}
+
 // The rules for the slideshow's schedule, written once for every screen that edits it: the
 // cron expression an interval stands for, whether a typed expression is valid, and the sentence
 // that describes a schedule.
 public static class SlideshowSchedule
 {
+    // Every interval unit with the range the desktop offers, in the order the unit picker lists
+    // them. A device offers these or its own (IDeviceSettingRules.IntervalTypes).
+    public static readonly IReadOnlyList<IntervalRule> IntervalRules = new[]
+    {
+        new IntervalRule(IntervalType.Seconds, 1, 59),
+        new IntervalRule(IntervalType.Minutes, 1, 59),
+        new IntervalRule(IntervalType.Hours,   1, 23),
+        new IntervalRule(IntervalType.Days,    1, 28),
+        new IntervalRule(IntervalType.Weeks,   1,  4),
+        new IntervalRule(IntervalType.Months,  1, 12),
+        new IntervalRule(IntervalType.Years,   1,  1),
+    };
+
     public const string EmptyCronText = "Enter a cron expression, e.g. 0 9 * * 1-5";
     public const string InvalidCronText = "Invalid  ·  Fields: minute  hour  day  month  weekday\nExample: 0 9 * * 1-5  (9:00 AM on weekdays)";
 

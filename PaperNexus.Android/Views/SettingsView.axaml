@@ -161,10 +161,22 @@
                                         </Grid>
                                     </Button>
                                     <Grid ColumnDefinitions="*,8,140" IsVisible="{Binding Slideshow.IsIntervalMode}">
+                                        <!-- A unit whose numbers are picked from a list (the phone's minutes:
+                                             15, 20 or 30) shows a picker in the number box's place -->
                                         <NumericUpDown Value="{Binding Slideshow.Interval}"
+                                                       IsVisible="{Binding !Slideshow.HasFixedIntervals}"
                                                        Minimum="{Binding Slideshow.IntervalMinimum}"
                                                        Maximum="{Binding Slideshow.IntervalMaximum}"
                                                        Increment="1" FormatString="0"/>
+                                        <Button Classes="picker"
+                                                IsVisible="{Binding Slideshow.HasFixedIntervals}"
+                                                Command="{Binding OpenIntervalValuePickerCommand}"
+                                                ToolTip.Tip="Choose the interval">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Text="{Binding Slideshow.IntervalText}"/>
+                                                <PathIcon Grid.Column="1" Width="14" Height="14" Data="M7 10L12 15L17 10Z"/>
+                                            </Grid>
+                                        </Button>
                                         <Button Grid.Column="2" Classes="picker"
                                                 Command="{Binding OpenIntervalTypePickerCommand}"
                                                 ToolTip.Tip="Choose the interval's unit">

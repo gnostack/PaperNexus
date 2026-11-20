@@ -36,7 +36,7 @@ project and its logic and view models in the shared project.
 | `Platform/AndroidShellOpener.cs` | `IShellOpener` for the phone: opens a web address in the browser (Report a bug, the project link). Measured: the emulator's browser (WebView Browser Tester) opened the project page. |
 | `Platform/AndroidFactoryReset.cs` | `IFactoryReset` for the phone (see "Factory Reset"). |
 | `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words) and Hexspeak (no title colour box), three eggs, with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
-| `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: it draws no title on the wallpaper (see "No title on the phone's wallpaper"); the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. |
+| `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: it draws no title on the wallpaper (see "No title on the phone's wallpaper"); the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. The fastest slideshow is every 15 minutes; the interval units are Minutes (15, 20 or 30, picked from a list), Hours, Days, Weeks, Months and Years (see "Settings"). |
 | `Platform/AndroidPermissions.cs` | `INTERNET` and `SET_WALLPAPER`, as assembly attributes. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
@@ -284,6 +284,19 @@ login, minimize to tray, automatic updates, the folder) or the title fields.
   description ("Every 2 hours") under it; Order; Prioritize Favorites and, while it is on, the
   weight; Fill Style with the phone's five choices. A cron expression that does not parse shows
   "Invalid cron expression." in red and is not saved; the slideshow's other settings still are.
+- **The 15-minute rule** (issue #203, step 5; `IDeviceSettingRules.ShortestSlideshowGap` and
+  `IntervalTypes`): the unit picker lists Minutes, Hours, Days, Weeks, Months and Years (no
+  Seconds). For Minutes the number box is replaced, in the same place, by a picker button showing
+  the number; it opens a `ChoiceDialog` titled "Minutes" with 15, 20 and 30 (tooltip "Choose the
+  interval"). Choosing Minutes from a larger unit moves the number to the nearest of the three. The
+  other units keep the desktop's number box and ranges. A schedule that can change faster than every
+  15 minutes (a typed cron such as `*/5 * * * *`, or a minute count that leaves a shorter gap before
+  the hour, such as every 50 minutes) is not saved and shows "The phone can change the wallpaper at
+  most every 15 minutes." in red; the slideshow's other settings still are. A stored schedule that
+  is too fast (only a development phone can have one) shows as it is, with that sentence held on
+  the line until the next one, and nothing is rewritten; a stored unit the phone does not offer
+  (Seconds) shows as stored with the number box. A stored minute count not in the list that keeps
+  15 minutes apart (45) shows as it is on the button, with nothing marked in the list.
 - **General Settings:** Debug mode, "Write more detail to the log" (the desktop's hint without
   the title part). Turning it on asks the desktop's seventeen questions with their titles
   ("Confirmation 5 of 17") and No and Yes; the switch stays off until the last Yes, and a No
