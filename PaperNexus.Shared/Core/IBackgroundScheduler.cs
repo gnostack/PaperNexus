@@ -16,6 +16,18 @@ public interface IBackgroundScheduler
     public void ArmDownloads(DateTimeOffset? at);
 }
 
+// Whether this device lets the app change the wallpaper on the minute (Android's "Alarms &
+// reminders" special access, issue #203 step 5), and asking for it. Optional: the phone only.
+public interface IExactTimingPermission
+{
+    // True while the device allows exact timing now.
+    public bool IsAllowed { get; }
+
+    // Answers true when exact timing is allowed. When it is not, opens the device's own screen
+    // for the person to allow it and answers once they come back, with what they chose.
+    public Task<bool> AskAsync();
+}
+
 // What the scheduled background work last left wrong, for the tab where that work lives to say
 // so the next time it opens: the Current tab for a slideshow change, the Sources tab for a
 // scheduled download.
@@ -30,4 +42,8 @@ public interface IScheduledWorkFailures
     // The last scheduled download run when some of its sources failed, or null when the last
     // run worked (or none ran).
     public Task<DownloadOutcome?> ScheduledDownloadFailureAsync();
+
+    // The person's "Download now" finished with outcome. It downloads every enabled source, so
+    // when none failed it supersedes a failed scheduled run, whose line then goes.
+    public Task RecordDownloadNowAsync(DownloadOutcome outcome);
 }

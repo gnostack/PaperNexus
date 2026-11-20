@@ -135,6 +135,7 @@ public partial class SettingsView : UserControl
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.Debug.PropertyChanged -= OnDebugPropertyChanged;
+            _viewModel.Slideshow.PropertyChanged -= OnSlideshowPropertyChanged;
         }
         _viewModel = DataContext as SettingsViewModel;
         if (_viewModel is null)
@@ -144,8 +145,10 @@ public partial class SettingsView : UserControl
         }
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.Debug.PropertyChanged += OnDebugPropertyChanged;
+        _viewModel.Slideshow.PropertyChanged += OnSlideshowPropertyChanged;
         ChoiceBox.Show(_viewModel.Picker);
         ShowDebugMode();
+        ShowExactTiming();
         ShowQuestion();
     }
 
@@ -164,6 +167,34 @@ public partial class SettingsView : UserControl
         // handler, for the value the touch gave it, and would leave it there
         Avalonia.Threading.Dispatcher.UIThread.Post(ShowDebugMode);
         debug.RequestDebugMode(turnOn);
+    }
+
+    // The Exact timing switch shows the saved value and only asks to change it, as Debug mode's
+    // does: off takes effect at once; on may first open the phone's "Alarms & reminders" screen,
+    // and shows on only once the phone allows it. A tap or a drag both land here.
+    private void ExactTiming_Changed(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var slideshow = _viewModel?.Slideshow;
+        if (slideshow is null)
+            return;
+        var turnOn = ExactTimingToggle.IsChecked.GetValueOrDefault();
+        if (turnOn == slideshow.ExactTiming)
+            return;
+        // Set back once this change has finished, for the same reason as Debug mode's
+        Avalonia.Threading.Dispatcher.UIThread.Post(ShowExactTiming);
+        _ = slideshow.RequestExactTimingAsync(turnOn);
+    }
+
+    private void ShowExactTiming()
+    {
+        var isOn = _viewModel?.Slideshow.ExactTiming ?? false;
+        ExactTimingToggle.SetCurrentValue(ToggleSwitch.IsCheckedProperty, isOn);
+    }
+
+    private void OnSlideshowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SlideshowSettingsViewModel.ExactTiming))
+            ShowExactTiming();
     }
 
     private void ShowDebugMode()

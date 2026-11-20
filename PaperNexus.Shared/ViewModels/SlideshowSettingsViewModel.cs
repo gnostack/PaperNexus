@@ -15,6 +15,9 @@ public sealed partial class SlideshowSettingsViewModel : SettingsGroupViewModel
     // The only device with a fastest slideshow is the phone
     public const string TooFastSentence = "The phone can change the wallpaper at most every 15 minutes.";
 
+    // Exact timing turned on but not allowed by the phone (issue #203, step 5)
+    public const string ExactTimingNeedsPermissionSentence = "Exact timing needs the phone's Alarms & reminders permission.";
+
     public const int FavoriteWeightMinimum = 2;
     public const int FavoriteWeightMaximum = 20;
     public const int DefaultFavoriteWeight = 3;
@@ -82,10 +85,19 @@ public sealed partial class SlideshowSettingsViewModel : SettingsGroupViewModel
     [ObservableProperty]
     private FillStyleOption _selectedFillStyle;
 
-    public SlideshowSettingsViewModel(ISettingsStore settingsStore, IDeviceSettingRules deviceRules)
+    // Exact timing as saved: the switch shows it and only asks to change it
+    // (RequestExactTimingAsync), so it never shows a state that is not saved.
+    [ObservableProperty]
+    private bool _exactTiming;
+
+    private readonly IExactTimingPermission? _exactTimingPermission;
+
+    public SlideshowSettingsViewModel(ISettingsStore settingsStore, IDeviceSettingRules deviceRules, IExactTimingPermission? exactTimingPermission = null)
         : base(settingsStore)
     {
         deviceRules.ThrowIfNull();
+        OffersExactTiming = deviceRules.OffersExactTiming;
+        _exactTimingPermission = exactTimingPermission;
         _shortestGap = deviceRules.ShortestSlideshowGap;
         IntervalTypeChoices = deviceRules.IntervalTypes.Select(ChoiceFor).ToList();
         _selectedIntervalType = IntervalTypeChoices.FirstOrDefault(o => o.Type == IntervalType.Minutes)
@@ -99,6 +111,34 @@ public sealed partial class SlideshowSettingsViewModel : SettingsGroupViewModel
 
     // The fill styles this device offers, in its order.
     public IReadOnlyList<FillStyleOption> FillStyleOptions { get; }
+
+    // This device has the Exact timing switch (the phone).
+    public bool OffersExactTiming { get; }
+
+    // The switch asks: off takes effect at once; on asks the device for its permission first
+    // when it is not allowed yet (the phone's "Alarms & reminders" screen, Android 14 and later;
+    // Android 12 and 13 allow it from the start), and turns on only when it is allowed.
+    // Otherwise the line says why and the switch stays off. Each change is saved as the
+    // group's other settings are.
+    public async Task RequestExactTimingAsync(bool turnOn)
+    {
+        if (!OffersExactTiming || turnOn == ExactTiming)
+            return;
+        if (!turnOn)
+        {
+            ExactTiming = false;
+            return;
+        }
+
+        var permission = _exactTimingPermission;
+        var allowed = permission is not null && (permission.IsAllowed || await permission.AskAsync());
+        if (allowed)
+            ExactTiming = true;
+        else
+            Report(ExactTimingNeedsPermissionSentence, StatusTone.Error);
+    }
+
+    partial void OnExactTimingChanged(bool value) => SaveSoon();
 
     // The interval units this device offers, in its order (the phone's unit picker lists them).
     public IReadOnlyList<IntervalTypeOption> IntervalTypeChoices { get; }
@@ -239,6 +279,37 @@ public sealed partial class SlideshowSettingsViewModel : SettingsGroupViewModel
         // Held until the next line: the stored schedule stays too fast until it is changed
         if (Enabled && SlideshowSchedule.IsFasterThan(EffectiveCron(), _shortestGap))
             Report(TooFastSentence, StatusTone.Error, holds: true);
+
+        ReadExactTiming(slideshow.ExactTiming);
+    }
+
+    // Exact timing saved on while the device no longer allows it (the permission was taken
+    // away while the app was closed): the switch shows off, the line says why, and off is saved.
+    private void ReadExactTiming(bool stored)
+    {
+        if (!OffersExactTiming)
+            return;
+        var allowed = _exactTimingPermission?.IsAllowed ?? false;
+        if (stored && !allowed)
+        {
+            ExactTiming = false;
+            Report(ExactTimingNeedsPermissionSentence, StatusTone.Error, holds: true);
+            _ = SaveExactTimingOffAsync();
+            return;
+        }
+        ExactTiming = stored;
+    }
+
+    private async Task SaveExactTimingOffAsync()
+    {
+        try
+        {
+            await Store.UpdateAsync(latest => latest.Slideshow.ExactTiming = false);
+        }
+        catch (Exception ex)
+        {
+            Report($"Error saving settings: {ex.Message}", StatusTone.Error, holds: true);
+        }
     }
 
     // In interval mode the expression the interval stands for is saved with it; in cron mode
@@ -263,6 +334,8 @@ public sealed partial class SlideshowSettingsViewModel : SettingsGroupViewModel
         var enabled = Enabled;
         var priorityEnabled = FavoritePriorityEnabled;
         var priorityWeight = FavoritePriorityWeight;
+        var offersExactTiming = OffersExactTiming;
+        var exactTiming = ExactTiming;
         return latest =>
         {
             var slideshow = latest.Slideshow;
@@ -280,6 +353,9 @@ public sealed partial class SlideshowSettingsViewModel : SettingsGroupViewModel
             slideshow.Enabled = enabled;
             slideshow.FavoritePriorityEnabled = priorityEnabled;
             slideshow.FavoritePriorityWeight = priorityWeight;
+            // A device without the switch never writes it
+            if (offersExactTiming)
+                slideshow.ExactTiming = exactTiming;
         };
     }
 

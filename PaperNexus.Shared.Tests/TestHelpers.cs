@@ -222,6 +222,18 @@ internal static class TestHelpers
         return library;
     }
 
+    // Waits up to five seconds for condition, checked every 10 ms.
+    internal static async Task WaitUntilAsync(Func<Task<bool>> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!await condition())
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("The condition was not reached.");
+            await Task.Delay(10);
+        }
+    }
+
     // Removes the temporary directory a test store was rooted in.
     internal static void DeleteSettingsStore(SettingsStore store)
     {
@@ -300,24 +312,28 @@ internal sealed class TestSettingRules : IDeviceSettingRules
         true,
         [WallpaperFillStyle.Fill, WallpaperFillStyle.Fit, WallpaperFillStyle.Stretch, WallpaperFillStyle.Tile, WallpaperFillStyle.Center, WallpaperFillStyle.Span],
         TimeSpan.Zero,
-        SlideshowSchedule.IntervalRules);
+        SlideshowSchedule.IntervalRules,
+        offersExactTiming: false);
 
     public static readonly TestSettingRules Phone = new(
         false,
         [WallpaperFillStyle.Fill, WallpaperFillStyle.Fit, WallpaperFillStyle.Stretch, WallpaperFillStyle.Tile, WallpaperFillStyle.Center],
         TimeSpan.FromMinutes(15),
-        [new IntervalRule(IntervalType.Minutes, 15, 30, [15, 20, 30]), .. SlideshowSchedule.IntervalRules.Where(r => r.Type >= IntervalType.Hours)]);
+        [new IntervalRule(IntervalType.Minutes, 15, 30, [15, 20, 30]), .. SlideshowSchedule.IntervalRules.Where(r => r.Type >= IntervalType.Hours)],
+        offersExactTiming: true);
 
     public TestSettingRules(
         bool drawsWallpaperTitle,
         IReadOnlyList<WallpaperFillStyle> fillStyles,
         TimeSpan? shortestSlideshowGap = null,
-        IReadOnlyList<IntervalRule>? intervalTypes = null)
+        IReadOnlyList<IntervalRule>? intervalTypes = null,
+        bool offersExactTiming = false)
     {
         DrawsWallpaperTitle = drawsWallpaperTitle;
         FillStyles = fillStyles;
         ShortestSlideshowGap = shortestSlideshowGap ?? TimeSpan.Zero;
         IntervalTypes = intervalTypes ?? SlideshowSchedule.IntervalRules;
+        OffersExactTiming = offersExactTiming;
     }
 
     public bool DrawsWallpaperTitle { get; }
@@ -327,6 +343,8 @@ internal sealed class TestSettingRules : IDeviceSettingRules
     public TimeSpan ShortestSlideshowGap { get; }
 
     public IReadOnlyList<IntervalRule> IntervalTypes { get; }
+
+    public bool OffersExactTiming { get; }
 }
 
 // A factory reset that only counts its calls, or fails when told to.
@@ -377,4 +395,12 @@ internal sealed class FakeScheduledFailures : IScheduledWorkFailures
     public Task<DownloadOutcome?> ScheduledDownloadFailureAsync() => Task.FromResult(DownloadFailure);
 
     public void RaiseChanged() => Changed?.Invoke();
+
+    public List<DownloadOutcome> DownloadNows { get; } = [];
+
+    public Task RecordDownloadNowAsync(DownloadOutcome outcome)
+    {
+        DownloadNows.Add(outcome);
+        return Task.CompletedTask;
+    }
 }

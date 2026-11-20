@@ -163,6 +163,9 @@ public sealed partial class SourcesViewModel : ObservableObject, IScrollPlace, I
             var outcome = await Task.Run(_downloadWallpapers.DownloadAllAsync);
             var (text, tone) = DownloadSentence.For(outcome);
             Status.Show(text, tone);
+            // A Download now that worked supersedes a failed scheduled run
+            if (_scheduledFailures is not null)
+                await _scheduledFailures.RecordDownloadNowAsync(outcome);
         }
         catch (Exception ex)
         {

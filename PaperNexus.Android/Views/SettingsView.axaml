@@ -196,6 +196,23 @@
                                     <TextBlock Classes="hint" Text="{Binding Slideshow.ScheduleDescription}"/>
                                 </StackPanel>
 
+                                <!-- Exact timing (issue #203, step 5): set from the slideshow group's saved
+                                     value in code, like Debug mode; turning it on may open the phone's
+                                     "Alarms & reminders" screen first -->
+                                <Border Classes="separator" IsVisible="{Binding Slideshow.OffersExactTiming}"/>
+                                <StackPanel Classes="field" Spacing="6" IsVisible="{Binding Slideshow.OffersExactTiming}">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="switchLabel" Text="Exact timing"/>
+                                        <ToggleSwitch x:Name="ExactTimingToggle"
+                                                      Grid.Column="1"
+                                                      Theme="{StaticResource IconToggleSwitch}"
+                                                      IsCheckedChanged="ExactTiming_Changed"
+                                                      VerticalAlignment="Center"
+                                                      ToolTip.Tip="Change the wallpaper on the minute"/>
+                                    </Grid>
+                                    <TextBlock Classes="hint" Text="Change on the minute. Uses more battery."/>
+                                </StackPanel>
+
                                 <Border Classes="separator"/>
 
                                 <StackPanel Classes="field" Spacing="6">

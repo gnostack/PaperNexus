@@ -31,9 +31,108 @@ public class BackgroundWorkTests : IDisposable
 
     private JobTimerStore Timers() => new(_timerDir);
 
+    private readonly SettablePermission _exactTiming = new();
+
     private BackgroundWork Create(IBackgroundScheduler? scheduler = null, JobTimerStore? timers = null) =>
         new(_store, timers ?? Timers(), _switcher, _downloader, TestSettingRules.Phone,
-            NullLogger<BackgroundWork>.Instance, scheduler ?? _scheduler, _clock, TimeZoneInfo.Utc);
+            NullLogger<BackgroundWork>.Instance, scheduler ?? _scheduler, _clock, TimeZoneInfo.Utc, _exactTiming);
+
+    // --- Exact timing ---
+
+    [Fact]
+    public async Task ExactTimingOnAndAllowed_ArmsTheChangeOnTheMinute()
+    {
+        await _store.UpdateAsync(s => s.Slideshow.ExactTiming = true);
+        _exactTiming.IsAllowed = true;
+        var work = Create();
+
+        await work.StartAsync(CancellationToken.None);
+
+        Assert.Equal([(At(12, 30), true)], _scheduler.Slideshow);
+    }
+
+    [Fact]
+    public async Task ExactTimingOn_ButNotAllowed_ArmsTheWindowAlarmOnly_UntilItIsAllowed()
+    {
+        await _store.UpdateAsync(s => s.Slideshow.ExactTiming = true);
+        var work = Create();
+        await work.StartAsync(CancellationToken.None);
+        Assert.Equal((At(12, 30), false), _scheduler.Slideshow[^1]);
+
+        // The person allows it outside the app: the permission broadcast plans again
+        _exactTiming.IsAllowed = true;
+        await work.PlanAsync();
+
+        Assert.Equal((At(12, 30), true), _scheduler.Slideshow[^1]);
+    }
+
+    [Fact]
+    public async Task ExactTimingOff_IsNeverOnTheMinute()
+    {
+        _exactTiming.IsAllowed = true;
+        var work = Create();
+
+        await work.StartAsync(CancellationToken.None);
+
+        Assert.Equal([(At(12, 30), false)], _scheduler.Slideshow);
+    }
+
+    [Fact]
+    public async Task TheExactAlarmAndItsBackupTogether_ChangeTheWallpaperOnce()
+    {
+        var work = Create();
+        var gate = new TaskCompletionSource();
+        _switcher.Gate = gate;
+        _clock.Now = At(12, 30);
+
+        var exact = work.RunSlideshowAsync(At(12, 30));
+        var backup = work.RunSlideshowAsync(At(12, 30));
+        gate.SetResult();
+        await Task.WhenAll(exact, backup);
+
+        Assert.Equal(1, _switcher.Nexts);
+    }
+
+    // --- Download now ---
+
+    [Fact]
+    public async Task ADownloadNowThatWorked_ClearsAFailedScheduledRun()
+    {
+        var work = Create();
+        _downloader.Outcome = new DownloadOutcome(2, 1);
+        await work.RunDownloadsAsync(() => { });
+        var changes = 0;
+        work.Changed += () => changes++;
+
+        await work.RecordDownloadNowAsync(new DownloadOutcome(2, 0));
+
+        Assert.Null(await work.ScheduledDownloadFailureAsync());
+        Assert.Equal(1, changes);
+        // When the scheduled run last ran stays, for its own schedule
+        var recorded = await Timers().LoadContextAsync(BackgroundWork.DownloadsJobName);
+        Assert.Equal(Now, recorded.StartedAt);
+    }
+
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(0, 0)]
+    public async Task ADownloadNowThatDidNotWork_LeavesTheFailure(int tried, int failed)
+    {
+        var work = Create();
+        _downloader.Outcome = new DownloadOutcome(2, 2);
+        await work.RunDownloadsAsync(() => { });
+
+        await work.RecordDownloadNowAsync(new DownloadOutcome(tried, failed));
+
+        Assert.Equal(new DownloadOutcome(2, 2), await work.ScheduledDownloadFailureAsync());
+    }
+
+    private sealed class SettablePermission : IExactTimingPermission
+    {
+        public bool IsAllowed { get; set; }
+
+        public Task<bool> AskAsync() => Task.FromResult(IsAllowed);
+    }
 
     private static DateTimeOffset At(int hour, int minute) => new(2026, 11, 19, hour, minute, 0, TimeSpan.Zero);
 
@@ -328,15 +427,24 @@ public class BackgroundWorkTests : IDisposable
         public bool HasPictures { get; set; } = true;
         public int Nexts { get; private set; }
 
-        public Task<string?> SwitchToNextAsync()
+        public TaskCompletionSource? Gate { get; set; }
+
+        public async Task<string?> SwitchToNextAsync()
+        {
+            if (Gate is not null)
+                await Gate.Task;
+            return Switch();
+        }
+
+        private string? Switch()
         {
             Nexts++;
             if (!HasPictures)
-                return Task.FromResult<string?>(null);
+                return null;
             if (Refuses)
                 throw new WallpaperRefusedException("/pictures/lake.png");
             WallpaperChanged?.Invoke("/pictures/lake.png");
-            return Task.FromResult<string?>("/pictures/lake.png");
+            return "/pictures/lake.png";
         }
 
         public Task<string?> SwitchToRandomAsync() => SwitchToNextAsync();

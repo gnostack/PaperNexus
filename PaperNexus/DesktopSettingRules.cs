@@ -23,4 +23,6 @@ internal sealed class DesktopSettingRules : IDeviceSettingRules, IAddSingleton<I
     public TimeSpan ShortestSlideshowGap => TimeSpan.Zero;
 
     public IReadOnlyList<IntervalRule> IntervalTypes => SlideshowSchedule.IntervalRules;
+
+    public bool OffersExactTiming => false;
 }

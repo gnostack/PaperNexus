@@ -10,7 +10,7 @@ project and its logic and view models in the shared project.
 | File | Job |
 | --- | --- |
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
-| `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. |
+| `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. It tells `AndroidExactTimingPermission` when it resumes, pauses and ends, so turning Exact timing on can read the answer from the phone's "Alarms & reminders" screen. |
 | `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
 | `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar and its swipe recognizer off (see "Dragging a switch"), inside a `PageNavigationHost`, inside an `EasterEggStage` (see "Easter eggs"). |
 | `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"), receives the `SettingsViewModel` and reads the settings the first time the Settings tab is chosen (see "Settings"), and passes Android's back to the Settings tab. |
@@ -38,7 +38,8 @@ project and its logic and view models in the shared project.
 | `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words) and Hexspeak (no title colour box), three eggs, with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
 | `Platform/AndroidSettingRules.cs` | `IDeviceSettingRules` for the phone: it draws no title on the wallpaper (see "No title on the phone's wallpaper"); the fill styles are Fill, Fit, Stretch, Tile and Center. A stored Span shows as Fill, draws as Fill, and stays in the file until another fill style is picked. The fastest slideshow is every 15 minutes; the interval units are Minutes (15, 20 or 30, picked from a list), Hours, Days, Weeks, Months and Years (see "Settings"). |
 | `Platform/AndroidPermissions.cs` | `INTERNET`, `SET_WALLPAPER`, `RECEIVE_BOOT_COMPLETED` and `ACCESS_NETWORK_STATE`, as assembly attributes. |
-| `Platform/AndroidBackgroundScheduler.cs` | `IBackgroundScheduler` for the phone: the slideshow's alarm and the download job (see "Background slideshow and downloads"). |
+| `Platform/AndroidBackgroundScheduler.cs` | `IBackgroundScheduler` for the phone: the slideshow's alarms and the download job (see "Background slideshow and downloads"). |
+| `Platform/AndroidExactTimingPermission.cs` | `IExactTimingPermission` for the phone: whether exact alarms are allowed (`canScheduleExactAlarms`), and opening the phone's "Alarms & reminders" screen to ask (see "Settings"). |
 | `Background/SlideshowAlarmReceiver.cs`, `Background/DownloadJobService.cs`, `Background/ScheduleRestoreReceiver.cs` | What Android starts the app for: a slideshow change, a scheduled download run, and a restart, app update or clock change that needs the work armed again. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
@@ -189,9 +190,12 @@ dialog).
   download from." Download now is dimmed while it runs. Delete asks nothing, as on the desktop.
 - **A failed scheduled download** (some sources' feeds could not be read) shows "The last
   scheduled download failed for N of M sources." in red on the line when the tab is first shown,
-  held until another line replaces it. The next scheduled run that works takes it away (Download
-  now does not: it is not the scheduled run). The fact is the scheduled download's entry in
-  `timers.json`, which `BackgroundWork` writes after each run that tried a source.
+  held until another line replaces it. The next scheduled run that works takes it away, and so
+  does a Download now in which no source failed: it downloads every enabled source, so it
+  supersedes the failed run. The fact is the scheduled download's entry in `timers.json`, with one
+  writer: `BackgroundWork` writes it after each scheduled run that tried a source
+  (`RunDownloadsAsync`) and clears it after a Download now that worked (`RecordDownloadNowAsync`,
+  which the Sources tab calls with Download now's outcome).
 - **The switch saves at once** (the desktop's checkbox saved with the window's settings save, half
   a second later); a failed save puts it back.
 - **The form** covers the whole screen: the title and the Enabled switch, then Name, URL, Image URL
@@ -296,6 +300,20 @@ login, minimize to tray, automatic updates, the folder) or the title fields.
   description ("Every 2 hours") under it; Order; Prioritize Favorites and, while it is on, the
   weight; Fill Style with the phone's five choices. A cron expression that does not parse shows
   "Invalid cron expression." in red and is not saved; the slideshow's other settings still are.
+- **Exact timing** (issue #203, step 5; `SlideshowSettings.ExactTiming`, off by default; only a device
+  whose `IDeviceSettingRules.OffersExactTiming` is true shows or writes it): a row after the
+  schedule's description, "Exact timing" with the switch with no words (tooltip "Change the
+  wallpaper on the minute") and the hint "Change on the minute. Uses more battery." The switch is
+  set from the saved value in code and only asks to change it (`RequestExactTimingAsync`), as Debug
+  mode's does, so it never shows a value that is not saved. Off takes effect at once. On, when the
+  phone allows exact alarms (Android 12 and 13 from the start), turns on and says "Settings saved.";
+  when it does not (Android 14 and later until allowed), the phone's "Alarms & reminders" screen
+  opens, and the answer is read when the app resumes: allowed turns it on; not allowed leaves it off
+  with "Exact timing needs the phone's Alarms & reminders permission." in red. Saved on while the
+  phone no longer allows it (the permission was taken away while the app was closed): the tab shows
+  it off with that sentence held on the line, and off is saved. Factory Reset deletes the setting
+  (off again); the phone's permission stays as the person left it, since an app cannot take it
+  back, so turning Exact timing on again turns it on without the screen.
 - **The 15-minute rule** (issue #203, step 5; `IDeviceSettingRules.ShortestSlideshowGap` and
   `IntervalTypes`): the unit picker lists Minutes, Hours, Days, Weeks, Months and Years (no
   Seconds). For Minutes the number box is replaced, in the same place, by a picker button showing
@@ -435,7 +453,7 @@ Rotation and dark/light mode changes still keep the activity, as before.
 
 ## Background slideshow and downloads (issue #203, step 5)
 
-Built in four changes; Exact timing arrives with change 4. The design: the slideshow is a
+Built in four changes (issue #203, step 5). The design: the slideshow is a
 one-shot alarm set for the next change and set again after every change, a 10-minute window
 alarm with Exact timing off, an exact allow-while-idle alarm plus the same window alarm as a
 backup with it on; downloads are one persisted JobScheduler job that waits for a network. What is
@@ -486,6 +504,29 @@ Measured on the Android 16 emulator (Release, issue #203 step 5, change 3):
 | Factory Reset | The new process armed the defaults (every 30 minutes) and the download job, which ran at once and then armed the next. |
 | A picture that cannot be read | The change failed (`timers.json`: `LastExecutionSucceeded: false`), the wallpaper stayed, the Current tab showed the red line; Next with the picture repaired changed the wallpaper and took the line away. |
 | A feed that cannot be reached (forced with `adb shell cmd jobscheduler run -f com.gnostack.papernexus 1`) | The run recorded 3 tried, 1 failed; the Sources tab showed "The last scheduled download failed for 1 of 3 sources."; the next run that worked cleared it. |
+
+**Exact timing (change 4):** with `SlideshowSettings.ExactTiming` on and exact alarms allowed,
+`BackgroundWork` plans the change on the minute and `AndroidBackgroundScheduler` arms two alarms
+for the same time: `setExactAndAllowWhileIdle` (request code 2) and the window alarm (request code
+1) as a backup. Whichever arrives first changes the wallpaper and arms the next pair, replacing the
+other; both arriving together change it once (`RunSlideshowAsync` runs one change at a time and a
+time already recorded changes nothing). Revoking the permission ends the app's process and deletes
+the exact alarm; the backup still changes the wallpaper. The permission broadcast
+(`SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED`, `ScheduleRestoreReceiver`) plans again after a
+grant outside the app; the switch stays as saved.
+
+Measured on the Android 16 emulator (Release, issue #203 step 5, change 4):
+
+| What | Result |
+| --- | --- |
+| Turning it on (Android 16) | The phone's "Alarms & reminders" screen opened (`com.android.settings/.spa.SpaActivity`). Back without allowing: the switch stayed off with the red sentence. Allowing, then back: on, "Settings saved.", and `dumpsys alarm` showed the 21:00 pair (`window=0 exactAllowReason=permission` and `window=+10m0s0ms`). |
+| A real change with the app closed | Android started the process for `SlideshowAlarmReceiver` at 21:00:00.005; the change finished at 21:00:01.121; the wallpaper id went 80 to 81, once; the next pair was armed for 21:30; no activity was created. |
+| Both alarms due together (clock moved past the window) | Two receivers ran for the same time: one changed the wallpaper (732 ms), the other changed nothing (2 ms); the id went up by one. |
+| Forced deep Doze | Still idle, the change for 22:00 finished at 22:00:00.953. |
+| Revoked with the app closed | "Killing … schedule_exact_alarm revoked"; only the window alarm was left; the next change still came (id 83 to 84) through it; Settings then showed the switch off with the red sentence, and the next open showed it off with no sentence (off was saved). |
+| Granted outside the app | The broadcast started the process; with the switch saved off only the window alarm stayed armed. Turning it on then needed no screen. |
+| Restart, app not opened | The boot broadcast armed the pair; the exact change for 21:30 finished at 21:30:00.951. |
+| Factory Reset | Exact timing off and only the window alarm armed. The phone's permission stayed allowed: an app cannot take it back, so turning Exact timing on again needs no screen. Nothing is shown for it. |
 
 Change 1 (shared groundwork, nothing on the phone behaves differently yet): the downloader's
 scheduled run is `IDownloadWallpapers.DownloadDueAsync`, the in-process timer is `DownloadSchedule`,
