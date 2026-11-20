@@ -24,10 +24,6 @@ internal static class TestHelpers
         return folder;
     }
 
-    // A timer store for code that needs one but whose test never runs a schedule; nothing is
-    // written to its folder.
-    internal static JobTimerStore UnusedTimerStore() => new(BaseDir);
-
     internal static void CreateSmallPng(string path, byte r = 100, byte g = 150, byte b = 200)
     {
         CreateTestPng(path, 100, 100, r, g, b);

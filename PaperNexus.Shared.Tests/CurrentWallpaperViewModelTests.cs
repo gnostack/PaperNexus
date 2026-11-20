@@ -442,6 +442,10 @@ public class CurrentWallpaperViewModelTests : IDisposable
     // fails.
     private sealed class FakeDownloader : IDownloadWallpapers
     {
+        // No test here runs the scheduled download
+        public Task<DownloadOutcome> DownloadDueAsync() =>
+            throw new NotSupportedException("The scheduled download is not part of this test.");
+
         private readonly string _folder;
 
         public FakeDownloader(string folder)

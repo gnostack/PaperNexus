@@ -25,6 +25,10 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | `IWallpaperApplier` | `SwitchWallpaper`, `CurrentWallpaperViewModel` | `WallpaperApplier` (`NativeMethods.cs`): no canvas, always allowed | `AndroidWallpaperApplier`: `WallpaperManager`, both screens, a screen-shaped canvas |
 | `ICheckForUpdates` (optional) | `WallpaperConfigViewModel` | `AutoUpdateService` | none (decision 8) |
 
+`ISettingsStore` (shared, not a host interface) raises `Saved` after each successful update; the
+download work is `IDownloadWallpapers` (all sources, or only the due ones) and its in-process timer
+`DownloadSchedule`, which the desktop runs through `AddInProcessSchedules`.
+
 An optional interface is one a host may lack: the phone has no run-at-sign-in and updates
 through the store, so it registers neither, and the view model skips the call or reports the
 service as unavailable.

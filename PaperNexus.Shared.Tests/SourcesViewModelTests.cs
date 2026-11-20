@@ -311,6 +311,10 @@ public class SourcesViewModelTests : IDisposable
 
     private sealed class FakeDownloader : IDownloadWallpapers
     {
+        // No test here runs the scheduled download
+        public Task<DownloadOutcome> DownloadDueAsync() =>
+            throw new NotSupportedException("The scheduled download is not part of this test.");
+
         public DownloadOutcome Outcome { get; set; } = new(1, 0);
         public TaskCompletionSource? Gate { get; set; }
         public Exception? Error { get; set; }

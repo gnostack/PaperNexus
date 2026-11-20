@@ -480,6 +480,13 @@ public class PictureListViewModelTests : IDisposable
 
         public Task<WallpaperNexusSettings> UpdateAsync(Action<WallpaperNexusSettings> change) =>
             throw new IOException("The disk is full.");
+
+        // Nothing is ever saved, so this is never raised
+        public event Action<WallpaperNexusSettings>? Saved
+        {
+            add { }
+            remove { }
+        }
     }
 
     private sealed class AllowingApplier : IWallpaperApplier
@@ -493,6 +500,10 @@ public class PictureListViewModelTests : IDisposable
 
     private sealed class EventDownloader : IDownloadWallpapers
     {
+        // No test here runs the scheduled download
+        public Task<DownloadOutcome> DownloadDueAsync() =>
+            throw new NotSupportedException("The scheduled download is not part of this test.");
+
         public event Action? WallpapersDownloaded;
 
         public Task<DownloadOutcome> DownloadAllAsync() => Task.FromResult(new DownloadOutcome(0, 0));

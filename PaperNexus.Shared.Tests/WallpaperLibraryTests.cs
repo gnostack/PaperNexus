@@ -250,6 +250,10 @@ public class WallpaperLibraryTests : IDisposable
 
     private sealed class EventDownloader : IDownloadWallpapers
     {
+        // No test here runs the scheduled download
+        public Task<DownloadOutcome> DownloadDueAsync() =>
+            throw new NotSupportedException("The scheduled download is not part of this test.");
+
         public event Action? WallpapersDownloaded;
 
         public Task<DownloadOutcome> DownloadAllAsync() => Task.FromResult(new DownloadOutcome(0, 0));
