@@ -452,6 +452,8 @@ public class PictureListViewModelTests : IDisposable
             remove => _inner.WallpaperChanged -= value;
         }
 
+        public bool IsSwitching => _inner.IsSwitching;
+
         public Task<string?> SwitchToNextAsync() => _inner.SwitchToNextAsync();
 
         public Task<string?> SwitchToRandomAsync() => _inner.SwitchToRandomAsync();

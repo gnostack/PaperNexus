@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Current tab's Next glyph (a 24-unit path) drawn 48 units wide in the middle of the
+     adaptive icon's 108-unit canvas, inside the 66-unit circle every launcher shape keeps. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <group android:translateX="30" android:translateY="30" android:scaleX="2" android:scaleY="2">
+    <path android:fillColor="@color/window_background" android:pathData="M6 18L14.5 12L6 6V18ZM16 6V18H18V6H16Z" />
+  </group>
+</vector>

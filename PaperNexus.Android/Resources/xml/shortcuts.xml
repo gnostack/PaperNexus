@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The long-press menu on the launcher icon (issue #203, step 6): "Next Wallpaper" and "Random
+     Wallpaper", the desktop tray menu's words. Each starts ShortcutActivity, which changes the
+     wallpaper and shows nothing. Static entries: they never change, they exist from install, and
+     Android publishes them again on every update.
+
+     The ids next_wallpaper and random_wallpaper and the target class
+     com.gnostack.papernexus.ShortcutActivity must never be renamed: an entry the person dragged
+     out as its own home screen icon is recorded by them, and an entry missing from an update
+     disables those icons. The long labels are what the menu shows where they fit; the short
+     labels are what a dragged-out icon reads under it. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut
+      android:shortcutId="next_wallpaper"
+      android:enabled="true"
+      android:icon="@drawable/shortcut_next"
+      android:shortcutShortLabel="@string/shortcut_next_short"
+      android:shortcutLongLabel="@string/shortcut_next_long">
+    <intent
+        android:action="com.gnostack.papernexus.action.NEXT_WALLPAPER"
+        android:targetPackage="com.gnostack.papernexus"
+        android:targetClass="com.gnostack.papernexus.ShortcutActivity" />
+  </shortcut>
+  <shortcut
+      android:shortcutId="random_wallpaper"
+      android:enabled="true"
+      android:icon="@drawable/shortcut_random"
+      android:shortcutShortLabel="@string/shortcut_random_short"
+      android:shortcutLongLabel="@string/shortcut_random_long">
+    <intent
+        android:action="com.gnostack.papernexus.action.RANDOM_WALLPAPER"
+        android:targetPackage="com.gnostack.papernexus"
+        android:targetClass="com.gnostack.papernexus.ShortcutActivity" />
+  </shortcut>
+</shortcuts>

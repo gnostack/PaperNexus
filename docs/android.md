@@ -11,7 +11,7 @@ project and its logic and view models in the shared project.
 | --- | --- |
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
 | `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. It tells `AndroidExactTimingPermission` when it resumes, pauses and ends, so turning Exact timing on can read the answer from the phone's "Alarms & reminders" screen. |
-| `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, and the configuration changes it handles itself (see "Keeping the screen"). |
+| `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, the configuration changes it handles itself (see "Keeping the screen") and the long-press entries' file; and `ShortcutActivity` (see "Long-press menu"). |
 | `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar and its swipe recognizer off (see "Dragging a switch"), inside a `PageNavigationHost`, inside an `EasterEggStage` (see "Easter eggs"). |
 | `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"), receives the `SettingsViewModel` and reads the settings the first time the Settings tab is chosen (see "Settings"), and passes Android's back to the Settings tab. |
 | `Views/MainScreenState.cs` | The selected tab, kept for the process's lifetime. |
@@ -41,6 +41,8 @@ project and its logic and view models in the shared project.
 | `Platform/AndroidBackgroundScheduler.cs` | `IBackgroundScheduler` for the phone: the slideshow's alarms and the download job (see "Background slideshow and downloads"). |
 | `Platform/AndroidExactTimingPermission.cs` | `IExactTimingPermission` for the phone: whether exact alarms are allowed (`canScheduleExactAlarms`), and opening the phone's "Alarms & reminders" screen to ask (see "Settings"). |
 | `Background/SlideshowAlarmReceiver.cs`, `Background/DownloadJobService.cs`, `Background/ScheduleRestoreReceiver.cs` | What Android starts the app for: a slideshow change, a scheduled download run, and a restart, app update or clock change that needs the work armed again. |
+| `Shortcuts/ShortcutActivity.cs` | What the icon's long-press entries "Next Wallpaper" and "Random Wallpaper" start: an activity that shows nothing, changes the wallpaper and finishes (see "Long-press menu"). |
+| `Resources/xml/shortcuts.xml`, `Resources/values/strings.xml`, `Resources/drawable/shortcut_*.xml` | The long-press entries, their labels and their icons. |
 | `Resources/values/styles.xml` | The Android theme and its colors. |
 | `Resources/mipmap-anydpi-v26/icon.xml` | The adaptive launcher icon. |
 
@@ -556,17 +558,90 @@ emulator with a throwaway probe app (issue #203, step 5 plan):
   app; an exact one set for 19:00:01.137 fired at 19:00:01.140 in forced deep Doze (measured).
 - A broadcast receiver's work, `goAsync` included, must end within 10 seconds. The Release app
   with its screen starts cold in about 2 seconds (`am start -W`, 2061 ms).
-- **An app nobody opens for 8 days goes into the restricted standby bucket on Android 13 and
+- **An app nobody uses for 8 days goes into the restricted standby bucket on Android 13 and
   later (45 days on 12):** one alarm a day, jobs once a day, no network. The slideshow then
-  changes about once a day and downloads stop until the person opens the app; the home screen
-  widget (step 6) lifts it while it is on the home screen, and so does setting the app's battery
-  use to "Unrestricted". On battery the frequent and rare buckets allow 2 and 1 alarms an hour.
-  The owner accepted this as it is (issue #203, step 5): nothing new is shown for it.
+  changes about once a day and downloads stop until the person uses the app again; setting the
+  app's battery use to "Unrestricted" lifts it. On battery the frequent and rare buckets allow 2
+  and 1 alarms an hour. The owner accepted this as it is (issue #203, step 5): nothing new is
+  shown for it. The background slideshow alone never counts as use. A tap on a long-press menu
+  entry, or on an entry dragged out as its own home screen icon, does count and resets the 8-day
+  clock, because its activity comes to the front (see "Long-press menu"). There is no home screen
+  widget (issue #203, step 6 replaced it with the long-press menu).
 - Force-stop cancels every alarm and job until the person opens the app again (Android 15 and
-  later then send the boot broadcast).
+  later then send the boot broadcast). A tap on a long-press menu entry starts the process too,
+  which arms them again (measured: after `dotnet build -t:Install` force-stopped the app, a tap
+  armed the next change).
 - This emulator image cannot show standby buckets: App Standby is off (`mAppIdleEnabled=false`),
   it always reports charging, and every app is in bucket 5. Deep Doze is off until
   `adb shell dumpsys deviceidle enable deep`; put it back with `disable deep`.
+
+## Long-press menu (issue #203, step 6)
+
+Long-pressing the PaperNexus icon shows "Next Wallpaper" and "Random Wallpaper" (the desktop tray
+menu's words) after the launcher's own "App info". A tap changes the wallpaper on the home and
+lock screen without opening the app. The person can drag either entry onto the home screen as its
+own icon, labelled "Next" or "Random" (the short labels) with the PaperNexus icon as a badge; it
+works the same way. The decision replaced the home screen widget.
+
+| What happened | What the person sees |
+| --- | --- |
+| The wallpaper changed | The new wallpaper; nothing else |
+| The phone refused the picture, or it could not be read | The pop-up "Could not change the wallpaper." |
+| The phone forbids wallpaper changes | The pop-up "This phone does not allow apps to change the wallpaper." (the Current tab's sentence) |
+| There are no pictures yet | PaperNexus opens, as from its icon, and the Current tab downloads (its first-open work) |
+| A change is already running (another tap, the slideshow, the app's buttons) | Nothing: no second change |
+
+**How it works.** The entries are static app shortcuts (`Resources/xml/shortcuts.xml`): they never
+change, exist from install, and Android publishes them again on every update. An entry can only
+start an activity, so each starts `ShortcutActivity`, which shows nothing: a transparent theme
+(`PaperNexusShortcutTheme`, no animation, no starting window), its own task (empty
+`taskAffinity`, so the CLEAR_TASK flag a static entry always carries never touches the app's own
+screen), `excludeFromRecents`, `noHistory`, not exported. It asks the shared
+`BackgroundWork.RunShortcutChangeAsync` for the change through `MainApplication`'s container (the
+same switcher as the tabs), stays in front until the change has ended, shows the pop-up
+`ShortcutSentence` gives for the outcome or opens the app, and finishes. It reports the use to the
+launcher (`reportShortcutUsed`). Nothing is recorded: the pop-up says a failure at once and no
+screen reads it later; a change that works still clears the slideshow's failure line.
+
+**One change at a time.** A tap while any change is running (`ISwitchWallpaper.IsSwitching`) makes
+none; a second entry tap while an entry's change runs waits for it, so its screen stays in front
+and the process keeps running, and shows nothing.
+
+**Never rename** the ids `next_wallpaper` and `random_wallpaper`, their actions, or the Java name
+`com.gnostack.papernexus.ShortcutActivity`: dragged-out icons are recorded by them, and an update
+that drops an entry disables its icons. `ShortcutActivity` is declared in `AndroidManifest.xml` by
+hand because its `configChanges` must include `assetsPaths`: each new wallpaper is an asset paths
+change, which would otherwise recreate it in the middle of its own change.
+
+**Standby.** Each tap brings an activity of the app to the front, which Android counts as using
+the app (the App Standby documentation: an app is active when it launches an activity; AOSP's
+`AppStandbyController` treats an activity coming to the front as use and resets the usage time),
+so a tap resets the 8-day clock. Measured: `dumpsys usagestats` records `ACTIVITY_RESUMED` for
+`ShortcutActivity` and a new `lastTimeUsed` at each tap, plus a `SHORTCUT_INVOCATION`. The emulator
+cannot show the bucket itself (App Standby is off; `app_standby_enabled` does not turn it on).
+
+Measured on the Android 16 emulator (Debug and Release, issue #203 step 6):
+
+| What | Result |
+| --- | --- |
+| The menu (AOSP Launcher3) | "App info", then "Next Wallpaper" and "Random Wallpaper" with their icons (the long labels) |
+| A tap with the app closed | The wallpaper id went up by one (`mWhich=3`); only `ShortcutActivity` was created; it was in front about 1.0 to 1.4 s, 1.6 to 2.4 s after the tap from a cold start; the menu stays open with the entry highlighted meanwhile, then closes; no card in Recents; the launcher in front after |
+| A dragged-out icon | The same, from the home screen |
+| The app open on Settings, then a tap from the home screen | The app's activity was neither recreated nor destroyed; opening the app showed Settings |
+| A truncated picture | The pop-up "Could not change the wallpaper." for about 2 s; the wallpaper stayed; Next with the picture repaired changed it |
+| `no_set_wallpaper` user restriction (as root) | The pop-up with the Current tab's sentence, on two lines with the app icon; no change |
+| No pictures (the folder moved aside) | PaperNexus opened on the Current tab, downloaded, and set the first wallpaper |
+| A tap while a slideshow change ran (clock moved past the alarm) | "AlreadyRunning"; the id went up by one |
+| A restart, app not opened; an app update (`adb install -r`) | The menu and the dragged-out icons kept working |
+| Another app starting `ShortcutActivity` (`adb shell am start`) | Refused: not exported |
+
+**What the person may notice.** While the change runs (about a second), the home screen does not
+answer taps that land on it: Android puts an input sink under every activity
+(`ActivityRecordInputSink`), so even a window that takes no touches and is fully transparent did
+not let a tap through to the launcher (measured, three runs each way). A tap made before the
+activity's window is up (within its start, about 1 s from cold and 0.3 s warm) does reach the
+launcher, which acts on it once the activity ends: a double tap on an entry that quick makes two
+changes, one after the other.
 
 ## Where the files are
 
@@ -731,6 +806,7 @@ the picture library (`WallpaperLibraryTests`), the Gallery and Favorites tabs
 (`PictureListViewModelTests`), the source rules (`WallpaperSourcesTests`), the add or edit form
 (`SourceFormViewModelTests`), the Sources tab (`SourcesViewModelTests`), Download now's
 sentences (`DownloadOutcomeTests`), the Settings tab (`SettingsViewModelTests`, with the
-shared groups' own tests) and the Konami strokes (`KonamiGesturesTests`).
+shared groups' own tests), the Konami strokes (`KonamiGesturesTests`), and the long-press menu's
+change and its pop-up sentences (`BackgroundWorkTests`, `SwitchWallpaperDeviceTests`).
 The Android classes only pass Android's numbers and calls through; they are verified on the
 emulator.

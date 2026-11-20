@@ -17,7 +17,8 @@ namespace PaperNexus;
 // It is also the phone's composition root: it builds the service container once per process,
 // so the shared engine (settings, sources, downloads, switching) runs for as long as Android
 // keeps the process, and every Android part of the app (the screen, the background slideshow's
-// alarm and download job, and the widget in a later step) reaches the same services through it.
+// alarm and download job, and the long-press menu's ShortcutActivity) reaches the same services
+// through it.
 [Application(Label = "PaperNexus", Icon = "@mipmap/icon", Theme = "@style/PaperNexusTheme")]
 public class MainApplication : AvaloniaAndroidApplication<App>
 {
