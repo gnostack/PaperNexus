@@ -71,9 +71,8 @@ public sealed record BackgroundPlan(DateTimeOffset? SlideshowAt, bool SlideshowE
                 continue;
             }
 
-            var due = source.LastDownloadUtc is { } lastDownload
-                ? cron.GetNextOccurrence(lastDownload, zone)
-                : DateTimeOffset.MinValue;
+            // The one rule for when a source is due (a last download later than now counts as none)
+            var due = DownloadWallpapers.DueAt(source, cron, now, zone);
             if (due is null)
                 continue;
 

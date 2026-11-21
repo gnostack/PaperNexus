@@ -180,20 +180,38 @@ internal class DownloadWallpapers : IDownloadWallpapers, IAddSingleton<IDownload
     // as always-overdue so a misconfigured source never silently stalls.
     internal static bool IsOverdue(WallpaperSource source)
     {
-        if (source.LastDownloadUtc is null)
-            return true;
+        var now = DateTimeOffset.UtcNow;
+        return IsOverdue(source, now);
+    }
 
+    internal static bool IsOverdue(WallpaperSource source, DateTimeOffset now)
+    {
         try
         {
             var cron = CronExpression.Parse(source.CronExpression);
-            // Compute the next fire time relative to the last successful download
-            var next = cron.GetNextOccurrence(source.LastDownloadUtc.Value, TimeZoneInfo.Local);
-            return next.HasValue && next.Value <= DateTimeOffset.UtcNow;
+            var due = DueAt(source, cron, now, TimeZoneInfo.Local);
+            return due.HasValue && due.Value <= now;
         }
         catch (CronFormatException)
         {
             return true;
         }
+    }
+
+    // When the source is next due: the first cron occurrence after its last download, or the
+    // beginning of time when it has no usable last download, so it is due at once. Null when
+    // the schedule has no further occurrence. This is the one rule both the due check here and
+    // the phone's download plan (BackgroundPlan) use.
+    //
+    // A last download later than now is not usable: the clock was set back since, and counting
+    // from it would hold the source back until the clock passed that time again (issue #228).
+    internal static DateTimeOffset? DueAt(WallpaperSource source, CronExpression cron, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        if (source.LastDownloadUtc is not { } lastDownload || lastDownload > now)
+            return DateTimeOffset.MinValue;
+
+        var due = cron.GetNextOccurrence(lastDownload, zone);
+        return due;
     }
 
     // Downloads a single wallpaper image to the configured folder.
