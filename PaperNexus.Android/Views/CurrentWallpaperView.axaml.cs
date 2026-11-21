@@ -32,6 +32,14 @@ public partial class CurrentWallpaperView : UserControl
         ShowPicture();
     }
 
+    // A change made while this tab was not on the screen (another tab chosen) could not be
+    // shown then: the picture is scaled to this view's width, which needs the screen.
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        ShowPicture();
+    }
+
     // The width is known only after the first layout, so a picture that arrived before it is
     // shown now.
     protected override void OnSizeChanged(SizeChangedEventArgs e)
@@ -87,10 +95,12 @@ public partial class CurrentWallpaperView : UserControl
         }
         catch (Exception ex)
         {
-            // An unreadable picture leaves the previous one shown; the next change tries again
+            // An unreadable picture shows the empty placeholder box in its place, not the previous
+            // picture under the new title; the next change tries again
             global::Android.Util.Log.Warn("PaperNexus", $"Could not show the picture {path}: {ex.Message}");
             _shownPath = null;
             _shownWidth = 0;
+            ShowMissingPicture();
             return;
         }
 
@@ -104,5 +114,15 @@ public partial class CurrentWallpaperView : UserControl
         var previous = Picture.Source as Bitmap;
         Picture.Source = bitmap;
         previous?.Dispose();
+        PictureMissing.IsVisible = false;
+    }
+
+    // Releases the picture shown and keeps its place with the placeholder's box.
+    private void ShowMissingPicture()
+    {
+        var previous = Picture.Source as Bitmap;
+        Picture.Source = null;
+        previous?.Dispose();
+        PictureMissing.IsVisible = true;
     }
 }

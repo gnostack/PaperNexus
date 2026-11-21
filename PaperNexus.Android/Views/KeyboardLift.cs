@@ -44,6 +44,9 @@ internal sealed class KeyboardLift
         _insetsManager = topLevel?.InsetsManager;
         if (_insetsManager is not null)
             _insetsManager.SafeAreaChanged += OnSafeAreaChanged;
+        // The keyboard may have opened or closed while this screen was away (the Settings tab
+        // when another tab is chosen): the lift is set from where it is now, once laid out
+        Dispatcher.UIThread.Post(Lift, DispatcherPriority.Loaded);
     }
 
     private void OnDetached(object? sender, VisualTreeAttachmentEventArgs e)
