@@ -25,10 +25,17 @@
         <StackPanel>
 
             <!-- The picture, edge to edge. Its bitmap is decoded to the screen's width in
-                 code-behind, so a 4K source is not held at full size. -->
-            <Image x:Name="Picture"
-                   Stretch="Uniform"
-                   IsVisible="{Binding IsShowing}"/>
+                 code-behind, so a 4K source is not held at full size. A picture that cannot be
+                 read leaves the placeholder's empty box in its place, so the title and the
+                 buttons stay where they are. -->
+            <Panel IsVisible="{Binding IsShowing}">
+                <Image x:Name="Picture"
+                       Stretch="Uniform"/>
+                <Border x:Name="PictureMissing"
+                        Background="#1E1E1E"
+                        MinHeight="240"
+                        IsVisible="False"/>
+            </Panel>
 
             <!-- In the picture's place while there is none. -->
             <Border Background="#1E1E1E"

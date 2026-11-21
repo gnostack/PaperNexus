@@ -10,7 +10,8 @@ project and its logic and view models in the shared project.
 | File | Job |
 | --- | --- |
 | `MainApplication.cs` | The Android application object (`[Application]`, deriving `AvaloniaAndroidApplication<App>`). Sets the label, the launcher icon (`@mipmap/icon`) and the theme (`@style/PaperNexusTheme`), and adds the Inter font as the desktop does. It is the phone's composition root: `OnCreate` builds the service container and starts it before Avalonia creates `App`. |
-| `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. It tells `AndroidExactTimingPermission` when it resumes, pauses and ends, so turning Exact timing on can read the answer from the phone's "Alarms & reminders" screen. |
+| `MainActivity.cs` | The launcher activity (`AvaloniaMainActivity`). Shows the view `App` supplies. Its `[Activity]` attribute only fixes its Java name, `com.gnostack.papernexus.MainActivity`; the activity is declared in `AndroidManifest.xml`. It tells `AndroidExactTimingPermission` when it resumes, pauses and ends, so turning Exact timing on can read the answer from the phone's "Alarms & reminders" screen, and joins `StoppedLayoutRepair` to Avalonia's drawing surface. |
+| `StoppedLayoutRepair.cs` | Lays the whole screen out again when its drawing surface comes back after the activity was stopped: a repair for Avalonia 12.1.1 (see "The screen after a return"). |
 | `AndroidManifest.xml` | The hand-written part of the manifest: the activity, its launcher intent filter, the configuration changes it handles itself (see "Keeping the screen") and the long-press entries' file; and `ShortcutActivity` (see "Long-press menu"). |
 | `App.axaml(.cs)` | The phone's own Avalonia `App` (Fluent theme, dark). The desktop `App` owns the tray and the windows, so it stays in the desktop host. `OnFrameworkInitializationCompleted` sets `IActivityApplicationLifetime.MainViewFactory`, which resolves a new `MainView` from `MainApplication`'s services for each activity and puts it in a `NavigationPage` with no bar and its swipe recognizer off (see "Dragging a switch"), inside a `PageNavigationHost`, inside an `EasterEggStage` (see "Easter eggs"). |
 | `Views/MainView.axaml(.cs)` | A `TabbedPage` with five `ContentPage`s: Current, Gallery, Favorites, Sources, Settings. It receives the `CurrentWallpaperViewModel`, `GalleryViewModel`, `FavoritesViewModel`, `SourcesViewModel` and `MainScreenState` (all held for the process's lifetime) by constructor, binds the tabs to them when it reaches the screen and unbinds when it leaves, returns to the tab shown last, and tells Gallery, Favorites and Sources to list their contents the first time their tab is chosen. It also opens and closes the Sources tab's form (see "Sources"), receives the `SettingsViewModel` and reads the settings the first time the Settings tab is chosen (see "Settings"), and passes Android's back to the Settings tab. |
@@ -24,7 +25,7 @@ project and its logic and view models in the shared project.
 | `Views/SecretsPage.axaml(.cs)` | The Secrets list as a full-screen modal page (see "Easter eggs"). |
 | `Views/EasterEggStage.cs`, `Views/EasterEggPlayback.cs` | The screen's root: the pages with the easter egg overlay over them, and the egg playing, kept for the process (see "Easter eggs"). |
 | `Views/IconToggleSwitchTheme.axaml` | The look of a switch with no words beside it (see "Switches without words"). |
-| `Views/KeyboardLift.cs` | Keeps the keyboard off what is being typed: lifts a page's content by the part of the keyboard above the navigation bar and scrolls the focused field (with its hint) into view. The Sources form and the Settings tab use it (see "Sources"). |
+| `Views/KeyboardLift.cs` | Keeps the keyboard off what is being typed: lifts a page's content by the part of the keyboard above the navigation bar and scrolls the focused field (with its hint) into view, and sets the lift again from where the keyboard is when the page comes back on screen. The Sources form and the Settings tab use it (see "Sources"). |
 | `Views/PictureListStyles.axaml` | The card, picture-button and ban-icon styles both picture lists and the Current tab share. |
 | `Views/StatusLineStyles.axaml` | The confirmation line's look (white, green, red) for every tab, which each tab's `StatusLine` drives. |
 | `Views/PictureFrame.cs` | Holds a card's picture in a 16:9 box as wide as the card, so every card has the same height. |
@@ -108,6 +109,12 @@ Decisions that are easy to undo by accident:
   red under the buttons when it opens, or at once if it is open. The next change that works - a
   background one, Next, Random or set as current - takes it away. The fact is the slideshow's
   entry in `timers.json` (`BackgroundWork`, read through `IScheduledWorkFailures`).
+- A picture that cannot be read (a damaged file) leaves the placeholder's empty #1E1E1E box in its
+  place, so the title and the buttons stay where they are; the picture shown before is released.
+- A change made while another tab is shown (set as current on the Gallery, a long-press entry, the
+  slideshow) shows its picture when the Current tab comes back: the view scales the picture to its
+  own width, which it can only read on the screen, so it shows the picture again when it is
+  attached (measured before the fix: the new title over the old picture).
 - The picture is the downloaded source picture, scaled to the screen's pixel width by
   `ImageResizing.CreatePngOfWidth` (the shared imaging layer) rather than held at 4K.
 - Each activity gets a new view; the view model lives as long as the process (see "Keeping
@@ -662,7 +669,7 @@ and the log), from the build of commit `ffd57ae`.
 | Next, Random, the heart, delete with its question | Work as on Android 16; the first favorite plays the milestone egg; "Deleted and switched to: …" |
 | Delete of the last picture (Debug, the others moved aside) | "Wallpaper deleted. No more wallpapers.", "No wallpapers yet. Downloading…", then a new first wallpaper |
 | No network and no pictures | "Could not download wallpapers. Check your connection." with "Try again"; with the network back, Try again downloaded and set a wallpaper |
-| A picture that cannot be read (Debug, files cut to 100 bytes) | "Could not change the wallpaper. Try again." in red, the wallpaper stayed. A picture cut to 20 KB is not refused: Skia decodes what is there and the rest is black |
+| A picture that cannot be read (Debug, files cut to 100 bytes) | "Could not change the wallpaper. Try again." in red, the wallpaper stayed. The current wallpaper's own file cut: the Current tab keeps the empty placeholder box in the picture's place (after the fix below; before it the title and buttons moved to the top). A picture cut to 20 KB is not refused: Skia decodes what is there and the rest is black |
 | Changing the wallpaper is forbidden (`no_set_wallpaper` as root) | "This phone does not allow apps to change the wallpaper." in red, Next and Random dimmed; the long-press entry shows the same sentence as a pop-up |
 | Home screen and lock screen | Both show the picture (screenshots); `dumpsys wallpaper` lists no lock wallpaper. Android 12's dump has no `mWhich`, and its wallpaper id sometimes goes up by 2 for one change (one "Switching wallpaper" line in the log), so a change is judged by the id changing |
 | Wallpaper zoom and fill styles | The canvas is 1188x2640 (Debug log), so Android 12 enlarges the wallpaper by 1.1 as Android 16 does. Fit, Stretch, Tile and Center read on both screens from screenshots look as on Android 16 |
@@ -687,22 +694,67 @@ and the log), from the build of commit `ffd57ae`.
 
 **What differs from Android 16 on screen:**
 
-- Android 12 does not draw the app under the system bars: the status bar and the navigation bar
-  are their own strips, #1A1A1A, darker than the app's #2B2B2B. On Android 16 the app's color
-  runs under both.
+- The status bar and the navigation bar are dark see-through strips over the app, #1A1A1A over
+  the app's #2B2B2B. On Android 16 the app's color runs under both.
 - The selected tab's accent is always the same bright blue (#00B9FA) on Android 12; on Android 16
   it follows the wallpaper's colors.
 - The launcher's long-press menu shows App info as an icon, not a row of text.
 - An easter egg covers the app's area only, not the status bar.
 
-**Known problem on both versions:** a wallpaper change made while the app is in the background
-with the Current tab shown (a long-press entry, the slideshow, or Next/Random just before
-leaving) can leave the Current tab broken when the app is opened again: no picture, no tab bar,
-the title cut off at the right and the buttons pushed to the right. It stays so until the
-activity is recreated. Measured on Android 12 (Debug 3 times of 3; Release 3 times of 3 after a
-long-press change, 0 of 2 after Random tapped just before leaving) and on Android 16 (Release,
-once of 3 after a long-press change). Left on the Settings tab instead, the layout is right, but the Current tab then
-shows the new wallpaper's title over the old picture.
+- The status bar and the navigation bar cannot be given the app's color through the theme
+  (`android:statusBarColor`, `android:navigationBarColor`) on Android 12 to 14: Avalonia's
+  `PageNavigationHost` draws the app edge to edge, and Avalonia then sets the window's translucent
+  status and navigation flags (measured in `dumpsys window`: `TRANSLUCENT_STATUS
+  TRANSLUCENT_NAVIGATION`), under which Android draws its own dark see-through bars and ignores the
+  theme's colors; Avalonia's own `SystemBarColor` is ignored while edge to edge. Measured: the two
+  theme lines left both bars #1A1A1A.
+
+### The screen after a return
+
+**What happened.** A wallpaper change made while the app was in the background on the Current tab
+(a long-press entry, the slideshow) left the Current tab broken when the app was opened again: no
+picture, no tab bar, the title cut off at the right and the buttons pushed to the right, until the
+activity was recreated. Both versions; on the unfixed build, with the title changing between one
+and two lines, Android 12 broke 3 times of 3 and Android 16 3 times of 3.
+
+**Why** (measured with a diagnostic build logging the layout at each step of the activity's life):
+
+- When the activity stops, Android takes its drawing surface away. From then Avalonia 12.1.1's
+  Android view reports a size of one pixel (0.381 x 0.381 at scaling 2.625), while
+  `TopLevel.ClientSize` keeps 411 x 914 and raises no change.
+- A change that alters the height of what is on the screen (the Current tab's title wrapping to a
+  different number of lines, or a picture of another size) makes the next layout pass measure the
+  whole screen against that one pixel: the root's desired size became 0.38 x 0.38, the tab bar was
+  arranged 0 high, the picture 0.68 x 0.38.
+- When the activity returns, the surface comes back, Avalonia measures again at the real size (the
+  tab bar's desired size is 48 high again), but does not arrange again: the root's rectangle is
+  unchanged, so the tab bar stayed 0 high and the picture 0.68 x 0.38, marked valid.
+- Ruled out: the picture's decoding (always 1080 x 608 for a width of 1080; with the picture's
+  loading skipped, the title alone still broke it); the wallpaper's configuration change (Android
+  12 delivered none; a wallpaper set by another app while PaperNexus was stopped caused no layout
+  pass and no breakage; Android 16 delivers one on return in broken and unbroken runs alike);
+  layout passes while stopped as such (36 passes while the confirmation line faded, none of which
+  measured the whole screen: no breakage). Android 16 broke less often in the first count only
+  because its titles happened to keep the same number of lines.
+
+**The repair** (`StoppedLayoutRepair`): it listens to the Android surface Avalonia draws on. When the
+surface is destroyed and then comes back at its size (`surfaceChanged`), it marks the measure and
+arrange of every control under the top level invalid, once, at background priority, so the next
+layout pass lays the whole screen out at the real size: each tab, an open form, Secrets, a question
+or a picker, and the easter egg overlay. Re-check it whenever Avalonia is updated: once a return
+lays the screen out correctly without it, it can go.
+
+Measured with the repair (Release; 10 pictures whose titles alternate one line and two lines in
+slideshow order, sources off, so every change moves the buttons, read from the Random button's
+position on screen):
+
+| What | Android 12 | Android 16 |
+| --- | --- | --- |
+| Long-press entry change, app stopped on the Current tab | 0 broken of 5 | 0 broken of 5 |
+| Left on Gallery, on Sources with the form open, on Settings with the order picker open, on Secrets, with an easter egg playing (one run each) | 0 broken of 5; the Current tab then showed the new title and its picture | the same |
+| A real slideshow change (Exact timing, every 15 minutes), app stopped on the Current tab | laid out (00:15:00) | laid out (00:30:00) |
+| A plain leave and return, frames every 50 to 160 ms after the return | complete screen from the first frame at +101 ms, no blank or broken frame | complete screen from +106 ms, the same |
+| The repair ran | once per return, 68 ms after the restart | once per return, 33 ms after the restart |
 
 ## Where the files are
 
