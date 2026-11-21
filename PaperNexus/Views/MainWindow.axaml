@@ -495,10 +495,13 @@
                             <TextBlock Text="General Settings" FontWeight="SemiBold" FontSize="13" Opacity="0.85"/>
                             <!-- Run on startup, minimize to tray and automatic updates are desktop-only
                                  settings, bound to the desktop's own group -->
+                            <!-- Only the installed copy can change Run on startup (issue #211): in any
+                                 other copy the box is disabled and the hint says why -->
                             <StackPanel x:Name="RunOnStartupSettings" x:DataType="vm:DesktopSettingsViewModel" Spacing="4">
                                 <CheckBox Content="Run on startup"
-                                          IsChecked="{Binding RunOnStartup}"/>
-                                <TextBlock Text="Automatically launch PaperNexus when you sign in"
+                                          IsChecked="{Binding RunOnStartup}"
+                                          IsEnabled="{Binding CanChangeRunOnStartup}"/>
+                                <TextBlock Text="{Binding RunOnStartupHint}"
                                            FontSize="11" Opacity="0.5" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Border Height="1" Background="#333"/>

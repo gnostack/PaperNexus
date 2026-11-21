@@ -18,7 +18,7 @@ register through `IAddSingleton<T>` (the phone's are in `PaperNexus.Android/Plat
 | `IAppFolders` | `SettingsStore`, `SwitchWallpaper`, `JobTimerStore`, `WallpaperConfigViewModel`; the logger's folder | `DesktopAppFolders` (`PlatformPaths.cs`): settings in the default install directory, `current.png`/`timers.json`/`logs/` beside the executable (`AppContext.BaseDirectory`), downloads in `Pictures/PaperNexus` | `AndroidAppFolders`: settings in the files folder, everything else in the no-backup folder |
 | `IAppInfo` | `WallpaperConfigViewModel`, `AboutViewModel`, `DebugSettingsViewModel` | `DesktopAppInfo`: `App.AppVersion`, `--debug` | `AndroidAppInfo`: "v" and the major number of the package's version name (`AppVersionLabel`); never started in debug mode |
 | `IShellOpener` | `WallpaperConfigViewModel`, `AboutViewModel`, `DesktopSettingsViewModel` | `DesktopShellOpener` (`ShellOpener.cs`) | `AndroidShellOpener`: a web address opens in the browser; no folders |
-| `IStartupRegistration` (optional) | `DesktopSettingsViewModel` | `DesktopStartupRegistration` (`StartupRegistration.cs`) | none (decision 8) |
+| `IStartupRegistration` (optional) | `DesktopSettingsViewModel` | `DesktopIntegration` (`DesktopIntegration.cs`): writes only from the installed copy; `CanUpdate` is false in any other copy | none (decision 8) |
 | `IDeviceSettingRules` | `SwitchWallpaper` (whether to draw a title), `SlideshowSettingsViewModel` (the fill styles, the interval units and their numbers, the fastest schedule) | `DesktopSettingRules`: draws the title, all six fill styles, every interval unit with `SlideshowSchedule.IntervalRules`' ranges, no fastest schedule, no Exact timing | `AndroidSettingRules`: never draws a title, five fill styles (no Span), minutes picked from 15, 20 and 30 then hours to years, nothing faster than every 15 minutes, Exact timing |
 | `IFactoryReset` | `DebugSettingsViewModel` | `DesktopFactoryReset`: deletes `settings.json`, `current.*`, `timers.json` and `logs/`, relaunches with the same arguments except `--startup`, so the new copy shows its window | `AndroidFactoryReset`: deletes the same files (`AppDataReset`), keeps the pictures, restarts the launcher task in a new process |
 | `IDeviceEasterEggs` | `SecretsViewModel` | `DesktopEasterEggs`: the whole catalog | `AndroidDeviceEasterEggs`: three eggs (no Fleeting Words, no Hexspeak); the Konami and version hints worded for the phone |
@@ -48,6 +48,8 @@ returns false) is never recorded as current, on either device.
 | --- | --- | --- | --- |
 | `PlatformPaths.cs` | Executable name, install directory, path comparison, execute bit | `PaperNexus.exe`, `%LOCALAPPDATA%`, case-insensitive compare | `PaperNexus`, `~/.local/share`, case-sensitive compare, `chmod +x` |
 | `SingleInstance.cs` | One running copy, plus "show the window" from a second launch | Named `Mutex` + named `EventWaitHandle` | Unix domain socket in `$XDG_RUNTIME_DIR` |
+| `InstallLocation.cs` | Whether the running executable is the installed copy | `.installed` beside the exe, or the default install path | same |
+| `DesktopIntegration.cs` | The one owner of the launcher and sign-in entries; writes only from the installed copy | Run key | launcher + autostart entry |
 | `StartupRegistration.cs` | Launch at login | `HKCU\...\CurrentVersion\Run` | `~/.config/autostart/PaperNexus.desktop` |
 | `IWallpaperBackend.cs`, `LinuxWallpaperBackend.cs`, `NativeMethods.cs` | Setting the desktop wallpaper and its fill style | `SystemParametersInfo` + `HKCU\Control Panel\Desktop` | KDE Plasma / GNOME / generic setters |
 | `LinuxDesktop.cs` | Desktop environment detection, running helper commands | not used | `XDG_CURRENT_DESKTOP` etc., then process-name inference |
@@ -90,7 +92,7 @@ A dock can only pin a `.desktop` file it knows about. With none installed, GNOME
 the KDE task manager synthesise a temporary entry from the running window, and that entry
 disappears when the app exits - so a pinned PaperNexus showed an icon only while running.
 
-`DesktopEntry.Install` therefore writes both halves on every launch:
+`DesktopEntry.Install` therefore writes both halves on every launch of the installed copy:
 
 - `~/.local/share/applications/PaperNexus.desktop`, carrying `StartupWMClass=PaperNexus`.
 - `~/.local/share/icons/hicolor/256x256/apps/papernexus.png`, downscaled from the bundled
@@ -101,9 +103,29 @@ one: the window's `WM_CLASS`, the `StartupWMClass` key, and the `.desktop` basen
 three are `PaperNexus`, and `DesktopEntryTests` asserts they cannot drift apart.
 
 Installing on every launch is deliberate - it repairs installs made before the launcher
-existed and corrects the `Exec` line if the executable moves. `StartupRegistration`'s
+existed and corrects the `Exec` line if the install folder moves. `StartupRegistration`'s
 autostart entry mirrors the same icon and `StartupWMClass` so an autostarted window
 resolves to the same launcher.
+
+## Only the installed copy registers itself
+
+The launcher and the sign-in entry (the Linux autostart entry, the Windows Run value) name an
+executable, so only the installed copy writes them (issue #211). `Program.Main` asks
+`InstallLocation.IsInstalledCopy` once, before choosing a mode: the executable is the installed
+copy when the install flow's `.installed` file is beside it, or when it is at the default
+install path. Location alone decides - the installed executable started with `--debug` still
+counts, and a build folder or a temporary folder never does. The answer survives every
+relaunch the app makes: after install (the installed path), after an auto-update (the swap
+script replaces only the executable and relaunches the same path with `--updated`), and after a
+Factory Reset (which keeps `.installed` and relaunches the same path).
+
+`DesktopIntegration` is the only code that writes either entry, always naming the running
+copy. In any other copy it writes, creates and removes nothing; its settings window shows the
+Run on startup box disabled, with the hint "Only the installed copy of PaperNexus can change
+this. This copy runs from {folder}.", and leaves the setting out of its saves, because
+`settings.json` lives in the default install directory and is shared with the installed copy,
+which applies the saved value at its next start. The install screen saves its own Run on
+startup box into `settings.json` and leaves the entry to the installed copy's first start.
 
 To verify a change here, check the desktop's own resolution rather than the file contents,
 with the app closed:

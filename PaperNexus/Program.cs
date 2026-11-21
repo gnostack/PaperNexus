@@ -18,6 +18,11 @@ internal sealed class Program
     internal static bool IsDebugMode { get; private set; }
     internal static bool IsInstallMode { get; private set; }
 
+    // Whether the running executable is the installed copy (InstallLocation), answered once
+    // at the start of Main for every launch, --debug included. Only the installed copy writes
+    // the launcher and the sign-in entry (issue #211).
+    internal static bool IsInstalledCopy { get; private set; }
+
     // The arguments this copy was started with, so a factory reset starts the new copy the
     // same way.
     internal static string[] Arguments { get; private set; } = [];
@@ -35,21 +40,23 @@ internal sealed class Program
     public static void Main(string[] args)
     {
         Arguments = args;
-        // Debug mode bypasses the install check and single-instance logic entirely.
-        if (TryRunDebugMode(args))
-            return;
 
+        // Cache paths so InstallScreen and DesktopIntegration can reference them without
+        // recomputing, and answer the installed-copy question once, before any mode is chosen.
         var (installDir, installPath) = GetInstallPaths();
         var currentPath = GetCurrentProcessPath();
-
-        // Cache paths so InstallScreen can reference them without recomputing.
         InstallDir = installDir;
         InstallExePath = installPath;
         CurrentExePath = currentPath;
+        IsInstalledCopy = InstallLocation.IsInstalledCopy(currentPath, installDir);
+
+        // Debug mode bypasses the install flow and single-instance logic entirely.
+        if (TryRunDebugMode(args))
+            return;
 
         // If running from a location other than the install directory, perform
         // first-run installation and then hand off to the installed copy.
-        if (!IsRunningFromInstallLocation(currentPath, installPath))
+        if (!IsInstalledCopy)
         {
             HandleNotInstalledLaunch(args);
             return;
@@ -76,21 +83,6 @@ internal sealed class Program
     private static string GetCurrentProcessPath()
     {
         return Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, PlatformPaths.ExecutableName);
-    }
-
-    private static bool IsRunningFromInstallLocation(string currentPath, string installPath)
-    {
-        // Check for a sentinel file written alongside the exe during install.
-        // This handles custom install paths that differ from the default AppData location.
-        var current = Path.GetFullPath(currentPath);
-        var exeDir = Path.GetDirectoryName(current);
-        if (exeDir is not null && File.Exists(Path.Combine(exeDir, ".installed")))
-            return true;
-
-        // Fall back to the default AppData path comparison for existing installations
-        // that predate the sentinel file (i.e. installed before this fix was added).
-        var install = Path.GetFullPath(installPath);
-        return PlatformPaths.PathEquals(current, install);
     }
 
     // Handles startup when the exe is not yet at the install location.
@@ -169,7 +161,7 @@ internal sealed class Program
 
             // Mark this directory as an install location so startup recognises it
             // regardless of whether it matches the default AppData path.
-            File.WriteAllText(Path.Combine(installDir, ".installed"), string.Empty);
+            File.WriteAllText(Path.Combine(installDir, InstallLocation.SentinelFileName), string.Empty);
 
             // Leave a redirect marker next to the source exe so that launching it
             // again opens the installed copy instead of showing the install screen.
@@ -194,7 +186,7 @@ internal sealed class Program
             // ensure the sentinel is written so the app won't loop back to the install screen.
             if (!File.Exists(installPath))
                 return false;
-            try { File.WriteAllText(Path.Combine(installDir, ".installed"), string.Empty); }
+            try { File.WriteAllText(Path.Combine(installDir, InstallLocation.SentinelFileName), string.Empty); }
             catch (IOException) { /* best effort - if this also fails, the install can't complete */ }
 
             // Also write the redirect for the source exe.

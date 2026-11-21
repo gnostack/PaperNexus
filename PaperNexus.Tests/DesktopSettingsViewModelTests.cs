@@ -85,6 +85,69 @@ public class DesktopSettingsViewModelTests : IDisposable
         Assert.Equal(StatusTone.Error, report.Tone);
     }
 
+    [Fact]
+    public async Task RunOnStartup_TheInstalledCopyCanChangeIt()
+    {
+        var registration = new RecordingStartupRegistration();
+        var group = new DesktopSettingsViewModel(_store, new IgnoringShellOpener(), registration);
+        await group.LoadAsync();
+
+        Assert.True(group.CanChangeRunOnStartup);
+        Assert.Equal(DesktopSettingsViewModel.RunOnStartupDescription, group.RunOnStartupHint);
+    }
+
+    [Fact]
+    public async Task RunOnStartup_ACopyThatIsNotInstalledShowsWhyItCannotChangeIt()
+    {
+        var registration = new RecordingStartupRegistration
+        {
+            CanUpdate = false,
+            ExecutableFolder = "/home/someone/build/net10.0",
+        };
+        var group = new DesktopSettingsViewModel(_store, new IgnoringShellOpener(), registration);
+        await group.LoadAsync();
+
+        Assert.False(group.CanChangeRunOnStartup);
+        Assert.Equal(
+            "Only the installed copy of PaperNexus can change this. This copy runs from /home/someone/build/net10.0.",
+            group.RunOnStartupHint);
+    }
+
+    [Fact]
+    public async Task RunOnStartup_ACopyThatIsNotInstalledNeverRegistersOrSavesIt()
+    {
+        // The installed copy saved false; a build-folder copy shares the same settings.json.
+        await _store.UpdateAsync(latest => latest.RunOnStartup = false);
+        var registration = new RecordingStartupRegistration { CanUpdate = false };
+        var group = new DesktopSettingsViewModel(_store, new IgnoringShellOpener(), registration);
+        await group.LoadAsync();
+
+        // Loading the saved false does not apply it, and neither does a change to the box.
+        Assert.False(group.RunOnStartup);
+        group.RunOnStartup = true;
+        // Another of the group's settings is saved; Run on startup stays out of that save.
+        group.MinimizeToTray = false;
+        await group.SaveNowAsync();
+
+        Assert.Empty(registration.Updates);
+        var saved = await _store.LoadAsync();
+        Assert.False(saved.RunOnStartup);
+        Assert.False(saved.MinimizeToTray);
+    }
+
+    [Fact]
+    public async Task RunOnStartup_TheInstalledCopyAppliesASavedFalseWhenTheWindowLoads()
+    {
+        // As it always has: loading a saved false updates the sign-in registration.
+        await _store.UpdateAsync(latest => latest.RunOnStartup = false);
+        var registration = new RecordingStartupRegistration();
+        var group = new DesktopSettingsViewModel(_store, new IgnoringShellOpener(), registration);
+
+        await group.LoadAsync();
+
+        Assert.Equal([false], registration.Updates);
+    }
+
     private sealed class GroupFolders : IAppFolders
     {
         public GroupFolders(string folder)
@@ -111,6 +174,10 @@ public class DesktopSettingsViewModelTests : IDisposable
     private sealed class RecordingStartupRegistration : IStartupRegistration
     {
         public List<bool> Updates { get; } = [];
+
+        public bool CanUpdate { get; set; } = true;
+
+        public string ExecutableFolder { get; set; } = "/opt/PaperNexus";
 
         public Exception? Failure { get; set; }
 

@@ -75,6 +75,15 @@ public partial class App : Application
                     services.AddTransient<SplashScreen>();
                     services.AddTransient<EasterEggListDialog>();
                     services.AddTransient<Func<EasterEggListDialog>>(sp => () => sp.GetRequiredService<EasterEggListDialog>());
+                    // The one owner of the launcher and sign-in entries, built from the answers
+                    // Program found before the container existed; the settings window reaches
+                    // it as its IStartupRegistration.
+                    services.AddSingleton(sp => new DesktopIntegration(
+                        Program.CurrentExePath,
+                        Program.IsInstalledCopy,
+                        sp.GetRequiredService<IDesktopEntryWriter>(),
+                        sp.GetRequiredService<ILogger<DesktopIntegration>>()));
+                    services.AddSingleton<IStartupRegistration>(sp => sp.GetRequiredService<DesktopIntegration>());
                     // Auto-discover and register all IAddSingleton / IAddHostedSingleton implementations:
                     // the shared services first, then this host's implementations of the interfaces
                     // they need (folders, wallpaper applier, shell, updates). The desktop runs its
@@ -88,13 +97,12 @@ public partial class App : Application
 
             // Install the Linux application launcher and icon before touching startup
             // registration, because the autostart entry points at the icon this writes.
-            // Doing it on every launch keeps the Exec line correct if the app moves and
-            // repairs installs made before the launcher existed.
+            // Both are written on every launch of the installed copy only; any other copy
+            // leaves them alone (DesktopIntegration, issue #211).
+            var desktopIntegration = _backgroundHost.Services.GetRequiredService<DesktopIntegration>();
             try
             {
-                DesktopEntry.Install(
-                    Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, PlatformPaths.ExecutableName),
-                    () => AssetLoader.Open(new Uri("avares://PaperNexus/Assets/logo.png")));
+                desktopIntegration.InstallLauncher();
             }
             catch (Exception ex) { Logger?.LogError(ex, "Failed to install the desktop launcher."); }
 
@@ -102,10 +110,11 @@ public partial class App : Application
             // the host it just built rather than through a constructor.
             var settingsStore = _backgroundHost.Services.GetRequiredService<ISettingsStore>();
 
-            // Apply startup registration based on the persisted setting
+            // Apply startup registration based on the persisted setting. On the first start
+            // after an install this applies the install screen's Run on startup choice.
             _ = settingsStore.LoadAsync().ContinueWith(t =>
             {
-                try { StartupRegistration.Update(t.Result.RunOnStartup); }
+                try { desktopIntegration.Update(t.Result.RunOnStartup); }
                 catch (Exception ex) { Logger?.LogError(ex, "Failed to apply startup registration on launch."); }
             });
 
