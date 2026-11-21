@@ -15,6 +15,13 @@
          the root namespace of PaperNexus.Shared, so the phone's views sit in PaperNexus.Views. -->
     <RootNamespace>PaperNexus</RootNamespace>
     <ApplicationId>com.gnostack.papernexus</ApplicationId>
+    <!-- The version a build made on a development machine carries: "v0" in About, as the
+         desktop's local build shows (its Version is 0.0.0). The Android package workflow
+         (package-android.yml) sets both from the desktop release's build number N: versionName
+         N.0.0, which About shows as "vN", and versionCode N, which Google Play requires to rise
+         with every upload. -->
+    <ApplicationDisplayVersion>0.0.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>

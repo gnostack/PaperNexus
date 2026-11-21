@@ -33,7 +33,7 @@ project and its logic and view models in the shared project.
 | `Views/ConfirmationDialog.axaml(.cs)` | The reusable in-page question: the page dimmed, a box in the middle (as wide as `ChoiceDialog`'s whatever the question, long text wrapping inside) with an optional title line, cancel and confirm buttons, a destructive confirm in the delete color. `await ShowAsync(...)` answers true or false; a tap on the dimmed page cancels. |
 | `Platform/AndroidAppFolders.cs` | `IAppFolders` for the phone (see "Where the files are"). |
 | `Platform/AndroidWallpaperApplier.cs` | `IWallpaperApplier` for the phone (see "Setting the wallpaper"). |
-| `Platform/AndroidAppInfo.cs` | `IAppInfo` for the phone: the version label is "v" and the major number of the package's version name. No workflow sets the version yet, so every build is 1.0.0 and shows "v1" (step 7 sets it). |
+| `Platform/AndroidAppInfo.cs` | `IAppInfo` for the phone: the version label is "v" and the major number of the package's version name. The package workflow builds version name N.0.0 from the desktop release's build number N, so the phone shows "vN" as that release does; a local build is 0.0.0 and shows "v0" (see "Versions and the store package"). |
 | `Platform/AndroidShellOpener.cs` | `IShellOpener` for the phone: opens a web address in the browser (Report a bug, the project link). Measured: the emulator's browser (WebView Browser Tester) opened the project page. |
 | `Platform/AndroidFactoryReset.cs` | `IFactoryReset` for the phone (see "Factory Reset"). |
 | `Platform/AndroidDeviceEasterEggs.cs` | `IDeviceEasterEggs` for the phone: the catalog without Fleeting Words (no startup screen with words) and Hexspeak (no title colour box), three eggs, with the Konami hint "Every arcade player knew this one by heart. Swipe it here in Settings." and the version hint "The version number in About does not look tappable. Try anyway. Keep going." |
@@ -350,7 +350,7 @@ login, minimize to tray, automatic updates, the folder) or the title fields.
 - **Debug entries** reach `no_backup/logs/app.log` from the moment debug mode is turned on; a
   wallpaper change then writes one with the rendered size, the canvas, the fill style and the
   title.
-- **About:** the heading with the version at its right ("v1", faint, as on the desktop), then
+- **About:** the heading with the version at its right ("vN", faint, as on the desktop), then
   three 48 dp rows with the desktop's icons and tooltips: "Secrets", "Report a bug" and
   "PaperNexus on GitHub". The two links open the browser through `IShellOpener`; a failure shows
   "Could not open the browser: …" in red on the line (the desktop's status bar shows it too).
@@ -862,7 +862,8 @@ it gets the workload with `dotnet workload restore` and builds only `PaperNexus.
 GitHub runner image already provides `ANDROID_HOME`, `JAVA_HOME` (JDK 17) and the SDK packages.
 Its build job is skipped when a pull request changes nothing the app is built from. The desktop
 pull request workflow builds `PaperNexus.Desktop.slnf` (everything except this project) and the
-deploy workflow builds only the desktop project; neither needs the workload.
+deploy workflow builds only the desktop project; neither needs the workload. The store package is
+built by `.github/workflows/package-android.yml` (see "Versions and the store package").
 
 ## Build, install and launch
 
@@ -879,7 +880,63 @@ A Release build (`dotnet build PaperNexus.Android -c Release`, also part of the 
 writes a package signed with the SDK's debug key:
 `PaperNexus.Android/bin/Release/net10.0-android/com.gnostack.papernexus-Signed.apk`. Install it with
 `adb install -r <that path>`. A clean Release build of the Android project takes about a minute.
-There is no store signing or release asset yet (issue #203, step 7).
+It also writes the App Bundle, `com.gnostack.papernexus-Signed.aab`.
+
+## Versions and the store package (issue #203, step 7)
+
+**The version.** The phone and the desktop made from one commit carry one number N, the desktop
+release's build number (`.github/scripts/build-number.sh`: a `vN` tag gives N, any other ref the
+desktop run's number). The package is built with `ApplicationDisplayVersion` N.0.0 (the version
+name; About shows "vN" through `AppVersionLabel`) and `ApplicationVersion` N (the version code,
+which Google Play requires to rise with every upload; the run number only rises). A build made on
+a development machine has the csproj's defaults, 0.0.0 and 1, and shows "v0", as the desktop's
+local build does. Measured: a local publish with both set to 999 read `versionCode="999"
+versionName="999.0.0"` in the `.aab` (the workload's `bundletool dump manifest`) and in the `.apk`
+(`aapt2 dump badging`), and About showed "v999" on the Android 16 emulator; a plain local build
+read 1 and 0.0.0 and showed "v0".
+
+**The workflow** (`package-android.yml`, "Package Android App"):
+
+| Started by | Builds | Number | Artifact |
+| --- | --- | --- | --- |
+| A desktop release run ("Build Paper Nexus") that succeeded (`workflow_run`) | That run's commit | From that run's ref name and run number | `PaperNexus-android-vN` |
+| Run workflow (`workflow_dispatch`) | The latest successful desktop release run on main, again | That run's | `PaperNexus-android-vN` |
+| A pull request that changes the workflow or `build-number.sh` (a rehearsal) | The pull request as it would merge | The latest successful desktop release run on main's | `PaperNexus-android-vN-rehearsal` |
+
+It sets up .NET, runs `dotnet workload restore`, publishes `PaperNexus.Android` in Release with
+the two version properties, and keeps `PaperNexus-android-vN.aab` (for Google Play) and
+`PaperNexus-android-vN.apk` (to install on a phone or the emulators with `adb install`) as one
+artifact of the run, for the repository's artifact retention (90 days). It never makes a GitHub
+Release asset: the phone app is updated by the store (decision 2), and the desktop's release keeps
+exactly its three assets. A failed desktop release run makes no package, so every package has a
+desktop release with its number. Find the files on the run's page in the Actions tab
+(https://github.com/gnostack/PaperNexus/actions/workflows/package-android.yml), under Artifacts,
+or with `gh run download <run id> -n PaperNexus-android-vN`.
+
+**Signing.** Both files are signed with the Android SDK's debug key, which the build creates afresh
+on the runner for every run. Google Play refuses a debug-signed bundle, and an `.apk` from one run
+cannot update one from another run (or a local build) without uninstalling first, which deletes the
+app's settings and pictures. An uploadable package needs the upload key, which needs the Google
+Play developer account: the publish step then passes `AndroidKeyStore=true`,
+`AndroidSigningKeyStore`, `AndroidSigningStorePass`, `AndroidSigningKeyAlias` and
+`AndroidSigningKeyPass` from repository secrets. Not set up.
+
+**What the owner supplies for the store** (nothing of this is built yet):
+
+- [ ] A Google Play developer account (personal accounts must run a closed test with 12 testers
+      for 14 days before production).
+- [ ] The upload key and Play App Signing enrollment, and the five signing properties above as
+      repository secrets.
+- [ ] A privacy policy at a public address: Play requires one to complete the Data safety form,
+      even for an app that collects no data. It could be a page under `website/`.
+- [ ] The Data safety answers: the developer collects nothing; the phone requests only the feed
+      addresses and image hosts the person sets up.
+- [ ] The store listing: the short and full descriptions, a 512 x 512 icon (from
+      `PaperNexus/Assets/logo.png`), a 1024 x 500 feature graphic, and phone screenshots (the
+      emulators can take them).
+- [ ] The content rating questionnaire, the target audience (not children), and a contact address.
+- [ ] Uploading to Play (the Play Developer API and its service account), not part of this
+      workflow.
 
 ## Driving the emulator
 

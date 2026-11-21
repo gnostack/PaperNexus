@@ -4,9 +4,10 @@ using PaperNexus.Core;
 namespace PaperNexus;
 
 // The phone's facts about the running app. The version is the package's version name, shown as
-// "v" and its major number, as the desktop shows its build number. No workflow sets it yet, so
-// every build reads 1.0.0 and shows "v1" (issue #203, step 7 sets it for the store). The phone
-// has no --debug start: debug mode is the setting alone.
+// "v" and its major number, as the desktop shows its build number: the Android package workflow
+// builds version name N.0.0 from the desktop release's build number N, so both show "vN"; a local
+// build is 0.0.0 and shows "v0" (PaperNexus.Android.csproj). The phone has no --debug start:
+// debug mode is the setting alone.
 internal sealed class AndroidAppInfo : IAppInfo, IAddSingleton<IAppInfo>
 {
     public AndroidAppInfo()
