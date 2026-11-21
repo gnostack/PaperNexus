@@ -19,11 +19,11 @@ public static class StartupRegistration
         "Wallpaper Nexus",
     ];
 
-    // exePath is passed explicitly because the installer must register the *installed*
-    // copy, not the temporary one it is currently running from.
-    public static void Update(bool enable, string? exePath = null)
+    // Writes or removes the entry that starts exePath at sign-in. Only DesktopIntegration calls
+    // this, and only from the installed copy, with that copy's own path (issue #211).
+    public static void Update(bool enable, string exePath)
     {
-        var target = exePath ?? Environment.ProcessPath;
+        var target = exePath;
         if (string.IsNullOrEmpty(target))
             return;
 
@@ -102,15 +102,5 @@ public static class StartupRegistration
         }
         catch (IOException) { /* best-effort - startup registration is not critical to run */ }
         catch (UnauthorizedAccessException) { /* best-effort */ }
-    }
-}
-
-// The desktop's run-at-sign-in setting for the shared view model. Registers the running
-// executable, as the settings window always has.
-internal sealed class DesktopStartupRegistration : IStartupRegistration, IAddSingleton<IStartupRegistration>
-{
-    public void Update(bool enable)
-    {
-        StartupRegistration.Update(enable);
     }
 }

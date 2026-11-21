@@ -71,31 +71,14 @@ public partial class InstallScreen : Window
                 return;
             }
 
-            // Persist the startup preference to AppData so the installed app finds it on first launch.
-            // Settings always live in the default install directory regardless of exe location.
-            // Only write fresh settings when none were migrated from alongside the source exe.
-            // This runs during first-time install, before the service container (and so the
-            // settings store) exists. That is a separate lifecycle from the running app, so it
-            // keeps its own direct check and write, taking the path from PlatformPaths. No
-            // existing file is ever overwritten here, so the store's atomic rename is not needed.
-            var settingsDir = PlatformPaths.DefaultInstallDirectory;
-            var settingsPath = Path.Combine(settingsDir, "settings.json");
-            if (!File.Exists(settingsPath))
-            {
-                var settings = new WallpaperNexusSettings
-                {
-                    RunOnStartup = RunOnStartupCheckBox.IsChecked == true,
-                };
-                var json = JsonConvert.SerializeObject(settings, WallpaperNexusSettings.JsonFormat);
-                Directory.CreateDirectory(settingsDir);
-                await File.WriteAllTextAsync(settingsPath, json);
-            }
-
-            // Always rewrite the startup registration during install so a stale entry from
-            // a previous install at a different path doesn't survive and launch the wrong
-            // (possibly missing) executable at login. The installed path is passed
-            // explicitly because Environment.ProcessPath is still the un-installed copy.
-            StartupRegistration.Update(RunOnStartupCheckBox.IsChecked == true, installExePath);
+            // Save the Run on startup choice; the installed copy applies it to the sign-in
+            // entry when it starts a moment later, replacing any entry a previous install left
+            // at another path. This copy is not the installed one, so it never writes the
+            // sign-in entry itself (issue #211). The install screen runs before the service
+            // container exists, so it builds its own SettingsStore over the same folders the
+            // container's store uses, and writes through it like everything else.
+            var settingsStore = new SettingsStore(new DesktopAppFolders());
+            await SaveRunOnStartupChoiceAsync(settingsStore, RunOnStartupCheckBox.IsChecked == true);
 
             // Launch the newly-installed copy and exit the installer process.
             ShellOpener.LaunchExecutable(installExePath);
@@ -109,6 +92,14 @@ public partial class InstallScreen : Window
             CancelButton.IsEnabled = true;
             BrowseButton.IsEnabled = true;
         }
+    }
+
+    // Records the install screen's Run on startup box in the settings, keeping every other
+    // saved field (settings migrated from beside the downloaded executable, or left by an
+    // earlier install); with no settings file yet it writes the defaults with this choice.
+    internal static Task SaveRunOnStartupChoiceAsync(ISettingsStore settingsStore, bool runOnStartup)
+    {
+        return settingsStore.UpdateAsync(latest => latest.RunOnStartup = runOnStartup);
     }
 
     private void OnCancelClicked(object sender, RoutedEventArgs e)

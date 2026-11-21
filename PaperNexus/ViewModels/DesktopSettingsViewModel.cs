@@ -35,6 +35,27 @@ public sealed partial class DesktopSettingsViewModel : SettingsGroupViewModel
         _startupRegistration = startupRegistration;
     }
 
+    // The hint under the Run on startup box when this copy can change it.
+    public const string RunOnStartupDescription = "Automatically launch PaperNexus when you sign in";
+
+    // False in a copy that is not the installed one (issue #211): the box shows the saved
+    // value but cannot be changed, and this group never saves it, so a build-folder or --debug
+    // copy sharing settings.json cannot change what the installed copy registers at its next
+    // start. True when the host has no registration to ask.
+    public bool CanChangeRunOnStartup => _startupRegistration?.CanUpdate ?? true;
+
+    // The grey line under the box: what the setting does, or why this copy cannot change it.
+    public string RunOnStartupHint
+    {
+        get
+        {
+            if (CanChangeRunOnStartup)
+                return RunOnStartupDescription;
+            var folder = _startupRegistration?.ExecutableFolder;
+            return $"Only the installed copy of PaperNexus can change this. This copy runs from {folder}.";
+        }
+    }
+
     partial void OnFolderChanged(string value) => SaveSoon();
 
     partial void OnMinimizeToTrayChanged(bool value) => SaveSoon();
@@ -42,9 +63,12 @@ public sealed partial class DesktopSettingsViewModel : SettingsGroupViewModel
     partial void OnAutoUpdatesEnabledChanged(bool value) => SaveSoon();
 
     // The sign-in registration follows the box at once, and is applied again when the window
-    // loads the setting, as it always has been; the setting is saved with the group.
+    // loads the setting, as it always has been; the setting is saved with the group. A copy
+    // that cannot change it neither registers nor saves.
     partial void OnRunOnStartupChanged(bool value)
     {
+        if (!CanChangeRunOnStartup)
+            return;
         try
         {
             _startupRegistration?.Update(value);
@@ -86,10 +110,13 @@ public sealed partial class DesktopSettingsViewModel : SettingsGroupViewModel
         var runOnStartup = RunOnStartup;
         var minimizeToTray = MinimizeToTray;
         var autoUpdatesEnabled = AutoUpdatesEnabled;
+        var canChangeRunOnStartup = CanChangeRunOnStartup;
         return latest =>
         {
             latest.Download.Folder = folder;
-            latest.RunOnStartup = runOnStartup;
+            // Left out from a copy that cannot change it, so the installed copy's value stands.
+            if (canChangeRunOnStartup)
+                latest.RunOnStartup = runOnStartup;
             latest.MinimizeToTray = minimizeToTray;
             latest.AutoUpdatesEnabled = autoUpdatesEnabled;
         };
