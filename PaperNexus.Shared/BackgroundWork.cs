@@ -129,7 +129,10 @@ public sealed class BackgroundWork : IHostedService, IScheduledWorkFailures, IAd
             var now = _clock.GetUtcNow();
             // On the minute while Exact timing is on and the device still allows it
             var exact = settings.Slideshow.ExactTiming && _exactTiming?.IsAllowed == true;
-            var plan = BackgroundPlan.For(settings, now, slideshow.StartedAt, downloads.StartedAt, exact, _deviceRules.ShortestSlideshowGap, _zone);
+            // The floor counts from the time the last change was due; an entry with no such time
+            // counts from when it ran
+            var lastChangeFor = slideshow.ScheduledFor ?? slideshow.StartedAt;
+            var plan = BackgroundPlan.For(settings, now, lastChangeFor, downloads.StartedAt, exact, _deviceRules.ShortestSlideshowGap, _zone);
 
             var slideshowKey = (plan.SlideshowAt, plan.SlideshowExact);
             if (!_slideshowArmed || slideshowKey != _armedSlideshow)

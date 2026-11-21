@@ -142,17 +142,21 @@ public static class SlideshowSchedule
     }
 
     // When the slideshow next changes: the first occurrence of cron at or after the later of now
-    // and the last change plus shortestGap, so two changes are never closer than the device's
-    // fastest slideshow, whatever is stored (a stored schedule that is too fast runs at that
-    // floor). Without a floor still ahead, an occurrence exactly at now is not taken: it is the
-    // change being made. Null when the schedule has no further occurrence.
-    public static DateTimeOffset? NextChange(CronExpression cron, DateTimeOffset now, DateTimeOffset? lastChange, TimeSpan shortestGap, TimeZoneInfo zone)
+    // and lastChangeFor plus shortestGap, so no two scheduled changes are closer than the
+    // device's fastest slideshow, whatever is stored (a stored schedule that is too fast runs at
+    // that floor). lastChangeFor is the time the last scheduled change was due, not when it ran:
+    // the occurrences are counted from when they are due, so a floor counted from a change that
+    // ran a moment (or a delivery window) after its time would skip the occurrence exactly one
+    // gap later (every 15 minutes became every 30, issue #203 step 7). Without a floor still
+    // ahead, an occurrence exactly at now is not taken: it is the change being made. Null when
+    // the schedule has no further occurrence.
+    public static DateTimeOffset? NextChange(CronExpression cron, DateTimeOffset now, DateTimeOffset? lastChangeFor, TimeSpan shortestGap, TimeZoneInfo zone)
     {
         cron.ThrowIfNull();
         zone.ThrowIfNull();
-        // A last change after now means the clock was set back since: it says nothing about
+        // A last change due after now means the clock was set back since: it says nothing about
         // how long ago the wallpaper changed, so it sets no floor
-        if (lastChange is { } last && last <= now)
+        if (lastChangeFor is { } last && last <= now)
         {
             var floor = last + shortestGap;
             if (floor > now)

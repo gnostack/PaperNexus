@@ -115,13 +115,65 @@ public class SlideshowGapTests
         Assert.Equal(At(12, 30), next);
     }
 
+    // The floor is counted between the times the changes were due (issue #203, step 7): a
+    // change for 12:15 that ran a moment later is followed by the one for 12:30. Counted from
+    // when it ran (12:15:00.5 + 15 minutes), 12:30 fell inside the floor and every 15 minutes
+    // became every 30.
     [Fact]
-    public void NextChange_AfterALateChange_SkipsTheOccurrenceInsideTheFloor()
+    public void NextChange_AChangeThatRanAMomentAfterItsTime_IsFollowedByTheNextOccurrence()
     {
-        // A change that came at 12:26 instead of 12:15 is not followed by one at 12:30
-        var next = SlideshowSchedule.NextChange(EveryFifteen, At(12, 26, 5), At(12, 26), FifteenMinutes, TimeZoneInfo.Utc);
+        var ranAt = At(12, 15).AddMilliseconds(500);
+
+        var next = SlideshowSchedule.NextChange(EveryFifteen, ranAt, At(12, 15), FifteenMinutes, TimeZoneInfo.Utc);
+
+        Assert.Equal(At(12, 30), next);
+    }
+
+    // Android delivers a window alarm up to 10 minutes late. The change for 12:15 that came at
+    // 12:25 is followed by the one for 12:30, five minutes later: the 15 minutes hold between the
+    // scheduled times, not between when Android delivered them.
+    [Fact]
+    public void NextChange_AChangeDeliveredAFullWindowLate_IsFollowedByTheNextOccurrence()
+    {
+        var next = SlideshowSchedule.NextChange(EveryFifteen, At(12, 25, 1), At(12, 15), FifteenMinutes, TimeZoneInfo.Utc);
+
+        Assert.Equal(At(12, 30), next);
+    }
+
+    // Delivered later than the next occurrence (the phone was asleep): that occurrence has
+    // passed, so the next change is the first one after now.
+    [Fact]
+    public void NextChange_AChangeDeliveredAfterTheNextOccurrence_IsTheFirstOccurrenceAfterNow()
+    {
+        var next = SlideshowSchedule.NextChange(EveryFifteen, At(12, 31), At(12, 15), FifteenMinutes, TimeZoneInfo.Utc);
 
         Assert.Equal(At(12, 45), next);
+    }
+
+    [Theory]
+    [InlineData("*/15 * * * *", 15, 30)]
+    [InlineData("0,15,30,45 * * * *", 15, 30)]
+    [InlineData("*/20 * * * *", 20, 40)]
+    [InlineData("*/30 * * * *", 30, 60)]
+    [InlineData("0 */15 * * * *", 15, 30)]   // six fields, seconds first
+    public void NextChange_EachScheduleTheyCanPick_KeepsItsSpacing(string expression, int dueMinute, int nextMinute)
+    {
+        var cron = SlideshowSchedule.Parse(expression);
+        var due = At(12, 0).AddMinutes(dueMinute);
+
+        var next = SlideshowSchedule.NextChange(cron, due.AddSeconds(1), due, FifteenMinutes, TimeZoneInfo.Utc);
+
+        Assert.Equal(At(12, 0).AddMinutes(nextMinute), next);
+    }
+
+    // The clock moved forward a little after a change: the floor still holds from the time the
+    // change was due
+    [Fact]
+    public void NextChange_TheClockMovedForwardAfterAChange_KeepsTheFloor()
+    {
+        var next = SlideshowSchedule.NextChange(EveryFifteen, At(12, 22), At(12, 15), FifteenMinutes, TimeZoneInfo.Utc);
+
+        Assert.Equal(At(12, 30), next);
     }
 
     [Fact]
