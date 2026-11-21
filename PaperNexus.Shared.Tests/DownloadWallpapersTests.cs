@@ -519,6 +519,35 @@ public class DownloadWallpapersTests : IDisposable
         Assert.True(DownloadWallpapers.IsOverdue(source));
     }
 
+    [Fact]
+    public void IsOverdue_LastDownloadLaterThanNow_ReturnsTrue()
+    {
+        // The clock was set back after a download: the stored time lies in the future. The
+        // source must be due at once, not wait until the clock passes that time again (#228).
+        var now = new DateTimeOffset(2026, 11, 20, 12, 0, 0, TimeSpan.Zero);
+        var source = new WallpaperSource
+        {
+            CronExpression = "0 */8 * * *",
+            LastDownloadUtc = now.AddDays(1),
+        };
+
+        Assert.True(DownloadWallpapers.IsOverdue(source, now));
+    }
+
+    [Fact]
+    public void IsOverdue_LastDownloadJustBeforeNow_ReturnsFalse()
+    {
+        // The ordinary case stays as it was: downloaded a minute ago, next occurrence hours away
+        var now = new DateTimeOffset(2026, 11, 20, 12, 30, 0, TimeSpan.Zero);
+        var source = new WallpaperSource
+        {
+            CronExpression = "0 0 1 1 *",
+            LastDownloadUtc = now.AddMinutes(-1),
+        };
+
+        Assert.False(DownloadWallpapers.IsOverdue(source, now));
+    }
+
     // --- LastDownloadUtc persistence tests ---
 
     // --- Settings load/defaults tests ---

@@ -93,6 +93,15 @@ public class BackgroundPlanTests
     }
 
     [Fact]
+    public void ASourceWhoseLastDownloadIsLaterThanNow_IsDueNow()
+    {
+        // The clock was set back after a download (#228): the stored time says nothing
+        var plan = Plan(Settings(sources: Source("Bing", lastDownload: Now.AddDays(1))));
+
+        Assert.Equal(Now, plan.DownloadAt);
+    }
+
+    [Fact]
     public void ASourceNeverDownloaded_AlreadyTried_WaitsForItsNextOccurrence()
     {
         var plan = Plan(Settings(sources: Source("Bing")), lastDownloadTry: At(11, 0));
