@@ -9,7 +9,8 @@ namespace PaperNexus.Core;
 public sealed record BackgroundPlan(DateTimeOffset? SlideshowAt, bool SlideshowExact, DateTimeOffset? DownloadAt)
 {
     // The plan for settings at now.
-    //   lastChange: when the slideshow last changed the wallpaper, for the device's floor.
+    //   lastChangeFor: the time the slideshow's last change was due (not when it ran), for the
+    //     device's floor, which is counted between scheduled changes.
     //   lastDownloadTry: when the scheduled download last ran, so a source that failed waits
     //     for its next occurrence instead of being tried again at once.
     //   exact: whether the change is made on the minute (Exact timing on and allowed).
@@ -18,7 +19,7 @@ public sealed record BackgroundPlan(DateTimeOffset? SlideshowAt, bool SlideshowE
     public static BackgroundPlan For(
         WallpaperNexusSettings settings,
         DateTimeOffset now,
-        DateTimeOffset? lastChange,
+        DateTimeOffset? lastChangeFor,
         DateTimeOffset? lastDownloadTry,
         bool exact,
         TimeSpan shortestGap,
@@ -26,7 +27,7 @@ public sealed record BackgroundPlan(DateTimeOffset? SlideshowAt, bool SlideshowE
     {
         settings.ThrowIfNull();
         zone.ThrowIfNull();
-        var slideshowAt = NextSlideshowChange(settings.Slideshow, now, lastChange, shortestGap, zone);
+        var slideshowAt = NextSlideshowChange(settings.Slideshow, now, lastChangeFor, shortestGap, zone);
         var downloadAt = NextDownload(settings, now, lastDownloadTry, zone);
         var plan = new BackgroundPlan(slideshowAt, slideshowAt is not null && exact, downloadAt);
         return plan;
@@ -34,14 +35,14 @@ public sealed record BackgroundPlan(DateTimeOffset? SlideshowAt, bool SlideshowE
 
     // The next change, or null when the slideshow is off or its stored expression does not
     // parse (the desktop's slideshow job treats an invalid expression as off too).
-    internal static DateTimeOffset? NextSlideshowChange(SlideshowSettings slideshow, DateTimeOffset now, DateTimeOffset? lastChange, TimeSpan shortestGap, TimeZoneInfo zone)
+    internal static DateTimeOffset? NextSlideshowChange(SlideshowSettings slideshow, DateTimeOffset now, DateTimeOffset? lastChangeFor, TimeSpan shortestGap, TimeZoneInfo zone)
     {
         if (!slideshow.Enabled
             || string.IsNullOrWhiteSpace(slideshow.CronExpression)
             || !SlideshowSchedule.IsValidCron(slideshow.CronExpression))
             return null;
         var cron = SlideshowSchedule.Parse(slideshow.CronExpression);
-        var next = SlideshowSchedule.NextChange(cron, now, lastChange, shortestGap, zone);
+        var next = SlideshowSchedule.NextChange(cron, now, lastChangeFor, shortestGap, zone);
         return next;
     }
 

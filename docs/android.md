@@ -482,9 +482,15 @@ the platform's own.
   `BackgroundWork.RunSlideshowAsync` changes to the next picture in slideshow order (the desktop
   slideshow's rule), records the run in `timers.json` (`PaperNexus.BackgroundSlideshow`: when it
   ran, the time it was for, whether it failed), and arms the next change at least 15 minutes
-  after it. A second alarm for a time already handled, or one arriving with the slideshow off,
-  changes nothing. A spent alarm is always armed again, even for the same time. A last change
-  recorded after now (the clock was set back) sets no floor.
+  after the time this one was due (not when it ran: counted from when it ran, a change a moment
+  after 12:15 put 12:30 inside the floor, and every 15 minutes became every 30; measured and fixed
+  in issue #203, step 7). So 15 minutes always separate the scheduled times; a change Android
+  delivers late (a window alarm up to 10 minutes) can come closer to the next one, which keeps its
+  own time. A change made by hand (Next, Random, a long-press entry) records nothing and does not
+  move the schedule. A second alarm for a time already handled, or one arriving with the slideshow
+  off, changes nothing. A spent alarm is always armed again, even for the same time. A last change
+  due after now (the clock was set back) sets no floor; an entry without the time it was due
+  counts from when it ran.
 - **Downloads** are one JobScheduler job (id 1, `DownloadJobService`): one-shot, persisted, needing a
   network, with a minimum latency up to the earliest time a source is due. `RunDownloadsAsync`
   calls `IDownloadWallpapers.DownloadDueAsync`, records the run (`PaperNexus.BackgroundDownloads`:
@@ -542,8 +548,8 @@ scheduled run is `IDownloadWallpapers.DownloadDueAsync`, the in-process timer is
 the store raises `Saved`, and the schedule rules are `SlideshowSchedule.ShortestGap`,
 `SlideshowSchedule.IsFasterThan` (a gap is counted between consecutive occurrences in UTC, over
 four years and a day from the start of 2028, so February 29 is inside it), `SlideshowSchedule.NextChange`
-(the first occurrence at or after the later of now and the last change plus the device's fastest
-slideshow) and `BackgroundPlan.For` (a due download source is tried once, then waits for its next
+(the first occurrence at or after the later of now and the time the last change was due plus the
+device's fastest slideshow) and `BackgroundPlan.For` (a due download source is tried once, then waits for its next
 occurrence).
 
 Android's rules this rests on, read in the Android documentation and measured on the Android 16

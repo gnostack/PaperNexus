@@ -266,6 +266,101 @@ public class BackgroundWorkTests : IDisposable
         Assert.Equal((At(13, 0), false), _scheduler.Slideshow[^1]);
     }
 
+    // The floor (no two changes closer than the phone's 15 minutes) is counted between the
+    // times the changes were scheduled for: a change for 12:15 that ran a moment later is
+    // followed by the one for 12:30, not 12:45.
+    [Fact]
+    public async Task EveryFifteenMinutes_AChangeThatRanJustAfterItsTime_IsFollowedByTheNextOccurrence()
+    {
+        await _store.UpdateAsync(s => s.Slideshow.CronExpression = "*/15 * * * *");
+        var work = Create();
+        _clock.Now = At(12, 15).AddMilliseconds(500);
+
+        await work.RunSlideshowAsync(At(12, 15));
+
+        Assert.Equal((At(12, 30), false), _scheduler.Slideshow[^1]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EveryFifteenMinutes_ThreeChangesInARow_AreFifteenMinutesApart_ExactTimingOnOrOff(bool exact)
+    {
+        await _store.UpdateAsync(s =>
+        {
+            s.Slideshow.CronExpression = "*/15 * * * *";
+            s.Slideshow.ExactTiming = exact;
+        });
+        _exactTiming.IsAllowed = true;
+        var work = Create();
+
+        foreach (var minute in new[] { 15, 30, 45 })
+        {
+            // Each one delivered a little after its time, the window alarm up to minutes late
+            _clock.Now = At(12, minute).AddSeconds(exact ? 0.4 : 290);
+            await work.RunSlideshowAsync(At(12, minute));
+            Assert.Equal((At(12, minute).AddMinutes(15), exact), _scheduler.Slideshow[^1]);
+        }
+        Assert.Equal(3, _switcher.Nexts);
+    }
+
+    // A change made by hand (Next in the app, a long-press menu entry) is the person's own act:
+    // it does not move the slideshow's schedule. The 12:15 change still comes a minute later.
+    [Fact]
+    public async Task AChangeByHandShortlyBeforeAnOccurrence_LeavesTheScheduleAlone()
+    {
+        await _store.UpdateAsync(s => s.Slideshow.CronExpression = "*/15 * * * *");
+        var work = Create();
+        _clock.Now = At(12, 0).AddSeconds(1);
+        await work.RunSlideshowAsync(At(12, 0));
+        Assert.Equal((At(12, 15), false), _scheduler.Slideshow[^1]);
+
+        _clock.Now = At(12, 14);
+        await work.RunShortcutChangeAsync(random: false);
+        await work.PlanAsync();
+        Assert.Equal((At(12, 15), false), _scheduler.Slideshow[^1]);
+
+        _clock.Now = At(12, 15).AddSeconds(1);
+        await work.RunSlideshowAsync(At(12, 15));
+        Assert.Equal(3, _switcher.Nexts);
+        Assert.Equal((At(12, 30), false), _scheduler.Slideshow[^1]);
+    }
+
+    // The clock set back after a change: the change's time is in the future, says nothing about
+    // how long ago the wallpaper changed, and sets no floor
+    [Fact]
+    public async Task TheClockSetBackAfterAChange_ArmsTheNextOccurrenceAfterTheNewTime()
+    {
+        await _store.UpdateAsync(s => s.Slideshow.CronExpression = "*/15 * * * *");
+        var work = Create();
+        _clock.Now = At(12, 15).AddSeconds(1);
+        await work.RunSlideshowAsync(At(12, 15));
+
+        _clock.Now = At(11, 2);
+        await work.PlanAsync();
+
+        Assert.Equal((At(11, 15), false), _scheduler.Slideshow[^1]);
+    }
+
+    // An entry written without the time its change was due counts from when it ran
+    [Fact]
+    public async Task AnEntryWithoutItsScheduledTime_CountsTheFloorFromWhenItRan()
+    {
+        await _store.UpdateAsync(s => s.Slideshow.CronExpression = "*/5 * * * *");
+        var timers = Timers();
+        await timers.SaveContextAsync(BackgroundWork.SlideshowJobName, new JobExecutionContext
+        {
+            StartedAt = At(12, 3),
+            FinishedAt = At(12, 3),
+            LastExecutionSucceeded = true,
+        });
+        var work = Create(timers: timers);
+
+        await work.StartAsync(CancellationToken.None);
+
+        Assert.Equal((At(12, 20), false), _scheduler.Slideshow[^1]);
+    }
+
     [Fact]
     public async Task ASecondAlarmForTheSameTime_ChangesNothing()
     {
