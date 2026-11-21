@@ -34,13 +34,11 @@ jobs:
 
     - name: Publish
       run: |
-        tag="${{ github.ref_name }}"
-        runNumber="${{ github.run_number }}"
-        if [[ "$tag" =~ ^v([0-9]+) ]]; then
-          buildNum="${BASH_REMATCH[1]}"
-        else
-          buildNum="$runNumber"
-        fi
+        # The build number's one rule (a vN tag gives N, anything else the run number) is
+        # .github/scripts/build-number.sh; a number it cannot give fails the job here, before
+        # anything is built or published. The release step reads it as BUILD_NUMBER.
+        buildNum=$(bash .github/scripts/build-number.sh "${{ github.ref_name }}" "${{ github.run_number }}")
+        echo "BUILD_NUMBER=$buildNum" >> "$GITHUB_ENV"
 
         # One single-file, self-contained binary per supported platform.
         for rid in win-x64 linux-x64; do
@@ -143,7 +141,7 @@ jobs:
 
           notes=$(printf '%s\n\n%s' "$install_section" "$generated")
         else
-          newTag="v${{ github.run_number }}"
+          newTag="v$BUILD_NUMBER"
 
           # For main branch builds, list commits since the last tag as the changelog.
           lastTag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")

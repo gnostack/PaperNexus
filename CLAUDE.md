@@ -35,6 +35,8 @@ PaperNexus/
 ├── .gitignore                           # Standard Visual Studio .gitignore
 ├── .claude/                             # Claude Code configuration
 ├── .github/
+│   ├── scripts/
+│   │   └── build-number.sh              # The build number's one rule (vN tag gives N, else the run number)
 │   └── workflows/
 │       ├── pull-request.yml             # PR build verification (desktop, shared, tests)
 │       ├── pull-request-android.yml     # PR build of the Android host
@@ -260,7 +262,7 @@ Enforced via `.editorconfig`: .NET 10, C#, file-scoped namespaces, 4-space inden
 - **PR workflow (desktop):** `pull-request.yml` - set up .NET → restore → build (Release) → test (continue-on-error) of `PaperNexus.Desktop.slnf`, the solution filter holding the desktop host, the shared library and both test projects. Supplies the required `build` check. GitHub-hosted runner (`ubuntu-latest`), `actions/checkout@v7`.
 - **PR workflow (Android):** `pull-request-android.yml` - a separate workflow whose `build-android` job installs the `android` workload (`dotnet workload restore`; the runner image already has the Android SDK and a JDK) and builds `PaperNexus.Android` (Release). It starts on every pull request, but the job is skipped unless the pull request changes `PaperNexus.Android/`, `PaperNexus.Shared/`, the linked logo or the workflow itself. `build-android` is not in the ruleset's required checks.
 - **Deploy workflow:** push to `main`/tags/manual → restore and build `PaperNexus/PaperNexus.csproj` only (it publishes nothing from the Android host, so it needs no workload) → publish win-x64 and linux-x64 single-file → sign the exe, checksum the Linux binary → GitHub Release with three assets. GitHub-hosted runner (`ubuntu-latest`); signing uses `openssl` + `osslsigncode` (Linux equivalents of `New-SelfSignedCertificate`/`signtool.exe`).
-- **Version:** Default `0.0.0`, CI sets `-p:Version=$buildNum.0.0`. Tags use `vN` format. Auto-updater compares `Version.Major` as integer.
+- **Version:** Default `0.0.0`, CI sets `-p:Version=$buildNum.0.0`. The build number comes only from `.github/scripts/build-number.sh <ref name> <run number>`: a `vN` tag gives N, any other ref the run number; it fails (and with it the job, before anything is published) unless the result is a whole number from 1 to 2147483647, and refuses a full `refs/...` name. The deploy workflow's Publish step calls it and passes the number to the release step as `BUILD_NUMBER` (the release tag of a non-tag run is `v$BUILD_NUMBER`); no workflow keeps its own copy of the rule. Tags use `vN` format. Auto-updater compares `Version.Major` as integer.
 - **Code signing:** Self-signed cert, auto-generated on first run, stored as `SIGNING_CERTIFICATE`/`SIGNING_CERTIFICATE_PASSWORD` secrets. Requires `GH_PAT` for persistence. 5-year validity, auto-renews at 30 days remaining.
 - **Publishing:** the desktop host is published; `PaperNexus.Shared.dll` is bundled inside the single-file binary, so the release assets are unchanged. `dotnet publish PaperNexus/PaperNexus.csproj -c Release -r <win-x64|linux-x64> --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false`. The Linux output is renamed to `PaperNexus-linux-x64` because the auto-updater looks the asset up by that exact name.
 - **Website workflow:** `deploy-website.yml` deploys `website/` to Azure Static Web Apps on `ubuntu-latest`. Triggered only by changes under `website/`.
