@@ -1,0 +1,152 @@
+name: Package Android App
+
+# Builds the phone app's store package (an Android App Bundle, .aab) and an .apk to install
+# directly, for the same commit and with the same build number as the desktop release, and keeps
+# both as one artifact of this run. Nothing is published: the phone app is distributed through
+# Google Play (issue #203, decision 2), and these files are never GitHub Release assets (the
+# desktop auto-updater reads the release's three assets).
+#
+#   - workflow_run: after each desktop release run ("Build Paper Nexus") that succeeded, that
+#     run's commit, numbered from that run's ref name and run number.
+#   - workflow_dispatch: the latest successful desktop release run on main again, its commit and
+#     its number (for example after the artifact expired).
+#   - pull_request changing this file or the build-number rule: a rehearsal. It builds the pull
+#     request as it would merge, numbered from the latest successful desktop release run on main,
+#     so the changed workflow and rule run before they are merged. Its artifact is named
+#     "...-rehearsal", so it is never taken for that release's package.
+#
+# Signing: both files are signed with the Android SDK's debug key, which the build creates afresh
+# on the runner for every run. Google Play refuses a debug-signed bundle, and an .apk from one run
+# cannot update an .apk from another without uninstalling first. An uploadable package needs the
+# upload key, which needs the Google Play developer account (not created): the publish step would
+# then pass AndroidKeyStore=true, AndroidSigningKeyStore, AndroidSigningStorePass,
+# AndroidSigningKeyAlias and AndroidSigningKeyPass from repository secrets.
+
+on:
+  workflow_run:
+    workflows: ['Build Paper Nexus']
+    types: [completed]
+  workflow_dispatch:
+  pull_request:
+    branches: ['main']
+    paths:
+      - '.github/workflows/package-android.yml'
+      - '.github/scripts/build-number.sh'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    # Only after a desktop release run that succeeded, so every phone package has a desktop
+    # release with the same number
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+    # The desktop release run this package belongs to: the one that started this run, or the
+    # latest successful one on main
+    - name: Find the desktop release run
+      id: release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT: ${{ github.event_name }}
+        RUN_REF: ${{ github.event.workflow_run.head_branch }}
+        RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        set -euo pipefail
+        if [[ "$EVENT" == workflow_run ]]; then
+          ref="$RUN_REF"
+          number="$RUN_NUMBER"
+          sha="$RUN_SHA"
+        else
+          latest=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-wallpaper-service.yml \
+            --branch main --status success --limit 1 \
+            --json headBranch,number,headSha --jq '.[0] | [.headBranch, (.number | tostring), .headSha] | @tsv')
+          if [[ -z "$latest" ]]; then
+            echo "No successful desktop release run on main." >&2
+            exit 1
+          fi
+          IFS=$'\t' read -r ref number sha <<< "$latest"
+        fi
+        echo "Desktop release run $number on $ref at $sha"
+        {
+          echo "ref=$ref"
+          echo "run-number=$number"
+          echo "sha=$sha"
+        } >> "$GITHUB_OUTPUT"
+
+    # The desktop release's commit; a rehearsal checks out the pull request as it would merge
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ github.event_name == 'pull_request' && github.sha || steps.release.outputs.sha }}
+
+    # The number the desktop release has, by the rule in the checked-out commit
+    # (.github/scripts/build-number.sh); a number the rule cannot give stops the run here
+    - name: Build number
+      id: number
+      env:
+        EVENT: ${{ github.event_name }}
+        RUN_REF: ${{ steps.release.outputs.ref }}
+        RUN_NUMBER: ${{ steps.release.outputs.run-number }}
+      run: |
+        set -euo pipefail
+        number=$(bash .github/scripts/build-number.sh "$RUN_REF" "$RUN_NUMBER")
+        # Google Play's largest version code
+        if (( number > 2100000000 )); then
+          echo "Build number $number is above Google Play's largest version code, 2100000000." >&2
+          exit 1
+        fi
+        name="PaperNexus-android-v$number"
+        if [[ "$EVENT" == pull_request ]]; then
+          name="$name-rehearsal"
+        fi
+        echo "number=$number" >> "$GITHUB_OUTPUT"
+        echo "name=$name" >> "$GITHUB_OUTPUT"
+
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+
+    # The runner image has the Android SDK and a JDK but no .NET workloads
+    - name: Install .NET workloads
+      run: dotnet workload restore PaperNexus.Android/PaperNexus.Android.csproj
+
+    - name: Restore dependencies
+      run: dotnet restore PaperNexus.Android/PaperNexus.Android.csproj
+
+    # versionName N.0.0 (About shows "vN", as the desktop does) and versionCode N. A Release
+    # build writes both the .aab and the .apk.
+    - name: Publish
+      run: |
+        set -euo pipefail
+        number="${{ steps.number.outputs.number }}"
+        dotnet publish PaperNexus.Android/PaperNexus.Android.csproj \
+          --configuration Release \
+          --no-restore \
+          -p:ApplicationDisplayVersion="$number.0.0" \
+          -p:ApplicationVersion="$number" \
+          --output ./publish/android
+
+    - name: Name the packages
+      run: |
+        set -euo pipefail
+        name="${{ steps.number.outputs.name }}"
+        mkdir -p ./package
+        mv ./publish/android/com.gnostack.papernexus-Signed.aab "./package/$name.aab"
+        mv ./publish/android/com.gnostack.papernexus-Signed.apk "./package/$name.apk"
+        ls -l ./package
+
+    # Kept with this run for the repository's artifact retention; both files are already
+    # compressed, so they are stored as they are
+    - name: Keep the packages
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.number.outputs.name }}
+        path: ./package/
+        if-no-files-found: error
+        compression-level: 0
