@@ -157,7 +157,12 @@ jobs:
             "$install_section" "$changeSection")
         fi
 
+        # --target pins the new tag to the commit this run built. Without it GitHub tags whatever
+        # main's head is when the release is created, which is a newer commit when another pull
+        # request merged while this run was building (issue #227). On a tag push the tag already
+        # exists and names its commit, so the target changes nothing.
         gh release create "$newTag" \
+          --target "$GITHUB_SHA" \
           --title "Paper Nexus $newTag" \
           --notes "$notes" \
           ./publish/win-x64/PaperNexus.exe \
